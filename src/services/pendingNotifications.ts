@@ -1,0 +1,210 @@
+/**
+ * Proactive pending notifications (SPEC § Proactive notifications).
+ * Per-avatar scoring for new connector items; revision and release heuristics.
+ */
+
+import type { AggregatedData } from "../connectors/index";
+import type { EmailItem } from "../connectors/types";
+import type {
+  Avatar,
+  ConversationMessage,
+  NotificationUrgency,
+  PendingNotification,
+  SituationContext,
+  SituationFocus,
+} from "../types";
+import { scoreEmailItems, type EmailScoringContext } from "./contextScoring/email";
+
+/** Max avatars that may speak in one batch when released (SPEC) */
+export const PROACTIVE_MAX_AVATARS_PER_CLUSTER = 3;
+
+/** Max new emails to evaluate per proactive pass (avoid floods on first load) */
+export const MAX_NEW_EMAILS_PER_EVAL = 3;
+
+/** Max pending rows kept in context */
+export const MAX_PENDING_NOTIFICATIONS = 24;
+
+const MEDIUM_THRESHOLD = 45;
+const PROCESSED_ID_CAP = 200;
+
+function tokenizeForMatch(s: string): Set<string> {
+  return new Set(
+    s
+      .toLowerCase()
+      .split(/[^a-z0-9]+/i)
+      .filter((w) => w.length >= 4)
+  );
+}
+
+/** Stable fingerprint for connector snapshot (not cryptographic) */
+export function buildConnectorSnapshotKey(data: AggregatedData): string {
+  const e = [...data.email].map((x) => x.id).sort().join(",");
+  const c = [...data.calendar].map((x) => x.id).sort().join(",");
+  const p = [...data.contacts].map((x) => x.id).sort().join(",");
+  return `e:${e}|c:${c}|p:${p}`;
+}
+
+function tagInterestBonus(avatar: Avatar, email: EmailItem): number {
+  const blob = `${email.subject} ${email.snippet}`.toLowerCase();
+  let n = 0;
+  for (const t of avatar.tags) {
+    if (blob.includes(t.toLowerCase())) n += 6;
+  }
+  for (const i of avatar.interests) {
+    if (blob.includes(i.toLowerCase())) n += 5;
+  }
+  return Math.min(40, n);
+}
+
+function urgencyForScore(
+  focusMatch: boolean,
+  combined: number
+): NotificationUrgency {
+  if (focusMatch) return "high";
+  if (combined >= MEDIUM_THRESHOLD + 20) return "high";
+  if (combined >= MEDIUM_THRESHOLD) return "medium";
+  return "low";
+}
+
+export type ScoredAvatarOffer = {
+  avatarId: string;
+  score: number;
+  urgency: NotificationUrgency;
+};
+
+/**
+ * Per-avatar scores for one email; top PROACTIVE_MAX_AVATARS_PER_CLUSTER, score-sorted.
+ */
+export function scoreAvatarsForNewEmail(
+  email: EmailItem,
+  ctx: SituationContext,
+  avatars: Avatar[],
+  focus?: SituationFocus
+): ScoredAvatarOffer[] {
+  const esc: EmailScoringContext = {
+    conversationThread: ctx.conversationThread,
+    activeTask: ctx.activeTask,
+    focus,
+  };
+  const base = scoreEmailItems([email], esc)[0]?.score ?? 0;
+  const focusMatch = Boolean(focus?.email?.id && focus.email.id === email.id);
+
+  const scored = avatars.map((avatar) => {
+    const bonus = tagInterestBonus(avatar, email);
+    const combined = base + bonus;
+    return {
+      avatarId: avatar.id,
+      score: combined,
+      urgency: urgencyForScore(focusMatch, combined),
+    };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, PROACTIVE_MAX_AVATARS_PER_CLUSTER);
+}
+
+/** Remove pending rows superseded by conversation (addressed topics) */
+export function revisePendingForThread(
+  pending: PendingNotification[],
+  thread: ConversationMessage[]
+): PendingNotification[] {
+  const userText = thread
+    .filter((m) => m.role === "user")
+    .map((m) => m.content.toLowerCase())
+    .join(" \n ");
+  if (!userText.trim()) return pending;
+
+  return pending.filter((p) => {
+    const topicWords = tokenizeForMatch(p.topicSummary);
+    let hits = 0;
+    for (const w of topicWords) {
+      if (userText.includes(w)) hits++;
+    }
+    return hits < 2;
+  });
+}
+
+/**
+ * User message counts as release if it shares enough tokens with a pending topic line.
+ */
+export function computeReleasedClusterIds(
+  userText: string,
+  pending: PendingNotification[]
+): string[] {
+  const words = tokenizeForMatch(userText);
+  if (words.size === 0) return [];
+  const released = new Set<string>();
+  for (const p of pending) {
+    const topicWords = tokenizeForMatch(p.topicSummary);
+    let hits = 0;
+    for (const w of topicWords) {
+      if (words.has(w) || userText.toLowerCase().includes(w)) hits++;
+    }
+    if (hits >= 2) released.add(p.topicClusterId);
+  }
+  return [...released];
+}
+
+function capPending(list: PendingNotification[]): PendingNotification[] {
+  const sorted = [...list].sort((a, b) => b.createdAt - a.createdAt);
+  return sorted.slice(0, MAX_PENDING_NOTIFICATIONS);
+}
+
+export function mergeProactiveEvaluation(
+  data: AggregatedData,
+  ctx: SituationContext,
+  avatars: Avatar[],
+  focus?: SituationFocus
+): SituationContext {
+  const processed = new Set(ctx.proactiveProcessedEmailIds ?? []);
+  let pending = revisePendingForThread(ctx.pendingNotifications ?? [], ctx.conversationThread);
+
+  const unseen = [...data.email]
+    .filter((e) => !processed.has(e.id))
+    .sort((a, b) => b.date - a.date)
+    .slice(0, MAX_NEW_EMAILS_PER_EVAL);
+
+  for (const email of unseen) {
+    processed.add(email.id);
+    const offers = scoreAvatarsForNewEmail(email, ctx, avatars, focus);
+    const clusterId = `email:${email.id}`;
+    const topicSummary = `${email.subject || "(no subject)"} — ${email.snippet.slice(0, 80)}`;
+
+    for (const o of offers) {
+      if (o.urgency === "low") continue;
+      pending.push({
+        id: crypto.randomUUID(),
+        avatarId: o.avatarId,
+        urgency: o.urgency,
+        topicSummary,
+        sourceRef: { kind: "email", id: email.id },
+        score: o.score,
+        createdAt: Date.now(),
+        topicClusterId: clusterId,
+      });
+    }
+  }
+
+  const ids = [...processed];
+  const trimmedProcessed =
+    ids.length > PROCESSED_ID_CAP ? ids.slice(-PROCESSED_ID_CAP) : ids;
+
+  return {
+    ...ctx,
+    pendingNotifications: capPending(pending),
+    proactiveProcessedEmailIds: trimmedProcessed,
+    lastConnectorSnapshotKey: buildConnectorSnapshotKey(data),
+  };
+}
+
+export function formatPendingNotificationsForPrompt(
+  pending: PendingNotification[] | undefined,
+  releasedClusterIds: string[] | undefined
+): string {
+  if (!pending?.length) return "";
+  const released = new Set(releasedClusterIds ?? []);
+  const lines = pending.map((p) => {
+    const rel = released.has(p.topicClusterId) ? "released" : "held";
+    return `- [${p.urgency}] ${p.avatarId}: ${p.topicSummary} (${rel}; cluster ${p.topicClusterId})`;
+  });
+  return `Pending notifications (incorporate if relevant to the user’s message; otherwise keep as separate held topics — do not force unrelated merges):\n${lines.join("\n")}`;
+}
