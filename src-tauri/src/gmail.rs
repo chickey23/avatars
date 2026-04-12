@@ -588,11 +588,12 @@ pub fn fetch_contacts(app: AppHandle, limit: u32) -> Result<Vec<Contact>, String
                 .and_then(|e| e.value);
             let birthday = p.birthdays.and_then(|b| b.into_iter().next()).and_then(|b| {
                 b.date.map(|d| {
-                    format!(
-                        "{:02}-{:02}",
-                        d.month.unwrap_or(0),
-                        d.day.unwrap_or(0)
-                    )
+                    let m = d.month.unwrap_or(0);
+                    let day = d.day.unwrap_or(0);
+                    match d.year {
+                        Some(y) => format!("{:04}-{:02}-{:02}", y, m, day),
+                        None => format!("{:02}-{:02}", m, day),
+                    }
                 })
             });
             Contact {

@@ -90,5 +90,8 @@ export function focusToRelevanceStrings(focus: SituationFocus): string[] {
   if (focus.contact) {
     out.push(`focus: contact [${focus.contact.id}] ${focus.contact.title}`);
   }
+  if (focus.project) {
+    out.push(`focus: project [${focus.project.id}] ${focus.project.title}`);
+  }
   return out;
 }

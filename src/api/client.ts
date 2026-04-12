@@ -37,14 +37,14 @@ export function createApiClient(config: Partial<ApiConfig> = {}) {
 
     sendMessage: (
       content: string,
-      selectedAvatarId: string,
+      selectedAvatarIds: string[],
       focus?: SituationFocus
     ) =>
       fetchJson<{ updatedContext: SituationContext; newMessages: ConversationMessage[] }>(
         `/message`,
         {
           method: "POST",
-          body: JSON.stringify({ content, selectedAvatarId, focus }),
+          body: JSON.stringify({ content, selectedAvatarIds, focus }),
         }
       ),
 

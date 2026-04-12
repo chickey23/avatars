@@ -12,14 +12,23 @@ export type PersonMetadataRecord = {
   updatedAt: number;
 };
 
+/** User-defined project (shared metadata; execution / agents later). */
+export type ProjectMetadataRecord = {
+  title: string;
+  notes?: string;
+  updatedAt: number;
+};
+
 export type WorldMetadataDoc = {
   schemaVersion: WorldMetadataSchemaVersion;
   people: Record<string, PersonMetadataRecord>;
+  projects: Record<string, ProjectMetadataRecord>;
 };
 
 export function createEmptyWorldMetadataDoc(): WorldMetadataDoc {
   return {
     schemaVersion: WORLD_METADATA_SCHEMA_VERSION,
     people: {},
+    projects: {},
   };
 }

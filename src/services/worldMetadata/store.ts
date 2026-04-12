@@ -1,4 +1,8 @@
-import type { PersonMetadataRecord, WorldMetadataDoc } from "./types";
+import type {
+  PersonMetadataRecord,
+  ProjectMetadataRecord,
+  WorldMetadataDoc,
+} from "./types";
 import { createEmptyWorldMetadataDoc } from "./types";
 import {
   LocalStorageWorldMetadataBackend,
@@ -35,6 +39,31 @@ function mergePeoplePatch(
   return next;
 }
 
+function mergeProjectsPatch(
+  projects: WorldMetadataDoc["projects"],
+  patch: Partial<Record<string, Partial<ProjectMetadataRecord> | null>>
+): WorldMetadataDoc["projects"] {
+  const next = { ...projects };
+  const now = Date.now();
+  for (const [id, rec] of Object.entries(patch)) {
+    if (rec === null) {
+      delete next[id];
+      continue;
+    }
+    if (!rec) continue;
+    const prev = next[id];
+    const title = (rec.title ?? prev?.title ?? "").trim();
+    if (!title) continue;
+    next[id] = {
+      ...prev,
+      ...rec,
+      title,
+      updatedAt: rec.updatedAt ?? now,
+    };
+  }
+  return next;
+}
+
 /** Call once at app startup so in-memory doc matches disk before any user turn. */
 export function ensureWorldMetadataLoaded(): void {
   if (loaded) return;
@@ -58,6 +87,22 @@ export function patchWorldMetadata(
   doc = {
     ...doc,
     people: mergePeoplePatch(doc.people, peoplePatch),
+  };
+  schedulePersistWorldMetadata();
+  return doc;
+}
+
+/**
+ * Merge project fields by id. Use `null` to remove a project.
+ * Updates memory immediately; persist is debounced.
+ */
+export function patchWorldMetadataProjects(
+  projectPatch: Partial<Record<string, Partial<ProjectMetadataRecord> | null>>
+): WorldMetadataDoc {
+  ensureWorldMetadataLoaded();
+  doc = {
+    ...doc,
+    projects: mergeProjectsPatch(doc.projects, projectPatch),
   };
   schedulePersistWorldMetadata();
   return doc;

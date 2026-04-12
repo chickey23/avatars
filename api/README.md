@@ -6,7 +6,7 @@ Phase 6: Web companion backend. The same React UI can run against this API when 
 
 - `GET /api/context` - Get current situation context
 - `GET /api/avatars` - List primary avatars
-- `POST /api/message` - Send message, body: `{ content, selectedAvatarId }`
+- `POST /api/message` - Send message, body: `{ content, selectedAvatarIds, focus? }`
 - `POST /api/tasks` - Assign task, body: `{ avatarId, title, description? }`
 - `GET /api/tasks?avatarId=...` - Get tasks for avatar
 

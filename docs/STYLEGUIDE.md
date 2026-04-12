@@ -8,7 +8,7 @@ This project overloads **agent** in several domains. Use the definitions below i
 
 | Term | Meaning | Example |
 |------|---------|---------|
-| **Avatar** | User-facing character (personality, chat UI). Implements `Avatar` in code. | “Ask the Muse avatar.” |
+| **Avatar** | User-facing character (personality, chat UI). Implements `Avatar` in code. | “Ask the Calliope avatar.” |
 | **Agent** (capital) | A **first-class architecture actor** in SPEC: implements or will implement `Agent`, participates in Switchboard / Situation Context, or is explicitly named in SPEC (Switchboard Agent, Active Task Agent, …). | “The Switchboard Agent routes turns.” |
 | **Avatar Interface Agent** | The **per-avatar chat pipeline** that runs with full Situation Context: `runAvatarAgent` in [`avatarAgents.ts`](../src/services/avatarAgents.ts). Not every `Agent` record in data; this is the **runtime role**. | “The Avatar Interface Agent builds the Ollama prompt.” |
 | **Background agent** | Code in [`backgroundAgents.ts`](../src/services/backgroundAgents.ts): registered runners, optional notification-style outputs. Lowercase when used as a **category** in prose; capitalize when naming a **specific** spec’d agent. | “Register a background agent for weather.” |
@@ -70,7 +70,7 @@ Features can advance **in parallel** when workstreams touch different files or c
 
 - User-visible strings and `title` / `aria-label` attributes.
 - File-top comments in `src/services/*` that describe architecture.
-- `SPEC.md`, `PROGRESS.md`, `TECHSPEC.md`, `README.md`, and handoff docs.
+- `SPEC.md`, `PROGRESS.md`, `docs/IMPLEMENTATION_ROADMAP.md` (phased roadmap), `TECHSPEC.md`, `README.md`, and handoff docs.
 
 Code identifiers (`runAvatarAgent`, `BackgroundAgentTask`) stay as-is for stability; new public APIs should follow this vocabulary in JSDoc.
 

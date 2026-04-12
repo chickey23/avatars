@@ -22,6 +22,7 @@ pub fn run() {
             ollama::ollama_reachable,
             ollama::ollama_list_models,
             ollama::ollama_generate,
+            ollama::ollama_embed,
             session_log::session_log_begin_session,
             session_log::session_log_append,
         ])

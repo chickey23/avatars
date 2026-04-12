@@ -13,6 +13,12 @@
   padding: 0;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   min-height: 100vh;
 }

@@ -1,22 +1,27 @@
 import {
-  createContext,
-  useContext,
   useState,
   useCallback,
   useRef,
   useEffect,
+  useMemo,
   type ReactNode,
 } from "react";
 import type {
   SituationContext,
   SituationFocus,
-  Avatar,
   ConversationMessage,
+  SwitchboardTraceStep,
 } from "../types";
+import {
+  AppContext,
+  type SendMessageOptions,
+  type AppContextValue,
+} from "./app-context";
 import { appendToConversation } from "../services/situationContext";
 import {
   getInitialState,
   processUserTurn,
+  type UserTurnJob,
   clearChat as storeClearChat,
   patchSituationContext as storePatchSituationContext,
   writePersistedContext,
@@ -24,32 +29,47 @@ import {
 import { gatherDataFromSources } from "../connectors";
 import { mergeProactiveEvaluation } from "../services/pendingNotifications";
 import { ensureWorldMetadataLoaded } from "../services/worldMetadata/store";
+import {
+  getActivePrimaryAvatarsPreferringSelected,
+  resolvePrimarySlotCount,
+} from "../store/primaryRoster";
+import { getFullAvatarCatalog } from "../store/avatarCatalog";
 
-interface AppContextValue {
-  situationContext: SituationContext;
-  avatars: Avatar[];
-  selectedAvatarId: string;
-  setSelectedAvatarId: (id: string) => void;
-  messages: ConversationMessage[];
-  sendMessage: (content: string, focus?: SituationFocus) => Promise<void>;
-  clearChat: () => void;
-  patchSituationContext: (patch: Partial<SituationContext>) => void;
-  /** Number of user turns still being processed (gather + avatars). */
-  pendingTurnCount: number;
-}
-
-const AppContext = createContext<AppContextValue | null>(null);
+export type { SendMessageOptions } from "./app-context";
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState(getInitialState);
   const [pendingTurnCount, setPendingTurnCount] = useState(0);
+  const [processingUserMessageId, setProcessingUserMessageId] = useState<
+    string | null
+  >(null);
+  const [liveSwitchboardTrace, setLiveSwitchboardTrace] = useState<
+    SwitchboardTraceStep[]
+  >([]);
+
+  const fullAvatarCatalog = useMemo(
+    () => getFullAvatarCatalog(state.situationContext),
+    [state.situationContext.userAvatars]
+  );
+  const slotCount = resolvePrimarySlotCount(
+    state.situationContext,
+    fullAvatarCatalog.length
+  );
+  const selectedIdsKey = state.selectedAvatarIds.join(",");
+  const avatars = useMemo(
+    () =>
+      getActivePrimaryAvatarsPreferringSelected(
+        fullAvatarCatalog,
+        slotCount,
+        state.selectedAvatarIds
+      ),
+    [slotCount, selectedIdsKey, fullAvatarCatalog]
+  );
 
   const situationContextRef = useRef(state.situationContext);
-  const selectedAvatarIdRef = useRef(state.selectedAvatarId);
-  const avatarsRef = useRef(state.avatars);
-  const queueRef = useRef<
-    { userMsgId: string; content: string; focus?: SituationFocus }[]
-  >([]);
+  const selectedAvatarIdsRef = useRef(state.selectedAvatarIds);
+  const avatarsRef = useRef(avatars);
+  const queueRef = useRef<UserTurnJob[]>([]);
   /** Serializes drain so concurrent sends all await full processing. */
   const drainChainRef = useRef(Promise.resolve());
 
@@ -57,11 +77,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     situationContextRef.current = state.situationContext;
   }, [state.situationContext]);
   useEffect(() => {
-    selectedAvatarIdRef.current = state.selectedAvatarId;
-  }, [state.selectedAvatarId]);
+    selectedAvatarIdsRef.current = state.selectedAvatarIds;
+  }, [state.selectedAvatarIds]);
   useEffect(() => {
-    avatarsRef.current = state.avatars;
-  }, [state.avatars]);
+    avatarsRef.current = avatars;
+  }, [avatars]);
+
+  /** Drop selections for avatars no longer in the primary roster. */
+  useEffect(() => {
+    const allowed = new Set(avatars.map((a) => a.id));
+    setState((prev) => {
+      const next = prev.selectedAvatarIds.filter((id) => allowed.has(id));
+      if (next.length === prev.selectedAvatarIds.length) return prev;
+      return { ...prev, selectedAvatarIds: next };
+    });
+  }, [avatars]);
 
   useEffect(() => {
     ensureWorldMetadataLoaded();
@@ -75,10 +105,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const data = await gatherDataFromSources();
         if (cancelled) return;
         setState((prev) => {
+          const cat = getFullAvatarCatalog(prev.situationContext);
+          const sc = resolvePrimarySlotCount(prev.situationContext, cat.length);
+          const primaryAvatars = getActivePrimaryAvatarsPreferringSelected(
+            cat,
+            sc,
+            prev.selectedAvatarIds
+          );
           const merged = mergeProactiveEvaluation(
             data,
             prev.situationContext,
-            prev.avatars,
+            primaryAvatars,
             prev.situationContext.userFocus
           );
           situationContextRef.current = merged;
@@ -98,7 +135,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleSendMessage = useCallback(
-    async (content: string, focus?: SituationFocus) => {
+    async (
+      content: string,
+      focus?: SituationFocus,
+      options?: SendMessageOptions
+    ) => {
       if (!content.trim()) return;
       const userMsg: ConversationMessage = {
         id: crypto.randomUUID(),
@@ -116,15 +157,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         userMsgId: userMsg.id,
         content: content.trim(),
         focus,
+        releasedClusterIds: options?.releasedClusterIds,
+        primaryAvatarId: options?.primaryAvatarId,
       });
       drainChainRef.current = drainChainRef.current.then(async () => {
         while (queueRef.current.length > 0) {
           const job = queueRef.current.shift()!;
+          setProcessingUserMessageId(job.userMsgId);
+          setLiveSwitchboardTrace([]);
           try {
             await processUserTurn(
               () => situationContextRef.current,
               job,
-              selectedAvatarIdRef.current,
+              selectedAvatarIdsRef.current,
               avatarsRef.current,
               (ctx) => {
                 situationContextRef.current = ctx;
@@ -132,9 +177,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   ...prev,
                   situationContext: ctx,
                 }));
+              },
+              {
+                onTraceProgress: ({ trace: t }) => setLiveSwitchboardTrace(t),
               }
             );
           } finally {
+            setProcessingUserMessageId(null);
+            setLiveSwitchboardTrace([]);
             setPendingTurnCount((n) => Math.max(0, n - 1));
           }
         }
@@ -147,6 +197,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleClearChat = useCallback(() => {
     queueRef.current = [];
     setPendingTurnCount(0);
+    setProcessingUserMessageId(null);
+    setLiveSwitchboardTrace([]);
     setState((prev) => {
       const next = storeClearChat(prev.situationContext);
       situationContextRef.current = next;
@@ -165,23 +217,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const toggleAvatarSelection = useCallback((id: string) => {
+    setState((prev) => {
+      const has = prev.selectedAvatarIds.includes(id);
+      const nextIds = has
+        ? prev.selectedAvatarIds.filter((x) => x !== id)
+        : [...prev.selectedAvatarIds, id];
+      return { ...prev, selectedAvatarIds: nextIds };
+    });
+  }, []);
+
+  const clearAvatarSelection = useCallback(() => {
+    setState((prev) => ({ ...prev, selectedAvatarIds: [] }));
+  }, []);
+
   const value: AppContextValue = {
     situationContext: state.situationContext,
-    avatars: state.avatars,
-    selectedAvatarId: state.selectedAvatarId,
-    setSelectedAvatarId: (id) => setState((prev) => ({ ...prev, selectedAvatarId: id })),
+    fullAvatarCatalog,
+    avatars,
+    selectedAvatarIds: state.selectedAvatarIds,
+    setSelectedAvatarIds: (ids) =>
+      setState((prev) => ({ ...prev, selectedAvatarIds: [...new Set(ids)] })),
+    toggleAvatarSelection,
+    clearAvatarSelection,
     messages: state.situationContext.conversationThread,
     sendMessage: handleSendMessage,
     clearChat: handleClearChat,
     patchSituationContext: handlePatchSituationContext,
     pendingTurnCount,
+    processingUserMessageId,
+    liveSwitchboardTrace,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
-}
-
-export function useApp() {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useApp must be used within AppProvider");
-  return ctx;
 }

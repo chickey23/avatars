@@ -14,6 +14,7 @@ import type {
   SituationFocus,
 } from "../types";
 import { scoreEmailItems, type EmailScoringContext } from "./contextScoring/email";
+import { resolveBehaviorTuning } from "./behaviorTuningFormat";
 
 /** Max avatars that may speak in one batch when released (SPEC) */
 export const PROACTIVE_MAX_AVATARS_PER_CLUSTER = 3;
@@ -23,6 +24,19 @@ export const MAX_NEW_EMAILS_PER_EVAL = 3;
 
 /** Max pending rows kept in context */
 export const MAX_PENDING_NOTIFICATIONS = 24;
+
+/**
+ * Minimum combined score (email relevance base + tag/interest bonus) to consider
+ * an avatar for proactive pending. Aligns with medium urgency floor.
+ */
+export const PROACTIVE_MIN_COMBINED_SCORE = 45;
+
+/**
+ * When the email is not focused, only the top scorer is kept unless additional
+ * avatars have at least this tag/interest overlap with the email (avoids N
+ * identical “base only” notifiers).
+ */
+export const PROACTIVE_MIN_AFFINITY_BONUS = 5;
 
 const MEDIUM_THRESHOLD = 45;
 const PROCESSED_ID_CAP = 200;
@@ -70,10 +84,46 @@ export type ScoredAvatarOffer = {
   avatarId: string;
   score: number;
   urgency: NotificationUrgency;
+  /** Uncapped tag/interest overlap with this email (0–40); used for multi-avatar gating */
+  affinityBonus: number;
 };
 
 /**
- * Per-avatar scores for one email; top PROACTIVE_MAX_AVATARS_PER_CLUSTER, score-sorted.
+ * After sorting offers by `score` descending, keep at most PROACTIVE_MAX_AVATARS_PER_CLUSTER
+ * with a minimum score. When the user has not focused this email, only the first slot is
+ * “free”; further slots require avatar-specific affinity (tag/interest hit on the email).
+ */
+export type ProactiveThresholds = {
+  minCombined: number;
+  minAffinity: number;
+};
+
+export function filterProactiveAvatarOffers(
+  sortedDescending: ScoredAvatarOffer[],
+  focusMatchEmail: boolean,
+  thresholds?: ProactiveThresholds
+): ScoredAvatarOffer[] {
+  const minCombined = thresholds?.minCombined ?? PROACTIVE_MIN_COMBINED_SCORE;
+  const minAffinity = thresholds?.minAffinity ?? PROACTIVE_MIN_AFFINITY_BONUS;
+  const aboveFloor = sortedDescending.filter((o) => o.score >= minCombined);
+  if (aboveFloor.length === 0) return [];
+
+  const kept: ScoredAvatarOffer[] = [];
+  for (const o of aboveFloor) {
+    if (kept.length >= PROACTIVE_MAX_AVATARS_PER_CLUSTER) break;
+    if (kept.length === 0) {
+      kept.push(o);
+      continue;
+    }
+    if (focusMatchEmail || o.affinityBonus >= minAffinity) {
+      kept.push(o);
+    }
+  }
+  return kept;
+}
+
+/**
+ * Per-avatar scores for one email; filtered and capped, score-sorted.
  */
 export function scoreAvatarsForNewEmail(
   email: EmailItem,
@@ -96,10 +146,15 @@ export function scoreAvatarsForNewEmail(
       avatarId: avatar.id,
       score: combined,
       urgency: urgencyForScore(focusMatch, combined),
+      affinityBonus: bonus,
     };
   });
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, PROACTIVE_MAX_AVATARS_PER_CLUSTER);
+  scored.sort((a, b) => b.score - a.score || a.avatarId.localeCompare(b.avatarId));
+  const tuning = resolveBehaviorTuning(ctx);
+  return filterProactiveAvatarOffers(scored, focusMatch, {
+    minCombined: tuning.proactiveMinCombinedScore,
+    minAffinity: tuning.proactiveMinAffinityBonus,
+  });
 }
 
 /** Remove pending rows superseded by conversation (addressed topics) */
@@ -142,6 +197,26 @@ export function computeReleasedClusterIds(
     if (hits >= 2) released.add(p.topicClusterId);
   }
   return [...released];
+}
+
+/** Union of token-based release and explicit cluster ids from UI (e.g. Discuss). */
+export function mergeReleasedClusterIds(
+  userText: string,
+  pending: PendingNotification[],
+  explicit?: string[]
+): string[] {
+  const fromText = computeReleasedClusterIds(userText, pending);
+  return [...new Set([...fromText, ...(explicit ?? [])])];
+}
+
+/** Drop all pending rows for the given topic cluster ids (after a released turn). */
+export function removePendingByClusterIds(
+  pending: PendingNotification[],
+  clusterIds: string[]
+): PendingNotification[] {
+  if (clusterIds.length === 0) return pending;
+  const drop = new Set(clusterIds);
+  return pending.filter((p) => !drop.has(p.topicClusterId));
 }
 
 function capPending(list: PendingNotification[]): PendingNotification[] {

@@ -118,7 +118,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 
 **Same topic, multiple Avatars:** More than one Avatar may have something to say about the **same** topic. Delivery is **sequential**. **At most three Avatars** per released batch (current cap). Order within the batch is **score-driven**, not a fixed roster order.
 
-**Release (unlock):** (1) Explicit user control when present in UI; (2) The **user’s message counts as release** when it **addresses the topic** tied to pending item(s). Pending items **re-evaluate** as the conversation and connector data change so the UI does not show **stale** or **redundant** offers.
+**Release (unlock):** (1) **Discuss** on a pending row (sidebar): posts a short user line, forces that topic cluster to **released** in the prompt for that turn, and removes that cluster from `pendingNotifications` after the turn completes; (2) **Dismiss** removes that pending row without a turn; (3) The **user’s message counts as release** when it **addresses the topic** (token overlap). Pending items **re-evaluate** as the conversation and connector data change so the UI does not show **stale** or **redundant** offers.
 
 **Prompt contract:** Pending notifications may be passed into **Ollama** (or template) prompts as structured context. The model should **incorporate** them when relevant to the user’s turn or **treat as separate held topics** when not a match — no forced merge of unrelated threads.
 
@@ -130,7 +130,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 
 ## Avatars
 
-- **Individuals**: Each Avatar is its own entity. Sets (Muse/Accomplice/Skeptic, 3 Norns, 3 Fates) are for convenience; Avatars can be mixed and matched.
+- **Individuals**: Each Avatar is its own entity. Sets (Calliope/Mark Antony/Diogenes as default primaries, 3 Norns, 3 Fates) are for convenience; Avatars can be mixed and matched.
 - **Extensibility**: Avatars can be added individually or in sets; custom or from reference (historical, fictional).
 - **Target**: Recognizable likeness, voice, personality.
 - **Notification job queue**: Avatars take notification jobs from a queue based on affinity (tags, interests, personality) and timing (user context at that moment).
@@ -148,6 +148,9 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 | Google | Contacts | |
 | Groundnews | News | User has account |
 | Reddit | Social | Several accounts; prefer audit account |
+| Wikipedia | Reference | Supplemental material for avatar/persona construction (deferred) |
+| Wookieepedia | Reference | Star Wars wiki; supplemental for avatar creation (deferred) |
+| Memory Alpha | Reference | Star Trek wiki; supplemental for avatar creation (deferred) |
 | GitHub | Repos | Watching |
 | Weather | Weather | No account yet; free API |
 | Boing Boing | RSS | Public feed |
@@ -159,6 +162,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 - **Credentials**: Plain text local for now; one config file per source
 - **Structure**: `data/connections/enabled/<source>/` and `data/connections/disabled/<source>/` — move folder to enable/disable
 - **Desktop apps**: May use an app-specific path (e.g. `%APPDATA%\com.avatars.app\data\connections\enabled\<source>\` on Windows) instead of project-relative `data/`
+- **Reference wikis / social (deferred)** — Wikipedia, Wookieepedia, Memory Alpha, Reddit (see § Target Sources): intended as **read-only supplemental** inputs during avatar creation and persona research; not required for core chat flows.
 
 ---
 
@@ -204,14 +208,19 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 
 **Next (spec-track priority):**
 
-1. **Background agents in action** — **(a)** **Context scoring agents** — email first, then calendar, then contacts, then other sources as connectors land (see § Context scoring agents); **(b)** **Active Task Agent** and **Focus Watcher Agent**; all must **feed into Switchboard** (and situation context) as specified.
-2. **Proactive pending notifications** — Phased: types + per-avatar scoring + revision/release heuristics + prompt injection + UI (badges / topic hints; high-urgency surface per user consult). See § Proactive notifications and pending reactions.
-3. **Timer/cue integration with UI** — Feeds the same pending-notification pipeline where possible (see § Proactive notifications).
-4. **Additional connectors** — Hotmail, Weather (real API), Groundnews, etc. (Gmail email, calendar, contacts done.)
-5. **Shared metadata** — Implement `data/metadata/` for People, Events, Projects (enables contact affinity for scoring).
-6. **Tests** — Unit tests for Switchboard, connectors, Situation Context, proactive notification helpers.
-7. **Signature phrase** — Ensure Agent-mode responses include the phrase from `scripts/signature.ps1`.
-8. (Deferred items as above)
+**Roadmap note:** **Switchboard visualization** and **shared metadata / projects** are prioritized ahead of further proactive polish. **Sequential multi-avatar release** for pending notifications is **lower priority** — current MVP behavior is acceptable until visualization and metadata foundations advance.
+
+1. **Switchboard visualization** — Ambient wave/trace UI (e.g. ascending avatar-colored bubbles) driven by `SwitchboardTraceStep` / cascade timing; conceptual notes in `docs/SWITCHBOARD_VISUALIZATION.md`. **Layout and motion require explicit user consultation** per § Behavioral Instructions; sounds optional and secondary.
+2. **Shared metadata** — Implement `data/metadata/` for People, Events, **Projects** (enables contact affinity, structured project lists, and a path toward **project execution** — `Avatar.assignedTasks`, situation context, and future Active Task / Project agents). World metadata v1 in `localStorage` is a partial step; on-disk / Tauri persistence TBD.
+3. **Conversation archive (follow-on)** — **Archive segment / dismiss topic** and richer project-linked “chapters” — deferred in § Conversation archive; becomes more important alongside metadata and todo/project surfaces.
+4. **Background agents in action** — **(a)** **Context scoring** — user-turn scoring for Gmail email, calendar, and contacts is in place; extend as **additional connectors** land (see § Context scoring agents). **(b)** **Active Task Agent** and **Focus Watcher Agent**; all must **feed into Switchboard** (and situation context) as specified.
+5. **Proactive pending notifications (ongoing)** — Timer/cue integration; high-urgency surface per user consult. **Sequential multi-avatar release batch** — polish when prioritized; MVP in § Implemented UI is sufficient for now.
+6. **Additional connectors** — Hotmail, Weather (real API), Groundnews, reference/social sources in § Data Sources (Gmail email, calendar, contacts done.)
+7. **Tests** — Unit tests for Switchboard, connectors, Situation Context, proactive notification helpers.
+8. **Signature phrase** — Ensure Agent-mode responses include the phrase from `scripts/signature.ps1`.
+9. (Deferred items as above)
+
+**Phased detail (non-normative):** See `docs/IMPLEMENTATION_ROADMAP.md` for the full sequence—including **bench responders** (cheap non-primary matches; see `routingDirectAddress`) and **usage-based primary ordering**—without duplicating normative requirements here.
 
 ---
 
@@ -221,8 +230,8 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 - **Focus**: User can select email, calendar event, or contact as focus; display shows titles; Clear button.
 - **Environment**: Tauri indicator; **Ollama** tri-state badge (refresh on click); **Log** opens session diagnostics (connectivity / Ollama / chat pipeline notes).
 - **Chat**: **Clear chat** (no confirm; clears visible thread, recent events, and queued pending turns)—**layout/readability reset**, not topic dismissal; see § Conversation archive. **View** selector (Chat / Chat + routing / Routing + log); inline trace and optional expanded log under user messages; compact turn archive in `localStorage` (see § Conversation archive and Switchboard trace). **User messages** appear immediately; **avatar replies** append incrementally as each response completes. **Pending reply** indicator when one or more turns are still processing; **input and Send stay enabled** so the user can send additional messages while replies are in flight (turns are queued). Optional **Well of Souls** output merged into `relevantData` when “Use in chat context” is on.
-- **Future / not implemented (consult user before building):** Ambient **Switchboard visualization** (e.g. ascending avatar-colored bubbles timed to waves) and sounds — conceptual notes in `docs/SWITCHBOARD_VISUALIZATION.md`; layout and motion require explicit user approval per § Behavioral Instructions.
+- **Next UI build (consult user before building):** **Switchboard visualization** — ambient trace/wave UI (e.g. ascending avatar-colored bubbles timed to waves); conceptual notes in `docs/SWITCHBOARD_VISUALIZATION.md`; layout and motion require explicit user approval per § Behavioral Instructions. **Sounds** remain optional and secondary.
 - **To Do List** (header, upper right): Quick links — Google, Screenshots folder, Downloads folder. Opens in browser or file explorer.
 - **Progress & spec review**: See `PROGRESS.md` for status, conflicts, and next steps.
 - **Technical specification**: See `TECHSPEC.md` for components and implementation details to rebuild the project.
-- **Proactive notifications (MVP)**: New mail evaluated into `pendingNotifications` (interval + each user turn). **Primary Avatars** sidebar: per-avatar **truncated topic line** (replaces trait row when pending); **numeric badge** opens full pending list for that avatar; **magnifier (🔍)** toggles description + personality traits (hidden by default). Short **high-urgency** line above chat points to sidebar (not long copy). **Full prompt** includes pending block per avatar when using Ollama. Sequential multi-avatar **release** batch is not fully wired in UI (see § Proactive notifications).
+- **Proactive notifications (MVP)**: New mail evaluated into `pendingNotifications` (interval + each user turn). **Primary Avatars** sidebar: per-avatar **truncated topic line** (replaces trait row when pending); **numeric badge** opens full pending list for that avatar with **Discuss** / **Dismiss** per row; **magnifier (🔍)** toggles description + personality traits (hidden by default). **Full prompt** includes pending block per avatar when using Ollama. **Sequential multi-avatar release** batch: further UI polish is **lower priority**; current behavior is acceptable (see § Implementation Order roadmap note).

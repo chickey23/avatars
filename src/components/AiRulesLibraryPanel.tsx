@@ -6,7 +6,8 @@ export function AiRulesLibraryPanel() {
     <details className="ai-rules-library">
       <summary>AI rules library</summary>
       <p className="ai-rules-library-hint">
-        Reusable blocks linked into rule sets per avatar (<code>ruleSetId</code>).
+        Avatars use <strong>blocks</strong> first (<code>ruleBlockIds</code>); named <strong>sets</strong> below are
+        legacy bundles for defaults and migration.
       </p>
       <h4 className="ai-rules-library-sub">Sets</h4>
       <ul className="ai-rules-set-list">

@@ -5,8 +5,17 @@ import {
   PERSONALITY_TRAITS,
   type PersonalityTraitId,
 } from "../theme/designTokens";
+import { AI_RULE_BLOCKS } from "../data/aiRulesLibrary";
+import {
+  createInitialWellOfSoulsRuleBlocks,
+  createInitialWellOfSoulsTraits,
+} from "../services/wellOfSoulsRandomInit";
 
 export type WellOfSoulsVariant = "panel" | "modal";
+
+function orderedRuleBlockIds(selected: Set<string>): string[] {
+  return AI_RULE_BLOCKS.filter((b) => selected.has(b.id)).map((b) => b.id);
+}
 
 type Props = {
   variant?: WellOfSoulsVariant;
@@ -16,6 +25,13 @@ type Props = {
   onStoredRulesChange?: (text: string) => void;
   useInChat?: boolean;
   onUseInChatChange?: (v: boolean) => void;
+  /** Called after a successful Generate (opens avatar builder, etc.). */
+  onAfterGenerate?: (payload: {
+    seed: string;
+    traitIds: PersonalityTraitId[];
+    ruleBlockIds: string[];
+    generatedText: string;
+  }) => void;
 };
 
 export function WellOfSouls({
@@ -25,10 +41,14 @@ export function WellOfSouls({
   onStoredRulesChange,
   useInChat = false,
   onUseInChatChange,
+  onAfterGenerate,
 }: Props) {
   const [seed, setSeed] = useState("");
   const [traits, setTraits] = useState<Set<PersonalityTraitId>>(
-    () => new Set(["warmth", "curiosity", "directness"])
+    () => createInitialWellOfSoulsTraits()
+  );
+  const [ruleBlocks, setRuleBlocks] = useState<Set<string>>(
+    () => createInitialWellOfSoulsRuleBlocks()
   );
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState(false);
@@ -43,12 +63,22 @@ export function WellOfSouls({
     });
   }, []);
 
+  const toggleRuleBlock = useCallback((id: string) => {
+    setRuleBlocks((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   const run = useCallback(async () => {
     setBusy(true);
     setErr(null);
     setOut("");
     try {
-      const prompt = buildWellOfSoulsPrompt(seed, [...traits]);
+      const ruleIds = orderedRuleBlockIds(ruleBlocks);
+      const prompt = buildWellOfSoulsPrompt(seed, [...traits], ruleIds);
       const gen = await generateWithOllama({ prompt });
       if (!gen.ok) {
         setErr(gen.error);
@@ -56,12 +86,18 @@ export function WellOfSouls({
       }
       setOut(gen.text);
       onStoredRulesChange?.(gen.text);
+      onAfterGenerate?.({
+        seed,
+        traitIds: [...traits],
+        ruleBlockIds: ruleIds,
+        generatedText: gen.text,
+      });
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [seed, traits, onStoredRulesChange]);
+  }, [seed, traits, ruleBlocks, onStoredRulesChange, onAfterGenerate]);
 
   const body = (
     <>
@@ -102,6 +138,21 @@ export function WellOfSouls({
           placeholder="e.g. stoic mentor, cyber-noir analyst…"
         />
       </label>
+      <div className="well-of-souls-traits">
+        <span className="well-of-souls-label-text">AI rule blocks</span>
+        <div className="well-of-souls-trait-grid">
+          {AI_RULE_BLOCKS.map((b) => (
+            <label key={b.id} className="well-of-souls-trait">
+              <input
+                type="checkbox"
+                checked={ruleBlocks.has(b.id)}
+                onChange={() => toggleRuleBlock(b.id)}
+              />
+              {b.title}
+            </label>
+          ))}
+        </div>
+      </div>
       <div className="well-of-souls-traits">
         <span className="well-of-souls-label-text">Traits</span>
         <div className="well-of-souls-trait-grid">

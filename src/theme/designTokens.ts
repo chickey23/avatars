@@ -30,7 +30,10 @@ export const CHAT_WINDOW_STYLE_IDS = [
 
 export type ChatWindowStyleId = (typeof CHAT_WINDOW_STYLE_IDS)[number];
 
-/** Twelve personality axes / tags for rules + Well of Souls */
+/**
+ * Personality axes for Well of Souls, avatar builder, and routing labels.
+ * When adding traits, extend AI rule blocks if needed — see docs/EXTENDING_TRAITS_AND_RULES.md.
+ */
 export const PERSONALITY_TRAITS = [
   { id: "warmth", label: "Warmth" },
   { id: "directness", label: "Directness" },

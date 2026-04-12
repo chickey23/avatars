@@ -3,9 +3,10 @@
 ## TL;DR
 
 - **Canonical order:** [SPEC.md](SPEC.md) § Implementation Order (Active).
+- **Phased roadmap (A–G: viz, metadata, execution, bench, popularity, archive):** [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md).
 - **Session handoff + checklist:** [HANDOFF_TOMORROW.md](HANDOFF_TOMORROW.md).
-- **Shipped this cycle:** Email / calendar / **contacts** **user-turn** scoring ([`contextScoring/`](src/services/contextScoring/)); **world metadata** v1 JSON in `localStorage` ([`worldMetadata/`](src/services/worldMetadata/)) with debounced persist and contact scoring overlay; **proactive pending** MVP ([`pendingNotifications.ts`](src/services/pendingNotifications.ts) + types + [`App.tsx`](src/App.tsx) sidebar UX + short chat strip); **dev** verify (`scripts/verify.ps1`, `start-dev.cmd`, `build-release.cmd`); **Clear chat** without confirm; **context scoring** docs under [`docs/`](docs/CONTEXT_SCORING.md).
-- **Next:** Proactive **sequential release** batch + timer/cue; Active Task / Focus Watcher; metadata **UI** / chat entry; Tauri file or SQLite backend when needed.
+- **Shipped this cycle:** Email / calendar / **contacts** **user-turn** scoring ([`contextScoring/`](src/services/contextScoring/)); **world metadata** v1 JSON in `localStorage` ([`worldMetadata/`](src/services/worldMetadata/)) with debounced persist and contact scoring overlay; **proactive pending** MVP ([`pendingNotifications.ts`](src/services/pendingNotifications.ts) + types + [`App.tsx`](src/App.tsx) sidebar UX: **Discuss** sends a user turn with forced cluster release and clears that cluster from pending after the turn; **Dismiss** drops one row); **dev** verify (`scripts/verify.ps1`, `start-dev.cmd`, `build-release.cmd`); **Clear chat** without confirm; **context scoring** docs under [`docs/`](docs/CONTEXT_SCORING.md).
+- **Next (priority order):** **Switchboard visualization** ([`docs/SWITCHBOARD_VISUALIZATION.md`](docs/SWITCHBOARD_VISUALIZATION.md)); **shared metadata** (`data/metadata/`, Projects, UI / chat entry); path toward **project execution** (`Avatar.assignedTasks`, `activeTask`, future agents). **Conversation archive** segments/chapters as follow-on. **Proactive:** timer/cue; **sequential release batch** polish **deprioritized** (MVP acceptable). Active Task / Focus Watcher; Tauri file or SQLite when needed.
 - **Context scoring docs:** [docs/CONTEXT_SCORING.md](docs/CONTEXT_SCORING.md) (overview + world metadata), [docs/CONTEXT_SCORING_EMAIL.md](docs/CONTEXT_SCORING_EMAIL.md), [docs/CONTEXT_SCORING_CALENDAR.md](docs/CONTEXT_SCORING_CALENDAR.md), [docs/CONTEXT_SCORING_CONTACTS.md](docs/CONTEXT_SCORING_CONTACTS.md).
 - **Terminology:** [docs/STYLEGUIDE.md](docs/STYLEGUIDE.md). **Rebuild:** [TECHSPEC.md](TECHSPEC.md).
 
@@ -24,7 +25,10 @@
 | Google Contacts | ✅ Done | People API, Context tab |
 | Hotmail | ❌ Not started | |
 | Groundnews | ❌ Not started | User has account |
-| Reddit | ❌ Not started | Several accounts |
+| Reddit | ❌ Not started | Several accounts; supplemental / avatar research (deferred) |
+| Wikipedia | ❌ Not started | Reference; supplemental for avatar creation (deferred) |
+| Wookieepedia | ❌ Not started | Star Wars wiki; supplemental (deferred) |
+| Memory Alpha | ❌ Not started | Star Trek wiki; supplemental (deferred) |
 | GitHub | ❌ Not started | Watching |
 | Weather | ⚠️ Mock only | No real API yet |
 | Boing Boing RSS | ❌ Not started | Public feed |
@@ -46,8 +50,9 @@
 | Tag / cascade routing | ✅ `evaluateRelevance()` + opinion matrix; `getRoutingLastMessage()` |
 | Structured context scoring (per source) | ⚠️ Partial | Email, calendar, contacts ranked in user-turn prompts; overlay from world metadata |
 | Distribution (reactive) | ✅ Queued turns in `AppContext` |
-| Distribution (proactive) | ⚠️ MVP | `pendingNotifications.ts`, `userFocus`, interval + turn merge; per-avatar sidebar UI; release ids in prompt; **sequential release batch** not wired |
+| Distribution (proactive) | ⚠️ MVP | `pendingNotifications.ts`, `userFocus`, interval + turn merge; per-avatar sidebar UI; token + **Discuss** forced release; pending cleared after released turn; **sequential release batch** polish **lower priority** (acceptable for now) |
 | Switchboard trace + turn archive | ✅ |
+| Switchboard visualization (ambient wave/bubbles) | ❌ Not started | Next per SPEC; [`docs/SWITCHBOARD_VISUALIZATION.md`](docs/SWITCHBOARD_VISUALIZATION.md) |
 
 ### Local LLM (Ollama)
 
@@ -118,7 +123,7 @@ Order: email → calendar → contacts → others.
 1. **Focus vs Active Task** — Focus UI + `userFocus` for proactive; Active Task / Focus Watcher agents not implemented (SPEC).
 2. **To Do List** — Header quick links; not in SPEC (enhancement).
 3. **Shared metadata** — World metadata v1 in `localStorage` ([`worldMetadata/`](src/services/worldMetadata/)); SPEC `data/metadata/` path and Tauri file backend still open.
-4. **Proactive distribution** — MVP live (pending queue + UI); **full** spec (timer/cue, sequential batch on release) still open.
+4. **Proactive distribution** — MVP live (pending queue + UI); timer/cue and high-urgency UX still open; **sequential batch** polish **deprioritized** per SPEC roadmap.
 5. **Credentials path** — Spec `data/connections/...` vs app data `%APPDATA%\com.avatars.app\...` (normal for desktop).
 
 ---
@@ -136,4 +141,4 @@ Order: email → calendar → contacts → others.
 
 ## Recent milestone bullets
 
-See **[HANDOFF_TOMORROW.md](HANDOFF_TOMORROW.md) § Completed this session** for the latest (SPEC proactive §, pending pipeline, sidebar UI, verify scripts, clear chat, tests).
+See **[HANDOFF_TOMORROW.md](HANDOFF_TOMORROW.md)** for checklist and **next priorities** (Switchboard visualization first; metadata / projects).

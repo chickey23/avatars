@@ -11,7 +11,8 @@ export type WorldMetadataBackend = {
 
 export const WORLD_METADATA_STORAGE_KEY = "avatars_world_metadata_v1";
 
-function migrate(raw: unknown): WorldMetadataDoc {
+/** Normalize persisted JSON; preserves schema v1 documents without `projects`. */
+export function migrateWorldMetadataDoc(raw: unknown): WorldMetadataDoc {
   if (!raw || typeof raw !== "object") return createEmptyWorldMetadataDoc();
   const o = raw as Record<string, unknown>;
   if (o.schemaVersion !== WORLD_METADATA_SCHEMA_VERSION) {
@@ -21,9 +22,15 @@ function migrate(raw: unknown): WorldMetadataDoc {
   if (!people || typeof people !== "object") {
     return createEmptyWorldMetadataDoc();
   }
+  const projectsRaw = o.projects;
+  const projects =
+    projectsRaw && typeof projectsRaw === "object"
+      ? (projectsRaw as WorldMetadataDoc["projects"])
+      : {};
   return {
     schemaVersion: WORLD_METADATA_SCHEMA_VERSION,
     people: people as WorldMetadataDoc["people"],
+    projects,
   };
 }
 
@@ -32,7 +39,7 @@ export function readWorldMetadataFromLocalStorageSync(): WorldMetadataDoc {
   try {
     const raw = localStorage.getItem(WORLD_METADATA_STORAGE_KEY);
     if (!raw) return createEmptyWorldMetadataDoc();
-    return migrate(JSON.parse(raw));
+    return migrateWorldMetadataDoc(JSON.parse(raw));
   } catch {
     return createEmptyWorldMetadataDoc();
   }

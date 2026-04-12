@@ -15,6 +15,14 @@ import { getOllamaPresence, generateWithOllama } from "./ollama";
 import { appendSessionLog } from "./sessionLog";
 import { getRuleBodiesForAvatar } from "./avatarRules";
 import { formatPendingNotificationsForPrompt } from "./pendingNotifications";
+import {
+  resolveBehaviorTuning,
+  formatBehaviorTuningForOllama,
+  formatOllamaClosingInstruction,
+  formatBehaviorTuningRulesPrefix,
+  compressRulesBodyForEngagement,
+  type ResolvedBehaviorTuning,
+} from "./behaviorTuningFormat";
 
 /**
  * Run an Avatar's interface Agent with full context.
@@ -36,6 +44,7 @@ export async function runAvatarAgent(
   const tasks = getTasksForAvatar(avatar.id);
   const { text: rulesText, blockIds: ruleBlockIds } = getRuleBodiesForAvatar(avatar);
 
+  const tuning = resolveBehaviorTuning(ctx);
   const presence = await getOllamaPresence();
   if (presence === "ready") {
     const pendingForAvatar =
@@ -52,7 +61,8 @@ export async function runAvatarAgent(
       ctx.activeTask,
       ctx.relevantData,
       rulesText,
-      pendingBlock
+      pendingBlock,
+      tuning
     );
     const debug: OllamaPromptDebug = {
       givenName: avatar.givenName,
@@ -93,7 +103,9 @@ export async function runAvatarAgent(
         userContent,
         recent,
         tasks,
-        shortFocusSummary(ctx.relevantData)
+        shortFocusSummary(ctx.relevantData),
+        tuning,
+        ctx.relevantData
       ),
       replySource: "fallback",
       promptDebug: debug,
@@ -107,7 +119,9 @@ export async function runAvatarAgent(
       userContent,
       recent,
       tasks,
-      shortFocusSummary(ctx.relevantData)
+      shortFocusSummary(ctx.relevantData),
+      tuning,
+      ctx.relevantData
     ),
     replySource: "rules",
     rulesSkipReason: presence === "no_models" ? "no_models" : "unavailable",
@@ -138,7 +152,8 @@ function buildOllamaPrompt(
   activeTask: string | undefined,
   relevantData: string[] | undefined,
   rulesText: string,
-  pendingBlock?: string
+  pendingBlock: string | undefined,
+  tuning: ResolvedBehaviorTuning
 ): string {
   const context = recent.map((m) => `${m.role}: ${m.content}`).join("\n");
   const taskStr = tasks.length > 0 ? tasks.map((t) => t.title).join(", ") : "none";
@@ -150,15 +165,17 @@ function buildOllamaPrompt(
     ? `\nGuidelines (library rules):\n${rulesText}\n`
     : "";
   const pend = pendingBlock ? `\n${pendingBlock}\n` : "";
+  const tuningBlock = `\n${formatBehaviorTuningForOllama(tuning)}\n`;
+  const closing = formatOllamaClosingInstruction(avatar.givenName, tuning);
   return `${preamble}You are ${avatar.givenName}. Personality: ${avatar.personality}. Interests: ${avatar.interests.join(", ")}.
 Current assigned tasks: ${taskStr}. Active task: ${activeTask ?? "none"}.
-${rulesBlock}${dataBlock ? `\n${dataBlock}\n` : ""}${pend}
+${rulesBlock}${dataBlock ? `\n${dataBlock}\n` : ""}${pend}${tuningBlock}
 Recent conversation:
 ${context}
 
 User just said: "${userInput}"
 
-Respond briefly as ${avatar.givenName}, staying in character:`;
+${closing}`;
 }
 
 function generatePersonalityResponse(
@@ -166,22 +183,37 @@ function generatePersonalityResponse(
   userInput: string,
   _recent: { role: string; content: string; avatarId?: string }[],
   assignedTasks: { title: string }[] = [],
-  focusSummary?: string
+  focusSummary: string | undefined,
+  tuning: ResolvedBehaviorTuning,
+  relevantData?: string[]
 ): string {
   const input = userInput.toLowerCase();
-  const prefix = focusSummary ? `I'm tracking ${focusSummary}. ` : "";
+  const tuningPrefix = formatBehaviorTuningRulesPrefix(tuning, {
+    focusSummary,
+    relevantData,
+  });
+  const legacyFocus =
+    focusSummary && tuning.replyContextFocus < 50
+      ? `I'm tracking ${focusSummary}. `
+      : "";
   const signOff = avatar.textBlocks?.signOff ? ` ${avatar.textBlocks.signOff}` : "";
 
+  let body: string;
   switch (avatar.id) {
     case "muse":
-      return prefix + museResponse(input, assignedTasks) + signOff;
+      body = legacyFocus + museResponse(input, assignedTasks);
+      break;
     case "accomplice":
-      return prefix + accompliceResponse(input, assignedTasks) + signOff;
+      body = legacyFocus + accompliceResponse(input, assignedTasks);
+      break;
     case "skeptic":
-      return prefix + skepticResponse(input, assignedTasks) + signOff;
+      body = legacyFocus + skepticResponse(input, assignedTasks);
+      break;
     default:
-      return `${prefix}[${avatar.givenName}]: I'm listening. You said: "${userInput}".${signOff}`;
+      body = `${legacyFocus}[${avatar.givenName}]: I'm listening. You said: "${userInput}".`;
   }
+  body = compressRulesBodyForEngagement(tuning, body);
+  return tuningPrefix + body + signOff;
 }
 
 function museResponse(input: string, tasks: { title: string }[]): string {

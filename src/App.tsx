@@ -1,5 +1,13 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { AppProvider, useApp } from "./context/AppContext";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
+import { AppProvider } from "./context/AppContext";
+import { useApp } from "./context/useApp";
 import { assignTask, getTasksForAvatar } from "./services/longTermTasks";
 import { useSpeechToText } from "./hooks/useSpeechToText";
 import {
@@ -18,10 +26,22 @@ import type {
   CompactTurnRecord,
   ChatViewMode,
   PendingNotification,
+  BehaviorTuning,
+  Avatar,
 } from "./types";
-import type { ChatWindowStyleId } from "./theme/designTokens";
+import {
+  DEFAULT_PROACTIVE_MIN_COMBINED_SCORE,
+  DEFAULT_PROACTIVE_MIN_AFFINITY_BONUS,
+  DEFAULT_REPLY_CONTEXT_FOCUS,
+  DEFAULT_USER_ENGAGEMENT_LEVEL,
+} from "./services/behaviorTuningFormat";
+import type { ChatWindowStyleId, PersonalityTraitId } from "./theme/designTokens";
 import { CHAT_WINDOW_STYLE_IDS, CHAT_SKIN_STORAGE_KEY, PERSONALITY_TRAITS } from "./theme/designTokens";
 import { WellOfSouls } from "./components/WellOfSouls";
+import {
+  AvatarBuilderModal,
+  type AvatarBuilderInitial,
+} from "./components/AvatarBuilderModal";
 import { AiRulesLibraryPanel } from "./components/AiRulesLibraryPanel";
 import { loadArchive, formatTurnMetaLine, getTurnLogDetailLines } from "./services/turnArchive";
 import {
@@ -36,24 +56,121 @@ import {
   type SessionLogDiskInfo,
 } from "./services/sessionLog";
 import { SessionLogPanel } from "./components/SessionLogPanel";
+import { SwitchboardViz } from "./components/SwitchboardViz";
+import { selectDisplayTrace } from "./services/switchboardVizModel";
+import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
+import {
+  getWorldMetadata,
+  patchWorldMetadataProjects,
+} from "./services/worldMetadata";
+import {
+  MAX_PRIMARY_SLOTS,
+  resolvePrimarySlotCount,
+} from "./store/primaryRoster";
+import { isDefaultAvatarId } from "./store/avatarCatalog";
+import {
+  getAvatarPortraitSrc,
+  readPortraitFileAsDataUrl,
+  MAX_PORTRAIT_FILE_BYTES,
+} from "./services/avatarPortrait";
 import "./App.css";
+
+const SWITCHBOARD_VIZ_STORAGE_KEY = "avatars_switchboard_viz_enabled";
 
 function AppContent() {
   const {
     avatars,
-    selectedAvatarId,
-    setSelectedAvatarId,
+    fullAvatarCatalog,
+    selectedAvatarIds,
+    setSelectedAvatarIds,
+    toggleAvatarSelection,
+    clearAvatarSelection,
     messages,
     sendMessage,
     clearChat,
     situationContext,
     patchSituationContext,
     pendingTurnCount,
+    processingUserMessageId,
+    liveSwitchboardTrace,
   } = useApp();
 
+  const reducedMotion = usePrefersReducedMotion();
+  const [showSwitchboardViz, setShowSwitchboardViz] = useState(() => {
+    try {
+      return localStorage.getItem(SWITCHBOARD_VIZ_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SWITCHBOARD_VIZ_STORAGE_KEY,
+        showSwitchboardViz ? "1" : "0"
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [showSwitchboardViz]);
+
   const [inputValue, setInputValue] = useState("");
-  const [taskInput, setTaskInput] = useState("");
-  const [tasks, setTasks] = useState(() => getTasksForAvatar(selectedAvatarId));
+  /** Selected world-metadata project id for “Assign task” (dropdown). */
+  const [taskProjectId, setTaskProjectId] = useState("");
+  const [avatarBuilderOpen, setAvatarBuilderOpen] = useState(false);
+  const [avatarBuilderInitial, setAvatarBuilderInitial] =
+    useState<AvatarBuilderInitial | null>(null);
+
+  const handleWellOfSoulsAfterGenerate = useCallback(
+    (payload: {
+      seed: string;
+      traitIds: PersonalityTraitId[];
+      ruleBlockIds: string[];
+      generatedText: string;
+    }) => {
+      setAvatarBuilderInitial({
+        kind: "seed",
+        seed: payload.seed,
+        traitIds: payload.traitIds,
+        ruleBlockIds: payload.ruleBlockIds,
+        supplementalRules: payload.generatedText,
+      });
+      setAvatarBuilderOpen(true);
+    },
+    []
+  );
+
+  const handleAvatarBuilderSave = useCallback(
+    (avatar: Avatar) => {
+      if (isDefaultAvatarId(avatar.id)) {
+        const prev = situationContext.builtinAvatarEdits ?? {};
+        patchSituationContext({
+          builtinAvatarEdits: { ...prev, [avatar.id]: avatar },
+        });
+        return;
+      }
+      const userPrev = situationContext.userAvatars ?? [];
+      const idx = userPrev.findIndex((a) => a.id === avatar.id);
+      if (idx >= 0) {
+        const next = [...userPrev];
+        next[idx] = avatar;
+        patchSituationContext({ userAvatars: next });
+      } else {
+        patchSituationContext({ userAvatars: [...userPrev, avatar] });
+      }
+    },
+    [situationContext.userAvatars, situationContext.builtinAvatarEdits, patchSituationContext]
+  );
+
+  const primaryCatalogLen = fullAvatarCatalog.length;
+  const maxPrimarySlotOptions = Math.min(MAX_PRIMARY_SLOTS, primaryCatalogLen);
+  const effectivePrimarySlots = resolvePrimarySlotCount(
+    situationContext,
+    primaryCatalogLen
+  );
+  const firstSelectedId = selectedAvatarIds[0] ?? "";
+  const [tasks, setTasks] = useState(() => getTasksForAvatar(firstSelectedId));
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailHasCreds, setGmailHasCreds] = useState(false);
   const [gmailCredsPath, setGmailCredsPath] = useState<string>("");
@@ -61,8 +178,11 @@ function AppContent() {
   const [gmailConnecting, setGmailConnecting] = useState(false);
   const [gmailError, setGmailError] = useState<string | null>(null);
   const [contextTab, setContextTab] = useState<
-    "email" | "calendar" | "contacts" | "well"
+    "email" | "calendar" | "contacts" | "projects" | "well"
   >("email");
+  const [projectsRefresh, setProjectsRefresh] = useState(0);
+  const [newProjectTitle, setNewProjectTitle] = useState("");
+  const [newProjectNotes, setNewProjectNotes] = useState("");
   const [recentEmails, setRecentEmails] = useState<EmailItem[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<CalendarEvent[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -98,6 +218,59 @@ function AppContent() {
     return "default";
   });
   const [expandedPromptId, setExpandedPromptId] = useState<string | null>(null);
+  const portraitFileInputRef = useRef<HTMLInputElement>(null);
+  const portraitPickAvatarIdRef = useRef<string | null>(null);
+  const [portraitFileError, setPortraitFileError] = useState<{
+    avatarId: string;
+    message: string;
+  } | null>(null);
+
+  const openPortraitFilePicker = useCallback((avatarId: string) => {
+    setPortraitFileError(null);
+    portraitPickAvatarIdRef.current = avatarId;
+    portraitFileInputRef.current?.click();
+  }, []);
+
+  const handlePortraitFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      const avatarId = portraitPickAvatarIdRef.current;
+      portraitPickAvatarIdRef.current = null;
+      e.target.value = "";
+      if (!file || !avatarId) return;
+      const dataUrl = await readPortraitFileAsDataUrl(file);
+      if (!dataUrl) {
+        setPortraitFileError({
+          avatarId,
+          message: `Choose an image under ${Math.floor(MAX_PORTRAIT_FILE_BYTES / (1024 * 1024))} MB.`,
+        });
+        return;
+      }
+      setPortraitFileError(null);
+      patchSituationContext({
+        avatarPortraitSrcById: {
+          ...(situationContext.avatarPortraitSrcById ?? {}),
+          [avatarId]: dataUrl,
+        },
+      });
+    },
+    [patchSituationContext, situationContext.avatarPortraitSrcById]
+  );
+
+  const clearPortrait = useCallback(
+    (avatarId: string) => {
+      setPortraitFileError(null);
+      const prev = situationContext.avatarPortraitSrcById ?? {};
+      if (!(avatarId in prev)) return;
+      const next = { ...prev };
+      delete next[avatarId];
+      patchSituationContext({
+        avatarPortraitSrcById: Object.keys(next).length > 0 ? next : undefined,
+      });
+    },
+    [patchSituationContext, situationContext.avatarPortraitSrcById]
+  );
+
   /** Sidebar: which avatar shows description + traits (magnifier) */
   const [avatarDetailExpandedId, setAvatarDetailExpandedId] = useState<string | null>(
     null
@@ -110,7 +283,38 @@ function AppContent() {
   const [sessionDiskInfo, setSessionDiskInfo] = useState<SessionLogDiskInfo | null>(
     null
   );
-  const selectedAvatar = avatars.find((a) => a.id === selectedAvatarId);
+  const chatMessagesRef = useRef<HTMLDivElement>(null);
+  const selectedAvatar =
+    selectedAvatarIds.length === 1
+      ? avatars.find((a) => a.id === selectedAvatarIds[0])
+      : undefined;
+  const taskAssignAvatar = firstSelectedId
+    ? avatars.find((a) => a.id === firstSelectedId)
+    : undefined;
+  const chatSelectionLabel = useMemo(() => {
+    if (selectedAvatarIds.length === 0) return "Switchboard";
+    if (selectedAvatarIds.length === 1) {
+      return (
+        avatars.find((a) => a.id === selectedAvatarIds[0])?.givenName ?? "Avatar"
+      );
+    }
+    const names = selectedAvatarIds
+      .map((id) => avatars.find((a) => a.id === id)?.givenName ?? id)
+      .join(", ");
+    return names.length > 72 ? `${selectedAvatarIds.length} avatars` : names;
+  }, [selectedAvatarIds, avatars]);
+
+  const messagePlaceholder = useMemo(() => {
+    if (selectedAvatarIds.length === 0) return "Message the switchboard…";
+    if (selectedAvatarIds.length === 1) {
+      const n =
+        avatars.find((a) => a.id === selectedAvatarIds[0])?.givenName ??
+        "avatar";
+      return `Message ${n}…`;
+    }
+    return "Message selected avatars…";
+  }, [selectedAvatarIds, avatars]);
+
   const speech = useSpeechToText();
 
   const pendingByAvatar = useMemo(() => {
@@ -124,13 +328,62 @@ function AppContent() {
     return m;
   }, [situationContext.pendingNotifications]);
 
-  const highUrgencyPending = useMemo(
-    () =>
-      (situationContext.pendingNotifications ?? []).filter(
-        (p) => p.urgency === "high"
-      ),
-    [situationContext.pendingNotifications]
+  const behaviorTuning = situationContext.behaviorTuning ?? {};
+
+  const patchBehaviorTuning = useCallback(
+    (patch: Partial<BehaviorTuning>) => {
+      patchSituationContext({
+        behaviorTuning: {
+          ...(situationContext.behaviorTuning ?? {}),
+          ...patch,
+        },
+      });
+    },
+    [situationContext.behaviorTuning, patchSituationContext]
   );
+
+  const proactiveMinCombined =
+    behaviorTuning.proactiveMinCombinedScore ??
+    DEFAULT_PROACTIVE_MIN_COMBINED_SCORE;
+  const proactiveMinAffinity =
+    behaviorTuning.proactiveMinAffinityBonus ??
+    DEFAULT_PROACTIVE_MIN_AFFINITY_BONUS;
+  const replyContextFocus =
+    behaviorTuning.replyContextFocus ?? DEFAULT_REPLY_CONTEXT_FOCUS;
+  const userEngagement =
+    behaviorTuning.userEngagementLevel ?? DEFAULT_USER_ENGAGEMENT_LEVEL;
+  const userMoodNote = behaviorTuning.userMoodNote ?? "";
+
+  const projectsList = useMemo(() => {
+    void projectsRefresh;
+    const p = getWorldMetadata().projects;
+    return Object.entries(p).sort((a, b) =>
+      a[1].title.localeCompare(b[1].title, undefined, { sensitivity: "base" })
+    );
+  }, [projectsRefresh]);
+
+  const handleAddWorldProject = useCallback(() => {
+    const title = newProjectTitle.trim();
+    if (!title) return;
+    patchWorldMetadataProjects({
+      [crypto.randomUUID()]: {
+        title,
+        notes: newProjectNotes.trim() || undefined,
+        updatedAt: Date.now(),
+      },
+    });
+    setNewProjectTitle("");
+    setNewProjectNotes("");
+    setProjectsRefresh((n) => n + 1);
+  }, [newProjectTitle, newProjectNotes]);
+
+  const handleRemoveWorldProject = useCallback((id: string) => {
+    patchWorldMetadataProjects({ [id]: null });
+    setFocus((f) =>
+      f.project?.id === id ? { ...f, project: undefined } : f
+    );
+    setProjectsRefresh((n) => n + 1);
+  }, []);
 
   const messageIdsKey = messages.map((m) => m.id).join(",");
   const turnByUserId = useMemo(() => {
@@ -139,9 +392,38 @@ function AppContent() {
       m.set(r.userMessageId, r);
     }
     return m;
-  }, [messageIdsKey]);
+  }, [messageIdsKey, pendingTurnCount]);
 
   const archivedTurnCount = useMemo(() => loadArchive().length, [messageIdsKey]);
+
+  const displaySwitchboardTrace = useMemo(
+    () =>
+      selectDisplayTrace({
+        messages,
+        liveTrace: liveSwitchboardTrace,
+        processingUserMessageId,
+        turnByUserId,
+      }),
+    [
+      messages,
+      liveSwitchboardTrace,
+      processingUserMessageId,
+      turnByUserId,
+    ]
+  );
+
+  const accentForSwitchboard = useCallback(
+    (avatarId: string) =>
+      fullAvatarCatalog.find((a) => a.id === avatarId)?.appearance?.accentColor ??
+      "rgba(120, 120, 140, 0.65)",
+    [fullAvatarCatalog]
+  );
+
+  useLayoutEffect(() => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight - el.clientHeight;
+  }, [messages, pendingTurnCount, selectedAvatarIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -310,15 +592,31 @@ function AppContent() {
   }, [speech.transcript]);
 
   const refreshTasks = useCallback(() => {
-    setTasks(getTasksForAvatar(selectedAvatarId));
-  }, [selectedAvatarId]);
+    setTasks(getTasksForAvatar(firstSelectedId));
+  }, [firstSelectedId]);
+
+  useEffect(() => {
+    setTasks(getTasksForAvatar(firstSelectedId));
+  }, [firstSelectedId]);
+
+  useEffect(() => {
+    if (!taskProjectId) return;
+    const exists = projectsList.some(([id]) => id === taskProjectId);
+    if (!exists) setTaskProjectId("");
+  }, [projectsList, taskProjectId]);
 
   const handleAssignTask = useCallback(() => {
-    if (!taskInput.trim() || !selectedAvatarId) return;
-    assignTask(selectedAvatarId, taskInput.trim());
-    setTaskInput("");
+    if (!firstSelectedId || !taskProjectId) return;
+    const proj = getWorldMetadata().projects[taskProjectId];
+    if (!proj?.title?.trim()) return;
+    assignTask(
+      firstSelectedId,
+      proj.title.trim(),
+      proj.notes?.trim() || undefined
+    );
+    setTaskProjectId("");
     refreshTasks();
-  }, [taskInput, selectedAvatarId, refreshTasks]);
+  }, [taskProjectId, firstSelectedId, refreshTasks]);
 
   const handleSend = useCallback(() => {
     if (!inputValue.trim()) return;
@@ -433,25 +731,97 @@ function AppContent() {
       </header>
 
       <aside className="avatar-sidebar">
-        <h2>Primary Avatars</h2>
+        <input
+          ref={portraitFileInputRef}
+          type="file"
+          accept="image/*"
+          className="avatar-portrait-file-input"
+          aria-hidden
+          tabIndex={-1}
+          onChange={handlePortraitFileChange}
+        />
+        <div className="avatar-sidebar-heading">
+          <h2>Primary Avatars</h2>
+          <div className="avatar-sidebar-heading-tools">
+            {maxPrimarySlotOptions > 0 && (
+              <div className="avatar-roster-size">
+                <select
+                  className="avatar-roster-size-select"
+                  aria-label="Number of primary avatar slots shown in the sidebar"
+                  value={effectivePrimarySlots}
+                  onChange={(e) =>
+                    patchSituationContext({
+                      primaryAvatarSlotCount: Number(e.target.value),
+                    })
+                  }
+                >
+                  {Array.from({ length: maxPrimarySlotOptions }, (_, i) => i + 1).map(
+                    (n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
+            )}
+            {selectedAvatarIds.length > 0 && (
+              <button
+                type="button"
+                className="avatar-clear-selection"
+                aria-label="Use automatic routing for all chat messages. Clears targeted avatar selection."
+                title="Use switchboard routing instead of only the selected avatars"
+                onClick={() => clearAvatarSelection()}
+              >
+                ALL CHAT
+              </button>
+            )}
+          </div>
+        </div>
         {avatars.map((avatar) => {
+          const portraitSrc = getAvatarPortraitSrc(
+            situationContext.avatarPortraitSrcById,
+            avatar.id,
+            avatar.appearance?.portraitUrl
+          );
+          const portraitInitial =
+            avatar.givenName.trim().charAt(0).toUpperCase() || "?";
           const pendList = pendingByAvatar.get(avatar.id);
           const pendCount = pendList?.length ?? 0;
           const firstPending = pendList?.[0];
+          const detailTasks = getTasksForAvatar(avatar.id);
           return (
             <div
               key={avatar.id}
-              className={`avatar-card ${selectedAvatarId === avatar.id ? "selected" : ""}`}
+              className={`avatar-card ${
+                selectedAvatarIds.includes(avatar.id) ? "selected" : ""
+              }`}
             >
               <div className="avatar-card-row avatar-card-row--top">
                 <button
                   type="button"
                   className="avatar-card-select"
-                  onClick={() => {
-                    setSelectedAvatarId(avatar.id);
-                    setTasks(getTasksForAvatar(avatar.id));
-                  }}
+                  onClick={() => toggleAvatarSelection(avatar.id)}
                 >
+                  <span className="avatar-portrait" aria-hidden="true">
+                    {portraitSrc ? (
+                      <img
+                        src={portraitSrc}
+                        alt=""
+                        className="avatar-portrait-img"
+                      />
+                    ) : (
+                      <span
+                        className="avatar-portrait-fallback"
+                        style={{
+                          background:
+                            avatar.appearance?.accentColor ?? "rgba(120,120,140,0.5)",
+                        }}
+                      >
+                        {portraitInitial}
+                      </span>
+                    )}
+                  </span>
                   <span className="avatar-name">{avatar.givenName}</span>
                 </button>
                 <div className="avatar-card-toolbar">
@@ -478,8 +848,8 @@ function AppContent() {
                   <button
                     type="button"
                     className="avatar-detail-toggle"
-                    title="Personality, description, and traits"
-                    aria-label="Show personality, description, and traits"
+                    title="Avatar details"
+                    aria-label="Show avatar details"
                     aria-expanded={avatarDetailExpandedId === avatar.id}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -509,40 +879,265 @@ function AppContent() {
               {avatarPendingListOpenId === avatar.id && pendList && pendList.length > 0 && (
                 <ul className="avatar-pending-list" aria-label="Pending topics">
                   {pendList.map((p) => (
-                    <li key={p.id}>{p.topicSummary}</li>
+                    <li key={p.id} className="avatar-pending-item">
+                      <span className="avatar-pending-item-text">{p.topicSummary}</span>
+                      <span className="avatar-pending-item-actions">
+                        <button
+                          type="button"
+                          className="avatar-pending-action"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedAvatarIds([avatar.id]);
+                            void sendMessage(
+                              `Let's discuss this now: ${p.topicSummary}`,
+                              focus,
+                              {
+                                releasedClusterIds: [p.topicClusterId],
+                                primaryAvatarId: avatar.id,
+                              }
+                            );
+                            setAvatarPendingListOpenId(null);
+                          }}
+                        >
+                          Discuss
+                        </button>
+                        <button
+                          type="button"
+                          className="avatar-pending-action avatar-pending-action--muted"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            patchSituationContext({
+                              pendingNotifications: (
+                                situationContext.pendingNotifications ?? []
+                              ).filter((n) => n.id !== p.id),
+                            });
+                          }}
+                        >
+                          Dismiss
+                        </button>
+                      </span>
+                    </li>
                   ))}
                 </ul>
               )}
               {avatarDetailExpandedId === avatar.id && (
                 <div className="avatar-detail-panel">
-                  <p className="avatar-desc">{avatar.description}</p>
-                  {avatar.traitIds && avatar.traitIds.length > 0 && (
-                    <div className="avatar-trait-chips" aria-label="Personality traits">
-                      {avatar.traitIds.map((tid) => (
-                        <span key={tid} className="avatar-trait-chip">
-                          {PERSONALITY_TRAITS.find((t) => t.id === tid)?.label ??
-                            tid}
-                        </span>
-                      ))}
+                  <section className="avatar-detail-section">
+                    <h4 className="avatar-detail-section-label">Portrait</h4>
+                    <div className="avatar-portrait-row">
+                      <span className="avatar-portrait avatar-portrait--large" aria-hidden="true">
+                        {portraitSrc ? (
+                          <img
+                            src={portraitSrc}
+                            alt=""
+                            className="avatar-portrait-img"
+                          />
+                        ) : (
+                          <span
+                            className="avatar-portrait-fallback"
+                            style={{
+                              background:
+                                avatar.appearance?.accentColor ??
+                                "rgba(120,120,140,0.5)",
+                            }}
+                          >
+                            {portraitInitial}
+                          </span>
+                        )}
+                      </span>
+                      <div className="avatar-portrait-actions">
+                        <button
+                          type="button"
+                          className="avatar-portrait-choose"
+                          aria-label={`Choose portrait image for ${avatar.givenName}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPortraitFilePicker(avatar.id);
+                          }}
+                        >
+                          Choose image…
+                        </button>
+                        {portraitSrc && (
+                          <button
+                            type="button"
+                            className="avatar-portrait-remove"
+                            aria-label={`Remove portrait for ${avatar.givenName}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              clearPortrait(avatar.id);
+                            }}
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
+                    {portraitFileError?.avatarId === avatar.id && (
+                      <p className="avatar-portrait-error" role="status">
+                        {portraitFileError.message}
+                      </p>
+                    )}
+                  </section>
+                  <section className="avatar-detail-section">
+                    <h4 className="avatar-detail-section-label">
+                      Tags{" "}
+                      <span className="avatar-detail-section-hint">(for match)</span>
+                    </h4>
+                    {avatar.tags.length > 0 ? (
+                      <div
+                        className="avatar-trait-chips avatar-trait-chips--meta"
+                        aria-label="Tags"
+                      >
+                        {avatar.tags.map((tag) => (
+                          <span key={tag} className="avatar-trait-chip">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="avatar-detail-empty">None</span>
+                    )}
+                  </section>
+                  <section className="avatar-detail-section">
+                    <h4 className="avatar-detail-section-label">
+                      Interests{" "}
+                      <span className="avatar-detail-section-hint">(for match)</span>
+                    </h4>
+                    {avatar.interests.length > 0 ? (
+                      <div
+                        className="avatar-trait-chips avatar-trait-chips--meta"
+                        aria-label="Interests"
+                      >
+                        {avatar.interests.map((interest) => (
+                          <span key={interest} className="avatar-trait-chip">
+                            {interest}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="avatar-detail-empty">None</span>
+                    )}
+                  </section>
+                  <section className="avatar-detail-section">
+                    <h4 className="avatar-detail-section-label">
+                      Assigned tasks{" "}
+                      <span className="avatar-detail-section-hint">
+                        (for match and response)
+                      </span>
+                    </h4>
+                    {detailTasks.length > 0 ? (
+                      <ul className="avatar-detail-task-list">
+                        {detailTasks.map((t) => (
+                          <li key={t.id} title={t.description ?? undefined}>
+                            {t.title}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="avatar-detail-empty">None</span>
+                    )}
+                  </section>
+                  <section className="avatar-detail-section">
+                    <h4 className="avatar-detail-section-label">
+                      Description{" "}
+                      <span className="avatar-detail-section-hint">
+                        (for response)
+                      </span>
+                    </h4>
+                    <p className="avatar-desc">{avatar.description}</p>
+                  </section>
+                  <section className="avatar-detail-section">
+                    <h4 className="avatar-detail-section-label">
+                      Personality{" "}
+                      <span className="avatar-detail-section-hint">
+                        (for response)
+                      </span>
+                    </h4>
+                    <p className="avatar-personality">{avatar.personality}</p>
+                  </section>
+                  <section className="avatar-detail-section">
+                    <h4 className="avatar-detail-section-label">
+                      Traits{" "}
+                      <span className="avatar-detail-section-hint">
+                        (for response)
+                      </span>
+                    </h4>
+                    {avatar.traitIds && avatar.traitIds.length > 0 ? (
+                      <div
+                        className="avatar-trait-chips"
+                        aria-label="Personality traits"
+                      >
+                        {avatar.traitIds.map((tid) => (
+                          <span key={tid} className="avatar-trait-chip">
+                            {PERSONALITY_TRAITS.find((t) => t.id === tid)
+                              ?.label ?? tid}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="avatar-detail-empty">None</span>
+                    )}
+                  </section>
+                  {!avatar.uneditable && (
+                    <section className="avatar-detail-section avatar-detail-section--builder">
+                      <button
+                        type="button"
+                        className="avatar-detail-edit-builder"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAvatarBuilderInitial({ kind: "edit", avatar: { ...avatar } });
+                          setAvatarBuilderOpen(true);
+                        }}
+                      >
+                        Edit in builder…
+                      </button>
+                    </section>
                   )}
                 </div>
               )}
             </div>
           );
         })}
-        {selectedAvatar && (
-          <div className="task-assign">
-            <h3>Assign task to {selectedAvatar.givenName}</h3>
+        <details className="task-assign-details">
+          <summary className="task-assign-summary">
+            {taskAssignAvatar
+              ? `Assign task · ${taskAssignAvatar.givenName}`
+              : "Assign tasks"}
+            {tasks.length > 0 ? (
+              <span className="task-assign-count" aria-hidden>
+                {" "}
+                ({tasks.length})
+              </span>
+            ) : null}
+          </summary>
+          <div className="task-assign-body">
+            {!firstSelectedId && (
+              <p className="task-assign-hint">Select an avatar to assign tasks.</p>
+            )}
             <div className="task-input-row">
-              <input
-                type="text"
-                value={taskInput}
-                onChange={(e) => setTaskInput(e.target.value)}
-                placeholder="Task title..."
-                onKeyDown={(e) => e.key === "Enter" && handleAssignTask()}
-              />
-              <button onClick={handleAssignTask} disabled={!taskInput.trim()}>
+              <select
+                className="task-project-select"
+                value={taskProjectId}
+                onChange={(e) => setTaskProjectId(e.target.value)}
+                disabled={!firstSelectedId || projectsList.length === 0}
+                aria-label="Project to assign as task"
+              >
+                <option value="">
+                  {projectsList.length === 0
+                    ? "Add projects under Context → Projects"
+                    : "Choose a project…"}
+                </option>
+                {projectsList.map(([id, proj]) => (
+                  <option key={id} value={id}>
+                    {proj.title}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAssignTask}
+                disabled={!taskProjectId || !firstSelectedId}
+              >
                 Add
               </button>
             </div>
@@ -554,8 +1149,62 @@ function AppContent() {
               </ul>
             )}
           </div>
-        )}
+        </details>
         <AiRulesLibraryPanel />
+        <div className="behavior-tuning-panel">
+          <h3 className="behavior-tuning-title">Behavior</h3>
+          <p className="behavior-tuning-hint">
+            Proactive email notifications and reply balance (saved with your session).
+          </p>
+          <label className="tuning-row">
+            <span className="tuning-label">
+              Proactive min score <output>{proactiveMinCombined}</output>
+            </span>
+            <input
+              type="range"
+              min={35}
+              max={75}
+              value={proactiveMinCombined}
+              onChange={(e) =>
+                patchBehaviorTuning({
+                  proactiveMinCombinedScore: Number(e.target.value),
+                })
+              }
+            />
+          </label>
+          <label className="tuning-row">
+            <span className="tuning-label">
+              Extra avatar affinity <output>{proactiveMinAffinity}</output>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={25}
+              value={proactiveMinAffinity}
+              onChange={(e) =>
+                patchBehaviorTuning({
+                  proactiveMinAffinityBonus: Number(e.target.value),
+                })
+              }
+            />
+          </label>
+          <label className="tuning-row">
+            <span className="tuning-label">
+              Reply: 0 persona · 100 context <output>{replyContextFocus}</output>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={replyContextFocus}
+              onChange={(e) =>
+                patchBehaviorTuning({
+                  replyContextFocus: Number(e.target.value),
+                })
+              }
+            />
+          </label>
+        </div>
       </aside>
 
       <main
@@ -565,20 +1214,23 @@ function AppContent() {
             : ""
         }`}
       >
-        {selectedAvatar && (
-          <>
-            {highUrgencyPending.length > 0 && (
-              <div className="proactive-interrupt-banner" role="status">
-                Time-sensitive — see <strong>Primary Avatars</strong> in the sidebar
-                {highUrgencyPending.length > 1
-                  ? ` (${highUrgencyPending.length} items)`
-                  : ""}
-                .
-              </div>
-            )}
             <div className="chat-header">
-              <h2>Conversation with {selectedAvatar.givenName}</h2>
+              <h2>
+                {selectedAvatarIds.length === 0
+                  ? "Switchboard"
+                  : `Conversation with ${chatSelectionLabel}`}
+              </h2>
               <div className="chat-header-actions">
+                <label className="chat-view-mode-label chat-switchboard-viz-label">
+                  <input
+                    type="checkbox"
+                    className="chat-switchboard-viz-check"
+                    checked={showSwitchboardViz}
+                    onChange={(e) => setShowSwitchboardViz(e.target.checked)}
+                    aria-label="Show Switchboard wave column"
+                  />
+                  <span className="chat-view-mode-label-text">Waves</span>
+                </label>
                 <label className="chat-view-mode-label">
                   <span className="chat-view-mode-label-text">View</span>
                   <select
@@ -621,10 +1273,33 @@ function AppContent() {
               </div>
             </div>
 
-            <div className={`chat-messages chat-skin--${chatSkin}`}>
+            <div className="chat-body-row">
+            {showSwitchboardViz && (
+              <aside
+                className="switchboard-viz-column"
+                aria-label="Switchboard routing waves"
+              >
+                <SwitchboardViz
+                  trace={displaySwitchboardTrace}
+                  getAccentColor={accentForSwitchboard}
+                  isLive={processingUserMessageId !== null}
+                  reducedMotion={reducedMotion}
+                />
+              </aside>
+            )}
+            <div
+              ref={chatMessagesRef}
+              className={`chat-messages chat-skin--${chatSkin}`}
+            >
               {messages.length === 0 ? (
                 <div className="empty-state">
-                  <p>Start a conversation with {selectedAvatar.givenName}.</p>
+                  <p>
+                    {selectedAvatarIds.length === 0
+                      ? "Send a message; well-matched avatars will reply."
+                      : selectedAvatarIds.length === 1
+                        ? `Start a conversation with ${chatSelectionLabel}.`
+                        : "Send a message to solicit replies from the selected avatars."}
+                  </p>
                   {(chatViewMode === "chat_routing" ||
                     chatViewMode === "routing_log") &&
                     archivedTurnCount > 0 && (
@@ -636,7 +1311,20 @@ function AppContent() {
               ) : (
                 messages.map((msg) => {
                   const turn = msg.role === "user" ? turnByUserId.get(msg.id) : undefined;
-                  const fromAvatar = msg.role === "avatar" ? avatars.find((a) => a.id === msg.avatarId) : undefined;
+                  const fromAvatar =
+                    msg.role === "avatar" && msg.avatarId
+                      ? fullAvatarCatalog.find((a) => a.id === msg.avatarId)
+                      : undefined;
+                  const msgPortraitSrc =
+                    msg.role === "avatar" && msg.avatarId
+                      ? getAvatarPortraitSrc(
+                          situationContext.avatarPortraitSrcById,
+                          msg.avatarId,
+                          fromAvatar?.appearance?.portraitUrl
+                        )
+                      : undefined;
+                  const msgPortraitInitial =
+                    fromAvatar?.givenName?.trim().charAt(0).toUpperCase() || "?";
                   const src = msg.replySource;
                   const avatarFontClass =
                     msg.role === "avatar" &&
@@ -685,12 +1373,51 @@ function AppContent() {
                         className={`message ${msg.role}`}
                         data-avatar-id={msg.avatarId}
                       >
-                        <span className="message-role">
-                          {msg.role === "user"
-                            ? "You"
-                            : fromAvatar?.givenName ?? "Avatar"}
-                          {sourceLabel && (
-                            <span className={`message-source-badge message-source-badge--${src}`}>
+                        <span
+                          className={`message-role${
+                            msg.role === "avatar" && sourceLabel && src === "ollama"
+                              ? " message-role--ollama-badge-trailing"
+                              : ""
+                          }`}
+                        >
+                          <span className="message-role-ident">
+                            {msg.role === "avatar" && (
+                              <span className="message-avatar-portrait" aria-hidden="true">
+                                {msgPortraitSrc ? (
+                                  <img
+                                    src={msgPortraitSrc}
+                                    alt=""
+                                    className="message-avatar-portrait-img"
+                                  />
+                                ) : (
+                                  <span
+                                    className="message-avatar-portrait-fallback"
+                                    style={{
+                                      background:
+                                        fromAvatar?.appearance?.accentColor ??
+                                        "rgba(120,120,140,0.5)",
+                                    }}
+                                  >
+                                    {msgPortraitInitial}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                            {msg.role === "user"
+                              ? "You"
+                              : fromAvatar?.givenName ?? "Avatar"}
+                            {sourceLabel && src !== "ollama" && (
+                              <span
+                                className={`message-source-badge message-source-badge--${src}`}
+                              >
+                                {sourceLabel}
+                              </span>
+                            )}
+                          </span>
+                          {sourceLabel && src === "ollama" && (
+                            <span
+                              className={`message-source-badge message-source-badge--${src}`}
+                            >
                               {sourceLabel}
                             </span>
                           )}
@@ -836,7 +1563,7 @@ function AppContent() {
                             </div>
                             {chatViewMode === "routing_log" && (
                               <div className="chat-turn-log-detail">
-                                {getTurnLogDetailLines(turn, avatars).map(
+                                {getTurnLogDetailLines(turn, fullAvatarCatalog).map(
                                   (line, i) => (
                                     <div key={i} className="chat-turn-log-line">
                                       {line}
@@ -852,6 +1579,7 @@ function AppContent() {
                 })
               )}
             </div>
+            </div>
 
             {pendingTurnCount > 0 && (
               <div className="chat-pending-bar" role="status" aria-live="polite">
@@ -866,13 +1594,79 @@ function AppContent() {
               </div>
             )}
 
+            <div
+              className="chat-avatar-picker"
+              role="group"
+              aria-label="Choose avatars to address in your next message"
+            >
+              <span className="chat-avatar-picker-label">Speaking</span>
+              <div className="chat-avatar-picker-scroll">
+                {fullAvatarCatalog.map((a) => {
+                  const selected = selectedAvatarIds.includes(a.id);
+                  const pSrc = getAvatarPortraitSrc(
+                    situationContext.avatarPortraitSrcById,
+                    a.id,
+                    a.appearance?.portraitUrl
+                  );
+                  const pInitial =
+                    a.givenName.trim().charAt(0).toUpperCase() || "?";
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={`chat-avatar-picker-item ${
+                        selected ? "is-selected" : ""
+                      }`}
+                      aria-pressed={selected}
+                      aria-label={`${selected ? "Remove" : "Add"} ${a.givenName}`}
+                      title={a.givenName}
+                      onClick={() => toggleAvatarSelection(a.id)}
+                    >
+                      <span className="chat-avatar-picker-portrait" aria-hidden>
+                        {pSrc ? (
+                          <img
+                            src={pSrc}
+                            alt=""
+                            className="chat-avatar-picker-img"
+                          />
+                        ) : (
+                          <span
+                            className="chat-avatar-picker-fallback"
+                            style={{
+                              background:
+                                a.appearance?.accentColor ??
+                                "rgba(120,120,140,0.5)",
+                            }}
+                          >
+                            {pInitial}
+                          </span>
+                        )}
+                      </span>
+                      <span className="chat-avatar-picker-name">{a.givenName}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedAvatarIds.length > 0 && (
+                <button
+                  type="button"
+                  className="chat-avatar-picker-all"
+                  aria-label="Use automatic routing for all chat messages"
+                  title="Clear targeted avatar selection"
+                  onClick={() => clearAvatarSelection()}
+                >
+                  ALL CHAT
+                </button>
+              )}
+            </div>
+
             <div className="chat-input-area">
               <input
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={`Message ${selectedAvatar.givenName}...`}
+                placeholder={messagePlaceholder}
                 className="chat-input"
               />
               <button
@@ -892,8 +1686,6 @@ function AppContent() {
                 Send
               </button>
             </div>
-          </>
-        )}
       </main>
 
       <aside className="context-panel">
@@ -948,7 +1740,10 @@ function AppContent() {
           )}
           {gmailError && <p className="context-error">{gmailError}</p>}
         </div>
-        {(focus.email || focus.calendar || focus.contact) && (
+        {(focus.email ||
+          focus.calendar ||
+          focus.contact ||
+          focus.project) && (
           <div className="context-focus">
             <div className="focus-header">
               <h3>Focus</h3>
@@ -1001,9 +1796,23 @@ function AppContent() {
                   </button>
                 </li>
               )}
+              {focus.project && (
+                <li className="focus-item">
+                  <span className="focus-label">Project:</span>{" "}
+                  <button
+                    type="button"
+                    className="focus-title"
+                    onClick={() => setFocus((f) => ({ ...f, project: undefined }))}
+                    title="Clear focus"
+                  >
+                    {focus.project.title}
+                  </button>
+                </li>
+              )}
             </ul>
           </div>
         )}
+        <div className="context-panel-body">
         <div className="context-tabs">
           <button
             type="button"
@@ -1025,6 +1834,14 @@ function AppContent() {
             onClick={() => setContextTab("contacts")}
           >
             Contacts
+          </button>
+          <button
+            type="button"
+            className={`context-tab ${contextTab === "projects" ? "active" : ""}`}
+            onClick={() => setContextTab("projects")}
+            title="Shared project list (local metadata)"
+          >
+            Projects
           </button>
           <button
             type="button"
@@ -1129,6 +1946,86 @@ function AppContent() {
               )}
             </div>
           )}
+          {contextTab === "projects" && (
+            <div className="context-projects">
+              <p className="context-projects-hint">
+                Local shared metadata (this browser). For future project execution
+                and context.
+              </p>
+              <div className="context-projects-add">
+                <input
+                  type="text"
+                  className="context-projects-title-input"
+                  placeholder="Project title…"
+                  value={newProjectTitle}
+                  onChange={(e) => setNewProjectTitle(e.target.value)}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && (e.preventDefault(), handleAddWorldProject())
+                  }
+                  aria-label="New project title"
+                />
+                <textarea
+                  className="context-projects-notes-input"
+                  placeholder="Notes (optional)"
+                  value={newProjectNotes}
+                  onChange={(e) => setNewProjectNotes(e.target.value)}
+                  rows={2}
+                  aria-label="New project notes"
+                />
+                <button
+                  type="button"
+                  className="context-projects-add-btn"
+                  onClick={handleAddWorldProject}
+                  disabled={!newProjectTitle.trim()}
+                >
+                  Add project
+                </button>
+              </div>
+              {projectsList.length === 0 ? (
+                <p className="context-empty">No projects yet.</p>
+              ) : (
+                <ul className="wm-project-list">
+                  {projectsList.map(([id, proj]) => (
+                    <li
+                      key={id}
+                      className={`wm-project-item ${
+                        focus.project?.id === id ? "focused" : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        className="wm-project-select"
+                        onClick={() =>
+                          setFocus((f) => ({
+                            ...f,
+                            project: { id, title: proj.title },
+                          }))
+                        }
+                        aria-label={`Set focus to project ${proj.title}`}
+                      >
+                        <span className="wm-project-title">{proj.title}</span>
+                        {proj.notes?.trim() && (
+                          <span className="wm-project-notes">{proj.notes.trim()}</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="wm-project-remove"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveWorldProject(id);
+                        }}
+                        aria-label={`Remove ${proj.title}`}
+                        title="Remove from list"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {contextTab === "well" && (
             <div className="context-well">
               <WellOfSouls
@@ -1141,6 +2038,7 @@ function AppContent() {
                 onUseInChatChange={(v) =>
                   patchSituationContext({ useWellOfSoulsInChat: v })
                 }
+                onAfterGenerate={handleWellOfSoulsAfterGenerate}
               />
             </div>
           )}
@@ -1188,6 +2086,38 @@ function AppContent() {
             </div>
           )}
         </div>
+        </div>
+        <div className="context-user-mood">
+          <h3 className="context-user-mood-title">You right now</h3>
+          <label className="tuning-row">
+            <span className="tuning-label">
+              Engagement <output>{userEngagement}</output>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={userEngagement}
+              onChange={(e) =>
+                patchBehaviorTuning({
+                  userEngagementLevel: Number(e.target.value),
+                })
+              }
+            />
+          </label>
+          <label className="tuning-row tuning-row--stack">
+            <span className="tuning-label">Mood (optional)</span>
+            <textarea
+              className="context-mood-textarea"
+              rows={2}
+              placeholder="e.g. rushed, curious, low energy…"
+              value={userMoodNote}
+              onChange={(e) =>
+                patchBehaviorTuning({ userMoodNote: e.target.value })
+              }
+            />
+          </label>
+        </div>
       </aside>
       {sessionLogOpen && (
         <SessionLogPanel
@@ -1195,6 +2125,16 @@ function AppContent() {
           onClose={() => setSessionLogOpen(false)}
         />
       )}
+      <AvatarBuilderModal
+        open={avatarBuilderOpen}
+        onClose={() => {
+          setAvatarBuilderOpen(false);
+          setAvatarBuilderInitial(null);
+        }}
+        initial={avatarBuilderInitial}
+        existingUserAvatars={situationContext.userAvatars ?? []}
+        onSave={handleAvatarBuilderSave}
+      />
     </div>
   );
 }

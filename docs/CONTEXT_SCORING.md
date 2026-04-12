@@ -37,6 +37,22 @@ Connectors (email, calendar, contacts, …) can supply more information than bel
 
 ---
 
+## Proactive email notifications (affinity gating)
+
+New mail is scored once per email with the same **base** relevance as user-turn email scoring (`scoreEmailItems`: corpus overlap plus focus-id bonus). Each avatar adds a **tag/interest bonus** from subject + snippet substring matches (capped). **Combined score** drives urgency (low / medium / high).
+
+To avoid several avatars notifying on the **same** email when they only share the generic base (no individualized match on the message):
+
+- **`PROACTIVE_MIN_COMBINED_SCORE`** (default 45) — offers below this are dropped before capping.
+- **`PROACTIVE_MIN_AFFINITY_BONUS`** (default 5) — when the user has **not** focused that email, only the **highest** combined scorer is kept unless another avatar in the sorted list has at least this much tag/interest bonus (e.g. one interest or tag hit). Up to **`PROACTIVE_MAX_AVATARS_PER_CLUSTER`** (3) may still enqueue when multiple avatars earn that bonus.
+- When the **focused** email matches this message, the extra-affinity rule is **not** applied so explicit user intent can still surface multiple avatars.
+
+Implementation: [`src/services/pendingNotifications.ts`](../src/services/pendingNotifications.ts) — `filterProactiveAvatarOffers`, `scoreAvatarsForNewEmail`.
+
+**UI tuning:** The left sidebar **Behavior** panel adjusts proactive thresholds (and a context-vs-character slider) via `SituationContext.behaviorTuning`, persisted with the rest of situation context. Resolved defaults and formatting for Ollama and rules/fallback replies live in [`src/services/behaviorTuningFormat.ts`](../src/services/behaviorTuningFormat.ts). The right **You right now** block sets engagement and optional mood text on the same object.
+
+---
+
 ## World model and avatars
 
 **World model (application view).** The application’s understanding of the user’s world is **not** a single hidden tensor—it is the **accumulated, structured state** we maintain and surface: conversation thread, turn archive, connector snapshots after scoring, focus, proactive queues, and (over time) shared metadata and richer summaries. **Scoring is one of the main ways that model is *focused* and *refreshed* each turn:** it decides which external facts are **salient** given the latest dialogue and UI focus.

@@ -9,13 +9,13 @@ import type {
   Avatar,
   AvatarAgentResult,
   ConversationMessage,
+  SwitchboardTraceStep,
 } from "../types";
 import {
   createEmptyContext,
   appendToConversation,
   focusToRelevanceStrings,
 } from "../services/situationContext";
-import { defaultAvatars } from "../data/defaultAvatars";
 import { distributeAndRespond } from "../services/switchboard";
 import { appendTurn, buildCompactTurnRecord } from "../services/turnArchive";
 import {
@@ -31,8 +31,14 @@ import {
 } from "../services/worldMetadata/store";
 import {
   mergeProactiveEvaluation,
-  computeReleasedClusterIds,
+  mergeReleasedClusterIds,
+  removePendingByClusterIds,
 } from "../services/pendingNotifications";
+import {
+  getActivePrimaryAvatarsPreferringSelected,
+  resolvePrimarySlotCount,
+} from "./primaryRoster";
+import { getFullAvatarCatalog } from "./avatarCatalog";
 
 const STORAGE_KEY = "avatars_situation_context";
 
@@ -40,8 +46,7 @@ function loadPersistedContext(): SituationContext | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed as SituationContext;
+    return JSON.parse(raw) as SituationContext;
   } catch {
     return null;
   }
@@ -101,18 +106,25 @@ function conversationMessageFromAvatarResult(
 
 export interface AppStoreState {
   situationContext: SituationContext;
-  avatars: Avatar[];
-  selectedAvatarId: string;
+  /** Empty = switchboard routing; non-empty = those avatars reply in wave 1. */
+  selectedAvatarIds: string[];
 }
 
 export function getInitialState(): AppStoreState {
   ensureWorldMetadataLoaded();
   const persisted = loadPersistedContext();
-  const avatars = defaultAvatars;
+  const situationContext = persisted ?? createEmptyContext();
+  const catalog = getFullAvatarCatalog(situationContext);
+  const slotCount = resolvePrimarySlotCount(situationContext, catalog.length);
+  const active = getActivePrimaryAvatarsPreferringSelected(
+    catalog,
+    slotCount,
+    []
+  );
+  const firstId = active[0]?.id;
   return {
-    situationContext: persisted ?? createEmptyContext(),
-    avatars,
-    selectedAvatarId: avatars[0]?.id ?? "",
+    situationContext,
+    selectedAvatarIds: firstId ? [firstId] : [],
   };
 }
 
@@ -133,6 +145,15 @@ export type UserTurnJob = {
   userMsgId: string;
   content: string;
   focus?: SituationFocus;
+  /** Force these clusters to "released" in the prompt (e.g. sidebar Discuss). */
+  releasedClusterIds?: string[];
+  /** Override primary avatar for this turn only (Discuss from another card). */
+  primaryAvatarId?: string;
+};
+
+export type ProcessUserTurnUiHooks = {
+  /** Incremental Switchboard trace while `distributeAndRespond` runs (wave scheduled). */
+  onTraceProgress?: (args: { trace: SwitchboardTraceStep[] }) => void;
 };
 
 /**
@@ -143,9 +164,10 @@ export type UserTurnJob = {
 export async function processUserTurn(
   getContext: () => SituationContext,
   job: UserTurnJob,
-  selectedAvatarId: string,
+  selectedAvatarIds: string[],
   avatars: Avatar[],
-  onProgress?: (situationContext: SituationContext) => void
+  onProgress?: (situationContext: SituationContext) => void,
+  turnUi?: ProcessUserTurnUiHooks
 ): Promise<void> {
   const ctx = getContext();
   const data = await gatherDataFromSources();
@@ -155,10 +177,16 @@ export async function processUserTurn(
     avatars,
     job.focus ?? ctx.userFocus
   );
-  const releasedClusterIds = computeReleasedClusterIds(
+  const mergedReleasedClusterIds = mergeReleasedClusterIds(
     job.content,
-    ctxAfterProactive.pendingNotifications ?? []
+    ctxAfterProactive.pendingNotifications ?? [],
+    job.releasedClusterIds
   );
+  const forcedResponderIds = job.primaryAvatarId
+    ? [job.primaryAvatarId]
+    : selectedAvatarIds.length > 0
+      ? selectedAvatarIds
+      : undefined;
   const focusStrings = focusToRelevanceStrings(job.focus ?? {});
   const wos = ctx.useWellOfSoulsInChat && ctx.wellOfSoulsRules?.trim();
   const wosLines = wos
@@ -194,7 +222,9 @@ export async function processUserTurn(
     relevantData,
     replyToUserMessageId: job.userMsgId,
     pendingReleaseClusterIds:
-      releasedClusterIds.length > 0 ? releasedClusterIds : undefined,
+      mergedReleasedClusterIds.length > 0
+        ? mergedReleasedClusterIds
+        : undefined,
   };
 
   let updatedContext = working;
@@ -202,7 +232,7 @@ export async function processUserTurn(
   const { responses, trace } = await distributeAndRespond(
     working,
     avatars,
-    selectedAvatarId,
+    forcedResponderIds,
     3,
     {
       onAvatarComplete: ({ avatarId, result }) => {
@@ -210,6 +240,7 @@ export async function processUserTurn(
         updatedContext = appendToConversation(updatedContext, avatarMsg);
         onProgress?.(stripEphemeralFields(updatedContext));
       },
+      onTraceProgress: turnUi?.onTraceProgress,
     }
   );
 
@@ -218,11 +249,21 @@ export async function processUserTurn(
       job.userMsgId,
       job.content.trim(),
       job.focus,
-      selectedAvatarId,
+      forcedResponderIds,
       trace,
       responses
     )
   );
+
+  if (mergedReleasedClusterIds.length > 0) {
+    updatedContext = {
+      ...updatedContext,
+      pendingNotifications: removePendingByClusterIds(
+        updatedContext.pendingNotifications ?? [],
+        mergedReleasedClusterIds
+      ),
+    };
+  }
 
   persistContext(stripEphemeralFields(updatedContext));
   onProgress?.(stripEphemeralFields(updatedContext));

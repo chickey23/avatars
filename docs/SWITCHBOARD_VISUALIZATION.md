@@ -18,4 +18,4 @@ Optional **audio cues** per wave or per avatar are **not implemented**. If added
 
 ## Status
 
-**Not implemented.** Bubble-column animation, timing-to-wave sync, and sounds are **deferred** UX directions only. See **SPEC § Implemented UI** — layout/visual choices for such features require explicit user consultation before implementation.
+**Not implemented — next UI priority per SPEC § Implementation Order and `PROGRESS.md`.** Bubble-column animation and timing-to-wave sync are the target; **sounds** remain optional and secondary. Layout/visual choices require explicit user consultation (**SPEC § Behavioral Instructions**) before implementation.

@@ -34,7 +34,7 @@ export function persistOpinions(opinions: Map<string, Record<string, string>>): 
 
 /**
  * Update opinions based on a conversation turn.
- * E.g. if Skeptic challenges Muse's idea, Muse's opinion of Skeptic may shift.
+ * E.g. if Diogenes challenges Calliope's idea, Calliope's opinion of Diogenes may shift.
  */
 export function updateOpinionsFromTurn(
   avatars: Avatar[],

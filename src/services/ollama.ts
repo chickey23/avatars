@@ -8,6 +8,108 @@ import { appendSessionLog } from "./sessionLog";
 
 const OLLAMA_BASE = "http://localhost:11434";
 
+/** Default embedding model (`ollama pull nomic-embed-text`). */
+export const OLLAMA_EMBED_MODEL = "nomic-embed-text";
+
+export type OllamaEmbedResult =
+  | { ok: true; embedding: number[] }
+  | { ok: false; error: string };
+
+function parseEmbeddingPayload(json: unknown): number[] | null {
+  if (!json || typeof json !== "object") return null;
+  const o = json as Record<string, unknown>;
+  const emb = o.embedding;
+  if (Array.isArray(emb) && emb.every((x) => typeof x === "number")) {
+    return emb as number[];
+  }
+  const embs = o.embeddings;
+  if (
+    Array.isArray(embs) &&
+    embs.length > 0 &&
+    Array.isArray(embs[0]) &&
+    (embs[0] as unknown[]).every((x) => typeof x === "number")
+  ) {
+    return embs[0] as number[];
+  }
+  return null;
+}
+
+/**
+ * Embedding vector for text via Ollama `/api/embed` (falls back to legacy `/api/embeddings` + `prompt`).
+ */
+export async function embedWithOllama(
+  input: string,
+  model?: string
+): Promise<OllamaEmbedResult> {
+  const m = model?.trim() || OLLAMA_EMBED_MODEL;
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return { ok: false, error: "empty input" };
+  }
+
+  if (isTauri()) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const embedding = await invoke<number[]>("ollama_embed", {
+        payload: {
+          model: m,
+          input: trimmed,
+        },
+      });
+      if (!embedding?.length) {
+        return { ok: false, error: "empty embedding" };
+      }
+      appendSessionLog("ollama", "ollama_embed ok", {
+        level: "info",
+        detail: `${embedding.length} dims`,
+      });
+      return { ok: true, embedding };
+    } catch (e) {
+      logOllamaError("ollama_embed invoke", e);
+      return { ok: false, error: shortError(e) };
+    }
+  }
+
+  const tryEmbed = async (path: string, body: object): Promise<number[] | null> => {
+    try {
+      const res = await fetch(`${OLLAMA_BASE}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(120000),
+      });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return parseEmbeddingPayload(json);
+    } catch {
+      return null;
+    }
+  };
+
+  let vec = await tryEmbed("/api/embed", {
+    model: m,
+    input: trimmed,
+    truncate: true,
+  });
+  if (!vec) {
+    vec = await tryEmbed("/api/embeddings", {
+      model: m,
+      prompt: trimmed,
+    });
+  }
+  if (!vec?.length) {
+    appendSessionLog("ollama", "embed (browser): failed or empty", {
+      level: "warn",
+    });
+    return { ok: false, error: "embedding failed" };
+  }
+  appendSessionLog("ollama", "embed (browser) ok", {
+    level: "info",
+    detail: `${vec.length} dims`,
+  });
+  return { ok: true, embedding: vec };
+}
+
 function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI__" in window;
 }

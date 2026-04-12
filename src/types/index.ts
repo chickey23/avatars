@@ -74,6 +74,8 @@ export interface AvatarAppearance {
   accentColor?: string;
   /** Key from CHAT_WINDOW_STYLE_IDS in theme */
   chatSkinId?: string;
+  /** Optional bundled or default portrait URL (user override lives on SituationContext). */
+  portraitUrl?: string;
 }
 
 /** Optional fixed text merged into prompts or UI. */
@@ -91,10 +93,22 @@ export interface Avatar extends Profile {
   opinions: Record<string, OpinionValue>;
   /** Links to AiRuleSet.id in the rules library */
   ruleSetId?: string;
+  /**
+   * Ordered AI rule block ids from the global library (`AI_RULE_BLOCKS`).
+   * When set, takes precedence over `ruleSetId` for prompt merging.
+   */
+  ruleBlockIds?: string[];
+  /**
+   * When true, UI must not offer the avatar builder for this avatar.
+   * See docs/DISTRIBUTION.md. Omit or false = editable.
+   */
+  uneditable?: boolean;
   appearance?: AvatarAppearance;
   textBlocks?: AvatarTextBlocks;
   /** Keys from PERSONALITY_TRAITS (theme) for display / future prompt shaping */
   traitIds?: string[];
+  /** Merged into prompts after rule-set blocks (e.g. Well of Souls / builder). */
+  supplementalRules?: string;
 }
 
 /** Agent - manages data processes; can be foreground (as Avatar) or background */
@@ -133,6 +147,8 @@ export interface SituationFocus {
   email?: FocusItem;
   calendar?: FocusItem;
   contact?: FocusItem;
+  /** World-metadata project (local id + display title). */
+  project?: FocusItem;
 }
 
 /** Proactive notification urgency (SPEC § Proactive notifications) */
@@ -143,6 +159,20 @@ export type NotificationSourceRef =
   | { kind: "email"; id: string }
   | { kind: "calendar"; id: string }
   | { kind: "contact"; id: string };
+
+/**
+ * User-adjustable knobs for proactive gating and reply style; persisted on situation context.
+ * Omitted fields use app defaults in `resolveBehaviorTuning`.
+ */
+export interface BehaviorTuning {
+  proactiveMinCombinedScore?: number;
+  proactiveMinAffinityBonus?: number;
+  /** 0 = emphasize persona; 100 = emphasize context + literal user message */
+  replyContextFocus?: number;
+  /** 0 = terse / low engagement cues; 100 = fuller replies */
+  userEngagementLevel?: number;
+  userMoodNote?: string;
+}
 
 /** One Avatar’s pending reaction offer for a shared topic cluster */
 export interface PendingNotification {
@@ -200,12 +230,39 @@ export interface SituationContext {
    * Mirror of Context panel Focus for proactive scoring (persisted).
    */
   userFocus?: SituationFocus;
+  /**
+   * Behavior dials (proactive thresholds, context vs character, mood / engagement); persisted.
+   */
+  behaviorTuning?: BehaviorTuning;
+  /**
+   * How many avatars from the ordered primary catalog are shown and used as primaries.
+   * Clamped at runtime to `min(MAX_PRIMARY_SLOTS, catalog length)`. Default when omitted: 3.
+   * Persisted.
+   */
+  primaryAvatarSlotCount?: number;
+  /**
+   * User-chosen portrait image per avatar id (typically data URLs from local file pick).
+   * Persisted.
+   */
+  avatarPortraitSrcById?: Record<string, string>;
+  /**
+   * User-created avatars appended after built-in defaults in catalog order.
+   * Persisted.
+   */
+  userAvatars?: Avatar[];
+  /**
+   * Full avatar snapshots overriding built-in defaults by id (muse, accomplice, …).
+   * Persisted. Used when the user edits a default avatar in the builder.
+   */
+  builtinAvatarEdits?: Record<string, Avatar>;
 }
 
 /** Why the Switchboard chose responders for a wave */
 export type SwitchboardSelection =
   | "forced_primary"
+  | "forced_multi"
   | "tag_interest_match"
+  | "semantic_match"
   | "default_primary"
   | "cascade";
 
@@ -232,8 +289,21 @@ export interface CompactTurnRecord {
   /** Links to `ConversationMessage.id` for inline routing UI */
   userMessageId: string;
   userPreview: string;
-  focus?: { emailId?: string; calendarId?: string; contactId?: string };
+  focus?: {
+    emailId?: string;
+    calendarId?: string;
+    contactId?: string;
+    projectId?: string;
+  };
+  /**
+   * Legacy: first forced responder, or empty when `routingMode` is switchboard.
+   * Prefer `routingMode` + `forcedResponderIds` when present.
+   */
   primaryAvatarId: string;
+  /** How the first wave was chosen (omitted on older archive rows). */
+  routingMode?: "forced" | "switchboard";
+  /** Ids passed to the first wave when forced (single or multi). */
+  forcedResponderIds?: string[];
   switchboardTrace: SwitchboardTraceStep[];
   replySummary: ReplySummaryEntry[];
 }
