@@ -8,6 +8,7 @@ import type {
   AvatarAgentResult,
   OllamaPromptDebug,
   SituationContext,
+  WorldviewActivityAction,
 } from "../types";
 import { getRecentConversation } from "./situationContext";
 import { getTasksForAvatar } from "./longTermTasks";
@@ -23,6 +24,192 @@ import {
   compressRulesBodyForEngagement,
   type ResolvedBehaviorTuning,
 } from "./behaviorTuningFormat";
+import {
+  splitWorldviewToolsFromReply,
+  type WorldviewToolCall,
+} from "./worldviewTools/parse";
+import {
+  diagnoseWorldviewToolReply,
+  formatWorldviewParseDiagnosisForLog,
+} from "./worldviewTools/diagnose";
+import { executeWorldviewTools } from "./worldviewTools/execute";
+import { appendWorldviewAuditRecord } from "./worldviewAudit";
+import { formatWorldviewToolArgsForAudit } from "./worldviewAuditArgsPreview";
+import { getWorldMetadata } from "./worldMetadata/store";
+import type { UserProfileRecord } from "./worldMetadata/types";
+import {
+  executeGmailFetchMessageBodyTools,
+  partitionWorldviewTools,
+} from "./gmailFetchTools";
+import { formatRelevantDataForOllamaPrompt } from "./relevantContextPrompt";
+import { getRoutingScoreForAvatar } from "./routingScore";
+import { managedProjectIdsForAvatar } from "./avatarRoster";
+import {
+  dedupeWorldviewToolCalls,
+  parseLexicalAgenticLines,
+  scanLexicalMalformedTriggers,
+  stripLexicalToolSyntaxFromVisible,
+} from "./agenticTools";
+
+/** Machine token: reply with exactly this (alone) when you have nothing to add (single-wave mode). */
+export const AVATARS_NO_COMMENT = "AVATARS_NO_COMMENT";
+
+const WORLDVIEW_TOOL_INSTRUCTIONS = `Optional — structured tools: add exactly **one** markdown \`\`\`json code block at the **very end** of your reply (after conversational text). Do **not** write tool lines in prose (no "user profile.patch:" or "world_metadata.patch_projects { … }" as plain text). Use **exact** tool names below inside the JSON only.
+
+Schema (required): "avatars_tools_v1" with a "tools" array.
+\`\`\`json
+{"schema":"avatars_tools_v1","tools":[{"name":"world_metadata.patch_projects","args":{"patch":{"proj_new_1":{"title":"…","notes":"…","summary":"…"}}}}]}
+\`\`\`
+Exact tool names (use underscores; no spaces):
+- world_metadata.patch_projects (args.patch: project id -> partial fields: title, notes, summary, etc.). For a **new** project use a fresh opaque id (e.g. proj_ plus random letters/digits); **title is required** on create. For updates, reuse ids from "World metadata — project [id]" lines in Relevant context.
+- world_metadata.patch_people (args.patch: contact id -> partial person fields; use ids from contact lines or focus)
+- user_profile.patch (not "user profile") (args.patch: displayName, pronouns, notes) — stable facts about the user
+- gmail.fetch_message_body (args.messageId: Gmail message id exactly as in "email [id …]" lines or focus). Use when snippets or prefetched bodies are not enough to answer.
+
+When the user shares durable facts (preferences, relationships, ongoing work, projects), include the tools block when a patch or fetch applies; omit the block if nothing should be saved or fetched.
+Omit the code block if no tools apply.
+
+**Lexical tools** (optional; may use instead of or together with the JSON block). One instruction per line (no markdown fences):
+- \`AVATARS_MEM: <text>\` — durable note about the user (merged into saved profile notes).
+- \`AVATARS_TOOL name=gmail.fetch_message_body messageId=<gmail id>\` — fetch full body when snippets are insufficient.`;
+
+function buildWorldviewToolsPrompt(
+  isExecutor: boolean,
+  managedProjectIds: string[]
+): string {
+  if (isExecutor) {
+    return `${WORLDVIEW_TOOL_INSTRUCTIONS}
+
+**Routing executor:** when the user asks to add a **new** tracked project, you **must** persist it with world_metadata.patch_projects using a fresh opaque id and a required title in this turn when appropriate.`;
+  }
+  const managed =
+    managedProjectIds.length > 0
+      ? ` You may patch **existing** projects only for these ids: ${managedProjectIds.join(", ")}.`
+      : "";
+  return `${WORLDVIEW_TOOL_INSTRUCTIONS}
+
+**Participant:** do not create brand-new world_metadata.patch_projects ids.${managed} New tracked projects are created by the routing executor for this wave.`;
+}
+
+const SINGLE_WAVE_REPLY_INSTRUCTION = `
+
+**Single-wave routing:** If you have nothing substantive to add to this turn, reply with exactly one line:
+${AVATARS_NO_COMMENT}
+and nothing else (no greeting, no punctuation around it). If you do have something to say, respond normally; you may still use tools below.`;
+
+function isRevertiblePatchToolName(name: string): boolean {
+  return (
+    name === "world_metadata.patch_projects" ||
+    name === "world_metadata.patch_people" ||
+    name === "user_profile.patch"
+  );
+}
+
+function zipOkRevertiblePatchTools(
+  patchTools: WorldviewToolCall[],
+  results: { name: string; ok: boolean }[]
+): WorldviewToolCall[] {
+  const out: WorldviewToolCall[] = [];
+  for (let i = 0; i < patchTools.length; i++) {
+    const t = patchTools[i]!;
+    const r = results[i];
+    if (r?.ok && isRevertiblePatchToolName(t.name)) out.push(t);
+  }
+  return out;
+}
+
+function mergeJsonAndLexicalTools(
+  rawReply: string,
+  envelopeTools: WorldviewToolCall[] | undefined
+): WorldviewToolCall[] {
+  const lexical = parseLexicalAgenticLines(rawReply);
+  return dedupeWorldviewToolCalls([
+    ...lexical,
+    ...(envelopeTools ?? []),
+  ]);
+}
+
+const MAX_ACT_SUMMARY = 180;
+
+function clampActSummary(s: string): string {
+  const t = s.trim();
+  return t.length <= MAX_ACT_SUMMARY ? t : `${t.slice(0, MAX_ACT_SUMMARY - 1)}…`;
+}
+
+function summarizeExecutedPatchTool(t: WorldviewToolCall): string {
+  switch (t.name) {
+    case "user_profile.patch": {
+      const p = t.args.patch as Record<string, unknown> | undefined;
+      if (!p) return "user_profile.patch";
+      const keys = Object.keys(p).filter(
+        (k) => p[k] != null && String(p[k]).trim() !== ""
+      );
+      return clampActSummary(keys.length ? `patch fields: ${keys.join(", ")}` : "user_profile.patch");
+    }
+    case "world_metadata.patch_projects": {
+      const patch = t.args.patch as Record<string, unknown> | undefined;
+      const n = patch ? Object.keys(patch).length : 0;
+      const ids = patch ? Object.keys(patch).slice(0, 4).join(", ") : "";
+      return clampActSummary(`${n} project(s)${ids ? `: ${ids}` : ""}`);
+    }
+    case "world_metadata.patch_people": {
+      const patch = t.args.patch as Record<string, unknown> | undefined;
+      const n = patch ? Object.keys(patch).length : 0;
+      const ids = patch ? Object.keys(patch).slice(0, 4).join(", ") : "";
+      return clampActSummary(`${n} contact(s)${ids ? `: ${ids}` : ""}`);
+    }
+    default:
+      return clampActSummary(t.name);
+  }
+}
+
+function summarizeFetchToolLine(messageId: string, ok: boolean, err?: string): string {
+  const id =
+    messageId.length > 28 ? `${messageId.slice(0, 25)}…` : messageId;
+  if (ok) return clampActSummary(`fetched email body (${id})`);
+  return clampActSummary(`fetch ${err ?? "failed"} (${id})`);
+}
+
+function dedupeResolutionErrors(errs: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const e of errs) {
+    const t = e.trim().slice(0, 240);
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/** Models often omit the middle "S" or add markdown / punctuation around the token. */
+const AVATAR_NO_COMMENT_ALIAS = "AVATAR_NO_COMMENT";
+
+function stripNoCommentMarkdownNoise(line: string): string {
+  let t = line.trim();
+  t = t.replace(/^[`"'*_]+|[`"'*_]+$/g, "").trim();
+  t = t.replace(/[.!?:;]+$/g, "").trim();
+  return t;
+}
+
+/**
+ * Visible reply is only the no-comment token (or empty) — hide from chat when no tools ran.
+ * Exported for unit tests.
+ */
+export function isAvatarsNoCommentOnly(visible: string): boolean {
+  const lines = visible
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (lines.length === 0) return true;
+  if (lines.length > 1) return false;
+  const t = stripNoCommentMarkdownNoise(lines[0]!);
+  if (t === "") return true;
+  for (const token of [AVATARS_NO_COMMENT, AVATAR_NO_COMMENT_ALIAS]) {
+    if (new RegExp(`^${token}\\s*$`, "i").test(t)) return true;
+  }
+  return false;
+}
 
 /**
  * Run an Avatar's interface Agent with full context.
@@ -47,12 +234,58 @@ export async function runAvatarAgent(
   const tuning = resolveBehaviorTuning(ctx);
   const presence = await getOllamaPresence();
   if (presence === "ready") {
+    const minScore = ctx.preflightOllamaMinScore;
+    if (minScore !== undefined) {
+      const score = getRoutingScoreForAvatar(
+        avatar,
+        userContent,
+        undefined,
+        ctx.avatarRosterPriorityScoreById
+      );
+      if (score < minScore) {
+        appendSessionLog("chat", "preflight_skip", {
+          level: "info",
+          detail: `${avatar.id} score=${score} min=${minScore} (no Ollama call)`,
+        });
+        const preflightDebug: OllamaPromptDebug = {
+          givenName: avatar.givenName,
+          personality: avatar.personality,
+          interests: [...avatar.interests],
+          tasks: tasks.map((t) => ({ title: t.title })),
+          activeTask: ctx.activeTask,
+          relevantData: ctx.relevantData ? [...ctx.relevantData] : [],
+          recentTranscript: recent.map((m) => `${m.role}: ${m.content}`).join("\n"),
+          fullPrompt: "(preflight skip — Ollama not called; routing score below threshold)",
+          ruleBlockIds,
+          preflightSkip: { score, threshold: minScore },
+        };
+        return {
+          content: "",
+          replySource: "rules",
+          rulesSkipReason: "preflight_low_score",
+          suppressUserMessage: true,
+          preflightSkip: { score, threshold: minScore },
+          promptDebug: preflightDebug,
+        };
+      }
+    }
+
     const pendingForAvatar =
       ctx.pendingNotifications?.filter((p) => p.avatarId === avatar.id) ?? [];
     const pendingBlock = formatPendingNotificationsForPrompt(
       pendingForAvatar,
       ctx.pendingReleaseClusterIds
     );
+    const isExec =
+      Boolean(ctx.executorAvatarIdForTurn) &&
+      ctx.executorAvatarIdForTurn === avatar.id;
+    const toolsInstr = buildWorldviewToolsPrompt(
+      isExec,
+      managedProjectIdsForAvatar(avatar.id)
+    );
+    const rulesWithTools = rulesText?.trim()
+      ? `${rulesText.trim()}\n\n${toolsInstr}`
+      : toolsInstr;
     const fullPrompt = buildOllamaPrompt(
       avatar,
       userContent,
@@ -60,9 +293,14 @@ export async function runAvatarAgent(
       tasks,
       ctx.activeTask,
       ctx.relevantData,
-      rulesText,
+      rulesWithTools,
       pendingBlock,
-      tuning
+      tuning,
+      {
+        switchboardRoutingMode: ctx.switchboardRoutingMode,
+        responseRequirement: lastUser?.responseRequirement,
+        isExecutor: isExec,
+      }
     );
     const debug: OllamaPromptDebug = {
       givenName: avatar.givenName,
@@ -86,10 +324,257 @@ export async function runAvatarAgent(
     );
     const gen = await generateWithOllama({ prompt: fullPrompt });
     if (gen.ok) {
+      const lexicalMalformed = scanLexicalMalformedTriggers(gen.text);
+      const resolutionErrors: string[] = [...lexicalMalformed];
+      const activityActions: WorldviewActivityAction[] = [];
+      const activityNames = new Set<string>();
+
+      const { visible, envelope } = splitWorldviewToolsFromReply(gen.text);
+      let worldviewToolSummary: AvatarAgentResult["worldviewToolSummary"];
+      let worldviewActivity: AvatarAgentResult["worldviewActivity"] | undefined;
+      let finalVisible = visible;
+      let rawModelReply = gen.text;
+      const mergedTools = mergeJsonAndLexicalTools(gen.text, envelope?.tools);
+      let parseDiagnosis = diagnoseWorldviewToolReply(gen.text, envelope);
+      if (mergedTools.length > 0) {
+        parseDiagnosis = { hints: [], reason: null };
+      }
+      if (parseDiagnosis.hints.length) {
+        appendSessionLog("chat", "worldview_tools_parse_mismatch", {
+          level: "warn",
+          detail: `${avatar.id}: ${formatWorldviewParseDiagnosisForLog(parseDiagnosis)}`,
+        });
+      }
+
+      if (mergedTools.length > 0) {
+        const { fetchTools, patchTools } = partitionWorldviewTools(mergedTools);
+        const combinedPatchResults: { name: string; ok: boolean; error?: string }[] =
+          [];
+        const revertiblePatchCalls: WorldviewToolCall[] = [];
+        let userProfileBeforeAudit: UserProfileRecord | undefined;
+
+        const captureProfileIfNeeded = () => {
+          if (userProfileBeforeAudit === undefined) {
+            userProfileBeforeAudit = { ...getWorldMetadata().userProfile };
+          }
+        };
+
+        if (patchTools.length) {
+          captureProfileIfNeeded();
+          const r1 = executeWorldviewTools(patchTools, {
+            avatarId: avatar.id,
+            userMessageId: ctx.replyToUserMessageId ?? "",
+            sourceEmailId: ctx.userFocus?.email?.id,
+            skipAudit: true,
+            avatar,
+            executorAvatarId: ctx.executorAvatarIdForTurn,
+          });
+          for (let i = 0; i < r1.length; i++) {
+            const r = r1[i]!;
+            const t = patchTools[i]!;
+            if (r.ok) {
+              activityNames.add(t.name);
+              activityActions.push({
+                tool: t.name,
+                summary: summarizeExecutedPatchTool(t),
+              });
+            } else {
+              resolutionErrors.push(`${t.name}: ${r.error ?? "failed"}`);
+            }
+          }
+          combinedPatchResults.push(...r1);
+          revertiblePatchCalls.push(
+            ...zipOkRevertiblePatchTools(patchTools, r1)
+          );
+        }
+
+        let fetchAuditRows: {
+          name: string;
+          ok: boolean;
+          error?: string;
+          detail?: string;
+        }[] = [];
+        let secondPatchTools: WorldviewToolCall[] = [];
+
+        if (fetchTools.length) {
+          const fetchOut = await executeGmailFetchMessageBodyTools(
+            fetchTools,
+            ctx.turnEmailFetchAllowlist,
+            avatar
+          );
+          fetchAuditRows = fetchOut.results;
+          for (let i = 0; i < fetchTools.length; i++) {
+            const t = fetchTools[i]!;
+            const r = fetchAuditRows[i]!;
+            const args = t.args as { messageId?: unknown };
+            const messageId =
+              typeof args.messageId === "string"
+                ? args.messageId.trim()
+                : typeof r.detail === "string"
+                  ? r.detail
+                  : "";
+            if (r.ok) {
+              activityNames.add(t.name);
+              activityActions.push({
+                tool: t.name,
+                summary: summarizeFetchToolLine(messageId, true),
+              });
+            } else {
+              resolutionErrors.push(
+                `${t.name}: ${r.error ?? "failed"}${messageId ? ` (${messageId.slice(0, 40)})` : ""}`
+              );
+            }
+          }
+
+          if (fetchOut.anySuccess) {
+            const followUp =
+              `${fullPrompt}\n\n---\nFetched email bodies (tools; authoritative for these message ids):\n${fetchOut.bodyBlocks.join("\n\n")}\n\nReply to the user in natural language. Use this content when it answers their question. Do not repeat raw JSON tool blocks unless you still need to update saved world metadata (projects, contacts, user profile).`;
+            appendSessionLog(
+              "chat",
+              `Ollama follow-up (${avatar.id}) after gmail.fetch_message_body`,
+              {
+                level: "info",
+                detail: `${fetchOut.bodyBlocks.length} body block(s)`,
+              }
+            );
+            const gen2 = await generateWithOllama({ prompt: followUp });
+            if (gen2.ok) {
+              const split2 = splitWorldviewToolsFromReply(gen2.text);
+              finalVisible = split2.visible;
+              rawModelReply = gen2.text;
+              const merged2 = mergeJsonAndLexicalTools(
+                gen2.text,
+                split2.envelope?.tools
+              );
+              parseDiagnosis = diagnoseWorldviewToolReply(
+                gen2.text,
+                split2.envelope
+              );
+              if (merged2.length > 0) {
+                parseDiagnosis = { hints: [], reason: null };
+              }
+              if (parseDiagnosis.hints.length) {
+                appendSessionLog("chat", "worldview_tools_parse_mismatch", {
+                  level: "warn",
+                  detail: `${avatar.id} (follow-up): ${formatWorldviewParseDiagnosisForLog(parseDiagnosis)}`,
+                });
+              }
+              if (merged2.length > 0) {
+                const { patchTools: p2 } = partitionWorldviewTools(merged2);
+                if (p2.length) {
+                  secondPatchTools = p2;
+                  captureProfileIfNeeded();
+                  const r2 = executeWorldviewTools(p2, {
+                    avatarId: avatar.id,
+                    userMessageId: ctx.replyToUserMessageId ?? "",
+                    sourceEmailId: ctx.userFocus?.email?.id,
+                    skipAudit: true,
+                    avatar,
+                    executorAvatarId: ctx.executorAvatarIdForTurn,
+                  });
+                  for (let i = 0; i < r2.length; i++) {
+                    const r = r2[i]!;
+                    const t = p2[i]!;
+                    if (r.ok) {
+                      activityNames.add(t.name);
+                      activityActions.push({
+                        tool: t.name,
+                        summary: summarizeExecutedPatchTool(t),
+                      });
+                    } else {
+                      resolutionErrors.push(`${t.name}: ${r.error ?? "failed"}`);
+                    }
+                  }
+                  combinedPatchResults.push(...r2);
+                  revertiblePatchCalls.push(
+                    ...zipOkRevertiblePatchTools(p2, r2)
+                  );
+                }
+              }
+            }
+          }
+        }
+
+        const toolsInOrder: WorldviewToolCall[] = [
+          ...patchTools,
+          ...secondPatchTools,
+          ...fetchTools,
+        ];
+        const allForAudit = [...combinedPatchResults, ...fetchAuditRows].map(
+          (r, i) => ({
+            ...r,
+            argsPreview:
+              toolsInOrder[i] !== undefined
+                ? formatWorldviewToolArgsForAudit(toolsInOrder[i]!)
+                : undefined,
+          })
+        );
+        if (allForAudit.length) {
+          const hasUserProfileRevertible = revertiblePatchCalls.some(
+            (t) => t.name === "user_profile.patch"
+          );
+          appendWorldviewAuditRecord({
+            avatarId: avatar.id,
+            userMessageId: ctx.replyToUserMessageId ?? "",
+            sourceEmailId: ctx.userFocus?.email?.id,
+            toolResults: allForAudit,
+            revertiblePatchCalls:
+              revertiblePatchCalls.length > 0
+                ? revertiblePatchCalls
+                : undefined,
+            userProfileBefore: hasUserProfileRevertible
+              ? userProfileBeforeAudit
+              : undefined,
+          });
+        }
+
+        if (activityNames.size > 0) {
+          worldviewActivity = {
+            names: [...activityNames],
+            actions: activityActions,
+          };
+          worldviewToolSummary = { names: [...activityNames] };
+        }
+      }
+
+      const finalSplit = splitWorldviewToolsFromReply(rawModelReply);
+      const mergedFinal = mergeJsonAndLexicalTools(
+        rawModelReply,
+        finalSplit.envelope?.tools
+      );
+      debug.rawModelReply = rawModelReply;
+      debug.worldviewParsedToolIntentNames = mergedFinal.map((t) => t.name);
+      debug.worldviewExecutedToolNames =
+        worldviewActivity?.names ?? worldviewToolSummary?.names ?? [];
+      debug.worldviewParseHints =
+        parseDiagnosis.hints.length > 0 ? parseDiagnosis.hints : undefined;
+      debug.worldviewParseReason = parseDiagnosis.reason ?? undefined;
+
+      const worldviewParseDiagnosis =
+        parseDiagnosis.hints.length > 0
+          ? {
+              hints: parseDiagnosis.hints,
+              reason: parseDiagnosis.reason,
+            }
+          : undefined;
+
+      finalVisible = stripLexicalToolSyntaxFromVisible(finalVisible);
+      const toolResolutionErrors =
+        resolutionErrors.length > 0
+          ? dedupeResolutionErrors(resolutionErrors)
+          : undefined;
+
+      const suppressUserMessage = isAvatarsNoCommentOnly(finalVisible);
+
       return {
-        content: gen.text,
+        content: finalVisible,
         replySource: "ollama",
         promptDebug: debug,
+        worldviewToolSummary,
+        worldviewActivity,
+        toolResolutionErrors,
+        worldviewParseDiagnosis,
+        suppressUserMessage,
       };
     }
     appendSessionLog(
@@ -128,12 +613,6 @@ export async function runAvatarAgent(
   };
 }
 
-function formatRelevantDataForPrompt(relevant?: string[]): string {
-  if (!relevant?.length) return "";
-  const shown = relevant.slice(0, 25);
-  return `Relevant context (connector data; lines starting with "focus:" are the user's current Focus):\n${shown.join("\n")}`;
-}
-
 function shortFocusSummary(relevant?: string[]): string | undefined {
   const lines = relevant?.filter((s) => s.startsWith("focus:")) ?? [];
   if (!lines.length) return undefined;
@@ -141,6 +620,7 @@ function shortFocusSummary(relevant?: string[]): string | undefined {
   if (lines.some((l) => l.includes("focus: email"))) parts.push("a selected email");
   if (lines.some((l) => l.includes("focus: calendar"))) parts.push("a selected calendar event");
   if (lines.some((l) => l.includes("focus: contact"))) parts.push("a selected contact");
+  if (lines.some((l) => l.includes("focus: project"))) parts.push("a selected project");
   return parts.join(", ");
 }
 
@@ -153,11 +633,16 @@ function buildOllamaPrompt(
   relevantData: string[] | undefined,
   rulesText: string,
   pendingBlock: string | undefined,
-  tuning: ResolvedBehaviorTuning
+  tuning: ResolvedBehaviorTuning,
+  routingExtras?: {
+    switchboardRoutingMode?: "cascade" | "single_wave";
+    responseRequirement?: "open" | "satisfied";
+    isExecutor?: boolean;
+  }
 ): string {
   const context = recent.map((m) => `${m.role}: ${m.content}`).join("\n");
   const taskStr = tasks.length > 0 ? tasks.map((t) => t.title).join(", ") : "none";
-  const dataBlock = formatRelevantDataForPrompt(relevantData);
+  const dataBlock = formatRelevantDataForOllamaPrompt(relevantData);
   const preamble = avatar.textBlocks?.preamble
     ? `${avatar.textBlocks.preamble}\n\n`
     : "";
@@ -166,10 +651,23 @@ function buildOllamaPrompt(
     : "";
   const pend = pendingBlock ? `\n${pendingBlock}\n` : "";
   const tuningBlock = `\n${formatBehaviorTuningForOllama(tuning)}\n`;
-  const closing = formatOllamaClosingInstruction(avatar.givenName, tuning);
+  const closing = formatOllamaClosingInstruction(
+    avatar.givenName,
+    tuning,
+    routingExtras?.isExecutor
+  );
+  let responseRequirementNote = "";
+  if (routingExtras?.responseRequirement === "satisfied") {
+    responseRequirementNote =
+      "\n**Turn context:** The user’s message is marked as satisfied / closure — brief acknowledgments are enough unless something new is needed.\n";
+  }
+  const singleWave =
+    routingExtras?.switchboardRoutingMode === "single_wave"
+      ? SINGLE_WAVE_REPLY_INSTRUCTION
+      : "";
   return `${preamble}You are ${avatar.givenName}. Personality: ${avatar.personality}. Interests: ${avatar.interests.join(", ")}.
 Current assigned tasks: ${taskStr}. Active task: ${activeTask ?? "none"}.
-${rulesBlock}${dataBlock ? `\n${dataBlock}\n` : ""}${pend}${tuningBlock}
+${rulesBlock}${dataBlock ? `\n${dataBlock}\n` : ""}${pend}${tuningBlock}${responseRequirementNote}${singleWave}
 Recent conversation:
 ${context}
 

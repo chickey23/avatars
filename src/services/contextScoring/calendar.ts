@@ -4,6 +4,14 @@
 
 import type { CalendarEvent } from "../../connectors/types";
 import type { ConversationMessage, SituationFocus } from "../../types";
+import {
+  FOCUS_ID_MATCH_BONUS,
+  softBonusForCalendar,
+  type FocusSoftSignals,
+} from "./focusRelevance";
+import { computeNormFocusDisplays } from "./normFocus";
+
+export { FOCUS_ID_MATCH_BONUS } from "./focusRelevance";
 
 /** Max calendar lines injected into `relevantData` per turn */
 export const CALENDAR_CONTEXT_TOP_K = 5;
@@ -11,7 +19,6 @@ export const CALENDAR_CONTEXT_TOP_K = 5;
 /** How many tail messages contribute to the keyword corpus */
 export const CALENDAR_THREAD_TAIL_DEFAULT = 15;
 
-const FOCUS_ID_MATCH_BONUS = 10_000;
 const MAX_OVERLAP_POINTS = 80;
 const POINTS_PER_KEYWORD_HIT = 4;
 
@@ -20,6 +27,9 @@ export type CalendarScoringContext = {
   conversationThread: ConversationMessage[];
   activeTask?: string;
   threadTailSize?: number;
+  focusCorpusAppendix?: string;
+  worldMetadataCorpus?: string;
+  focusSoft?: FocusSoftSignals;
 };
 
 function tokenize(s: string, minLen = 3): string[] {
@@ -37,7 +47,14 @@ function buildCorpus(ctx: CalendarScoringContext): string {
   for (const m of tail) {
     parts.push(m.content);
   }
-  return parts.join(" \n ").toLowerCase();
+  let s = parts.join(" \n ").toLowerCase();
+  if (ctx.focusCorpusAppendix?.trim()) {
+    s = `${s} \n ${ctx.focusCorpusAppendix.trim().toLowerCase()}`;
+  }
+  if (ctx.worldMetadataCorpus?.trim()) {
+    s = `${s} \n ${ctx.worldMetadataCorpus.trim().toLowerCase()}`;
+  }
+  return s;
 }
 
 /** Stable, English UI string for overlap and for human-readable lines */
@@ -66,6 +83,7 @@ export function scoreCalendarEvents(
 ): Array<{ event: CalendarEvent; score: number }> {
   const corpus = buildCorpus(ctx);
   const focusCalendarId = ctx.focus?.calendar?.id;
+  const sig = ctx.focusSoft;
 
   return events.map((event) => {
     let score = 0;
@@ -75,30 +93,61 @@ export function scoreCalendarEvents(
     const timeStr = formatEventStart(event.start);
     const blob = `${event.title} ${event.location ?? ""} ${timeStr}`;
     score += overlapScore(corpus, blob);
+    score += softBonusForCalendar(event, blob.toLowerCase(), sig);
     return { event, score };
   });
 }
 
+export type RankedCalendarForContext = {
+  event: CalendarEvent;
+  rawScore: number;
+  normScore: number;
+  normFocus: number;
+  rank: number;
+};
+
+export function rankCalendarForContext(
+  events: CalendarEvent[],
+  ctx: CalendarScoringContext,
+  topK: number = CALENDAR_CONTEXT_TOP_K
+): RankedCalendarForContext[] {
+  if (events.length === 0) return [];
+  const scored = scoreCalendarEvents(events, ctx);
+  scored.sort((a, b) => b.score - a.score || a.event.start - b.event.start);
+  const slice = scored.slice(0, topK);
+  const focusCalendarId = ctx.focus?.calendar?.id;
+  const rawScores = slice.map((s) => s.score);
+  const focusFlags = slice.map(
+    (s) => Boolean(focusCalendarId && s.event.id === focusCalendarId)
+  );
+  const normFocusList = computeNormFocusDisplays(rawScores, focusFlags);
+  const maxScore = Math.max(...rawScores, 1);
+  return slice.map((s, i) => ({
+    event: s.event,
+    rawScore: s.score,
+    normScore: Math.round((100 * s.score) / maxScore),
+    normFocus: normFocusList[i]!,
+    rank: i + 1,
+  }));
+}
+
+function formatRankedCalendarLine(r: RankedCalendarForContext): string {
+  const { event, normFocus, rank } = r;
+  const title = event.title.trim() || "(no title)";
+  const loc = event.location?.replace(/\s+/g, " ").trim();
+  const when = formatEventStart(event.start);
+  const locPart = loc ? ` — ${loc}` : "";
+  return `calendar [rank ${rank}, score ${normFocus}]: ${title}${locPart} (${when})`;
+}
+
 /**
  * Sort by score (then sooner `start`), take top K, format for `relevantData`.
- * Score shown 0–100 is normalized against the max score in this batch.
+ * `score` in each line is focus-relative.
  */
 export function scoreAndFormatCalendarEvents(
   events: CalendarEvent[],
   ctx: CalendarScoringContext,
   topK: number = CALENDAR_CONTEXT_TOP_K
 ): string[] {
-  if (events.length === 0) return [];
-  const scored = scoreCalendarEvents(events, ctx);
-  scored.sort((a, b) => b.score - a.score || a.event.start - b.event.start);
-  const maxScore = Math.max(...scored.map((s) => s.score), 1);
-  return scored.slice(0, topK).map(({ event, score }, i) => {
-    const rank = i + 1;
-    const norm = Math.round((100 * score) / maxScore);
-    const title = event.title.trim() || "(no title)";
-    const loc = event.location?.replace(/\s+/g, " ").trim();
-    const when = formatEventStart(event.start);
-    const locPart = loc ? ` — ${loc}` : "";
-    return `calendar [rank ${rank}, score ${norm}]: ${title}${locPart} (${when})`;
-  });
+  return rankCalendarForContext(events, ctx, topK).map(formatRankedCalendarLine);
 }

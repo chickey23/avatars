@@ -25,7 +25,17 @@ export type ReplySource =
   | "other";
 
 /** Why the template-only path ran when Ollama was not used for generation. */
-export type RulesSkipReason = "unavailable" | "no_models";
+export type RulesSkipReason =
+  | "unavailable"
+  | "no_models"
+  /** Routing score below `preflightOllamaMinScore` for this turn (no LLM call). */
+  | "preflight_low_score";
+
+/** Per-tool summary for waves / UI (truncated, non-secret). */
+export type WorldviewActivityAction = {
+  tool: string;
+  summary: string;
+};
 
 /** Result from runAvatarAgent (chat pipeline). */
 export interface AvatarAgentResult {
@@ -36,6 +46,27 @@ export interface AvatarAgentResult {
   replyError?: string;
   /** When replySource is `rules` because Ollama was not invoked (not fallback). */
   rulesSkipReason?: RulesSkipReason;
+  /** Structured worldview tools applied from Ollama reply (Ollama path only). */
+  worldviewToolSummary?: { names: string[] };
+  /**
+   * Richer tool activity for Chat Visualizer (names + optional per-tool summaries).
+   * When set, prefer this over `worldviewToolSummary` alone.
+   */
+  worldviewActivity?: {
+    names: string[];
+    actions: WorldviewActivityAction[];
+  };
+  /** Lexical / execution issues for `tool_error` queue rows (short messages). */
+  toolResolutionErrors?: string[];
+  /** Heuristic: model may have attempted tools but reply did not parse as avatars_tools_v1. */
+  worldviewParseDiagnosis?: {
+    hints: string[];
+    reason: string | null;
+  };
+  /** Do not show this reply in chat (e.g. `AVATARS_NO_COMMENT` or preflight skip). */
+  suppressUserMessage?: boolean;
+  /** Set when Ollama was skipped due to low routing score vs `preflightOllamaMinScore`. */
+  preflightSkip?: { score: number; threshold: number };
 }
 
 /** Debug payload shown in the expandable prompt panel (Ollama path). */
@@ -52,6 +83,17 @@ export interface OllamaPromptDebug {
   ruleBlockIds?: string[];
   /** Pending proactive notifications block merged into the prompt when present */
   pendingNotificationsBlock?: string;
+  /** Raw text returned by Ollama for this reply (before visible/tool split). */
+  rawModelReply?: string;
+  /** Tool names from a valid parsed envelope on that raw text, if any. */
+  worldviewParsedToolIntentNames?: string[];
+  /** Names of tools that actually executed successfully this turn. */
+  worldviewExecutedToolNames?: string[];
+  /** When envelope missing, heuristic parse mismatch hints. */
+  worldviewParseHints?: string[];
+  worldviewParseReason?: string | null;
+  /** When Ollama was not called because routing score was below the turn threshold. */
+  preflightSkip?: { score: number; threshold: number };
 }
 
 /** Reusable snippet in the global AI rules library */
@@ -109,6 +151,11 @@ export interface Avatar extends Profile {
   traitIds?: string[];
   /** Merged into prompts after rule-set blocks (e.g. Well of Souls / builder). */
   supplementalRules?: string;
+  /**
+   * When set, only these agentic tool ids may execute for this avatar (`executeWorldviewTools` / Gmail tools).
+   * Omit or empty = all registered tools allowed (backward compatible).
+   */
+  allowedAgenticToolIds?: string[];
 }
 
 /** Agent - manages data processes; can be foreground (as Avatar) or background */
@@ -119,6 +166,18 @@ export interface Agent extends Profile {
   associatedAvatarId?: string;
 }
 
+/** Email focus prep shown on user chat rows (Gmail + local cache). */
+export type EmailFocusRelevance = "relevant" | "irrelevant" | "uncertain";
+
+export type EmailFocusArtifacts = {
+  messageId: string;
+  threadId?: string;
+  cacheHit: boolean;
+  relevance: EmailFocusRelevance;
+  /** Open Gmail in browser when known. */
+  openUrl?: string;
+};
+
 /** A single message in the conversation thread */
 export interface ConversationMessage {
   id: string;
@@ -126,6 +185,10 @@ export interface ConversationMessage {
   avatarId?: string;
   content: string;
   timestamp: number;
+  /** When this user turn used a focused email, set after prep (icons + Gmail link). */
+  emailFocusArtifacts?: EmailFocusArtifacts;
+  /** User turn: whether the thread still expects substantive replies (system / future UI). */
+  responseRequirement?: "open" | "satisfied";
   /** Set for avatar replies from the chat pipeline (Avatar Interface Agent / `runAvatarAgent`) */
   replySource?: ReplySource;
   /** Ollama path: full prompt payload for inspection */
@@ -140,6 +203,8 @@ export interface ConversationMessage {
 export interface FocusItem {
   id: string;
   title: string;
+  /** Gmail inbox snippet when this focus came from the email list (prompt fallback if gather batch omits this id). */
+  snippet?: string;
 }
 
 /** Focus — refines what AIs should consider (SPEC: wired into Situation Context / relevantData) */
@@ -189,6 +254,35 @@ export interface PendingNotification {
   topicClusterId: string;
 }
 
+/**
+ * Per–context-tab depth sliders (0–1). Omitted keys use legacy defaults for that connector.
+ */
+export type ContextEntryDepth = {
+  email?: number;
+  calendar?: number;
+  contacts?: number;
+  projects?: number;
+};
+
+/** One inbox row after context scoring (ephemeral diagnostics for Storage viz). */
+export type EmailRankingDiagnosticRow = {
+  emailId: string;
+  subject: string;
+  from: string;
+  snippet: string;
+  rawScore: number;
+  normFocus: number;
+  normScore: number;
+  rank: number;
+};
+
+/** Full inbox scoring snapshot: top-K (in prompt) vs rest (evaluated, not injected). */
+export type EmailRankingDiagnostics = {
+  topK: number;
+  inPrompt: EmailRankingDiagnosticRow[];
+  belowTopK: EmailRankingDiagnosticRow[];
+};
+
 /** Situation Context - shared state for cascade and contextual awareness */
 export interface SituationContext {
   conversationThread: ConversationMessage[];
@@ -227,9 +321,40 @@ export interface SituationContext {
    */
   pendingReleaseClusterIds?: string[];
   /**
+   * Ephemeral: Gmail message ids the model may fetch via `gmail.fetch_message_body` this turn
+   * (loaded inbox snapshot for the turn, de-duplicated).
+   * Not persisted.
+   */
+  turnEmailFetchAllowlist?: string[];
+  /**
+   * Ephemeral: how `distributeAndRespond` runs for this processUserTurn call.
+   * Not persisted.
+   */
+  switchboardRoutingMode?: "cascade" | "single_wave";
+  /**
+   * Ephemeral: minimum `getRoutingScoreForAvatar` to call Ollama; below = synthetic no-comment without LLM.
+   * Omit to disable preflight skip.
+   */
+  preflightOllamaMinScore?: number;
+  /**
+   * Ephemeral: resolved executor avatar id for this turn (structural tools / prompt tier).
+   * Not persisted.
+   */
+  executorAvatarIdForTurn?: string;
+  /**
+   * Ephemeral: last inbox ranking snapshot for the most recent user turn (UI / Storage viz).
+   * Not persisted.
+   */
+  lastEmailRankingDiagnostics?: EmailRankingDiagnostics;
+  /**
    * Mirror of Context panel Focus for proactive scoring (persisted).
    */
   userFocus?: SituationFocus;
+  /**
+   * Depth per connector tab (0–1). Omitted keys = legacy defaults for that source.
+   * Persisted.
+   */
+  contextEntryDepth?: ContextEntryDepth;
   /**
    * Behavior dials (proactive thresholds, context vs character, mood / engagement); persisted.
    */
@@ -240,6 +365,18 @@ export interface SituationContext {
    * Persisted.
    */
   primaryAvatarSlotCount?: number;
+  /**
+   * Roster priority 0–100 per avatar id (ties broken by id when sorting). Cold-reset from legacy popularity.
+   * Persisted.
+   */
+  avatarRosterPriorityScoreById?: Record<string, number>;
+  /** When true, `avatarRosterPriorityScoreById` has been initialized and legacy popularity key cleared. Persisted. */
+  avatarRosterScoresInitialized?: boolean;
+  /**
+   * UI-only: executor override (e.g. pop-in selected). Recomputed on roster selection/movement per product rules.
+   * Persisted.
+   */
+  executorOverrideAvatarId?: string;
   /**
    * User-chosen portrait image per avatar id (typically data URLs from local file pick).
    * Persisted.
@@ -295,6 +432,8 @@ export interface CompactTurnRecord {
     contactId?: string;
     projectId?: string;
   };
+  /** Gmail focus prep result for this turn (archive / routing UI). */
+  emailFocusArtifacts?: EmailFocusArtifacts;
   /**
    * Legacy: first forced responder, or empty when `routingMode` is switchboard.
    * Prefer `routingMode` + `forcedResponderIds` when present.

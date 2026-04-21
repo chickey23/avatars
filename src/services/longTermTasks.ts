@@ -10,6 +10,8 @@ export interface LongTermTask {
   avatarId: string;
   title: string;
   description?: string;
+  /** World-metadata project id when the task was created from a project. */
+  projectId?: string;
   status: "active" | "completed" | "paused";
   createdAt: number;
   updatedAt: number;
@@ -36,7 +38,8 @@ export function saveTasks(tasks: LongTermTask[]): void {
 export function assignTask(
   avatarId: string,
   title: string,
-  description?: string
+  description?: string,
+  projectId?: string
 ): LongTermTask {
   const tasks = loadTasks();
   const task: LongTermTask = {
@@ -44,6 +47,7 @@ export function assignTask(
     avatarId,
     title,
     description,
+    projectId,
     status: "active",
     createdAt: Date.now(),
     updatedAt: Date.now(),

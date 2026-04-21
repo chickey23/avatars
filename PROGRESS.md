@@ -5,8 +5,9 @@
 - **Canonical order:** [SPEC.md](SPEC.md) § Implementation Order (Active).
 - **Phased roadmap (A–G: viz, metadata, execution, bench, popularity, archive):** [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md).
 - **Session handoff + checklist:** [HANDOFF_TOMORROW.md](HANDOFF_TOMORROW.md).
-- **Shipped this cycle:** Email / calendar / **contacts** **user-turn** scoring ([`contextScoring/`](src/services/contextScoring/)); **world metadata** v1 JSON in `localStorage` ([`worldMetadata/`](src/services/worldMetadata/)) with debounced persist and contact scoring overlay; **proactive pending** MVP ([`pendingNotifications.ts`](src/services/pendingNotifications.ts) + types + [`App.tsx`](src/App.tsx) sidebar UX: **Discuss** sends a user turn with forced cluster release and clears that cluster from pending after the turn; **Dismiss** drops one row); **dev** verify (`scripts/verify.ps1`, `start-dev.cmd`, `build-release.cmd`); **Clear chat** without confirm; **context scoring** docs under [`docs/`](docs/CONTEXT_SCORING.md).
-- **Next (priority order):** **Switchboard visualization** ([`docs/SWITCHBOARD_VISUALIZATION.md`](docs/SWITCHBOARD_VISUALIZATION.md)); **shared metadata** (`data/metadata/`, Projects, UI / chat entry); path toward **project execution** (`Avatar.assignedTasks`, `activeTask`, future agents). **Conversation archive** segments/chapters as follow-on. **Proactive:** timer/cue; **sequential release batch** polish **deprioritized** (MVP acceptable). Active Task / Focus Watcher; Tauri file or SQLite when needed.
+- **Test plan:** [docs/TEST_PLAN.md](docs/TEST_PLAN.md). **Agentic tools:** [docs/AGENTIC_TOOLS.md](docs/AGENTIC_TOOLS.md) (JSON + lexical lines, permissions, single-wave routing).
+- **Shipped this cycle:** Email / calendar / **contacts** **user-turn** scoring ([`contextScoring/`](src/services/contextScoring/)); **world metadata** v1 JSON in `localStorage` ([`worldMetadata/`](src/services/worldMetadata/)) with debounced persist and contact scoring overlay; **proactive pending** MVP ([`pendingNotifications.ts`](src/services/pendingNotifications.ts) + types + [`App.tsx`](src/App.tsx) sidebar UX: **Discuss** sends a user turn with forced cluster release and clears that cluster from pending after the turn; **Dismiss** drops one row); **dev** verify (`scripts/verify.ps1`, `start-dev.cmd`, `build-release.cmd`); **Clear chat** without confirm; **context scoring** docs under [`docs/`](docs/CONTEXT_SCORING.md); **Chat Visualizer / Waves** — persistent queue ([`switchboardWavesQueue/`](src/services/switchboardWavesQueue/)), optional resizable column, avatar-accent dots + user-chrome tick, rise animation (`SWITCHBOARD_WAVE_TRAVEL_MS`), per-wave blink until that wave’s replies appear (`onWaveChatComplete` → [`markWaveSettledForUserDepth`](src/services/switchboardWavesQueue/operations.ts)); UI [`SwitchboardViz.tsx`](src/components/SwitchboardViz.tsx); [`docs/SWITCHBOARD_VISUALIZATION.md`](docs/SWITCHBOARD_VISUALIZATION.md). **Structured worldview tools** — `avatars_tools_v1` JSON from Ollama ([`avatarAgents.ts`](src/services/avatarAgents.ts), [`worldviewTools/`](src/services/worldviewTools/)); **parse diagnostics** ([`diagnose.ts`](src/services/worldviewTools/diagnose.ts)), session log on mismatch, in-prompt **Model reply / tools parse** panel, **Waves** warn marker (`!`); **WV audit** with revertible patches + **Revert bad patches** UI; **project patches → long-term task** + avatar assignment ([`projectAvatarLink.ts`](src/services/projectAvatarLink.ts)); **routing downvote** ([`avatarPopularity.ts`](src/services/avatarPopularity.ts)); **Gmail fetch allowlist** = full loaded inbox snapshot for the turn; **Ollama relevant-data** preserves ranked email id lines ([`relevantContextPrompt.ts`](src/services/relevantContextPrompt.ts)). **Manual + automated test guide:** [`docs/TEST_PLAN.md`](docs/TEST_PLAN.md). **Switchboard:** optional **`single_wave`** mode ([`switchboard.ts`](src/services/switchboard.ts)) — one responder wave per call (no cascade); **`AVATARS_NO_COMMENT`** hides empty participation ([`avatarAgents.ts`](src/services/avatarAgents.ts)); optional **preflight** (set `preflightOllamaMinScore` on the turn context) skips Ollama when [`getRoutingScoreForAvatar`](src/services/routingScore.ts) is below that threshold. **Lexical tools** [`AVATARS_MEM:`](src/services/agenticTools/lexicalParse.ts) / Gmail line form + **`allowedAgenticToolIds`** on [`Avatar`](src/types/index.ts).
+- **Next (priority order):** **World model / shared metadata** — Projects as the hub ([`docs/WORLD_MODEL_AND_PREPROCESSOR.md`](docs/WORLD_MODEL_AND_PREPROCESSOR.md)), `data/metadata/` path, UI / chat entry; bridge **`Avatar.assignedTasks`**, tasks, and **project execution** (`activeTask`, future agents). **Conversation archive** segments/chapters as follow-on. **Proactive:** timer/cue; **sequential release batch** polish **deprioritized** (MVP acceptable). Active Task / Focus Watcher; Tauri file or SQLite when needed.
 - **Context scoring docs:** [docs/CONTEXT_SCORING.md](docs/CONTEXT_SCORING.md) (overview + world metadata), [docs/CONTEXT_SCORING_EMAIL.md](docs/CONTEXT_SCORING_EMAIL.md), [docs/CONTEXT_SCORING_CALENDAR.md](docs/CONTEXT_SCORING_CALENDAR.md), [docs/CONTEXT_SCORING_CONTACTS.md](docs/CONTEXT_SCORING_CONTACTS.md).
 - **Terminology:** [docs/STYLEGUIDE.md](docs/STYLEGUIDE.md). **Rebuild:** [TECHSPEC.md](TECHSPEC.md).
 
@@ -48,11 +49,11 @@
 |----------|--------|
 | Data ingestion | ✅ `gatherDataFromSources()` |
 | Tag / cascade routing | ✅ `evaluateRelevance()` + opinion matrix; `getRoutingLastMessage()` |
-| Structured context scoring (per source) | ⚠️ Partial | Email, calendar, contacts ranked in user-turn prompts; overlay from world metadata |
+| Structured context scoring (per source) | ⚠️ MVP + roadmap | User-turn (+ proactive) paths match SPEC **MVP**; dedicated **background** runners and evolved mechanisms per SPEC § Context scoring agents |
 | Distribution (reactive) | ✅ Queued turns in `AppContext` |
 | Distribution (proactive) | ⚠️ MVP | `pendingNotifications.ts`, `userFocus`, interval + turn merge; per-avatar sidebar UI; token + **Discuss** forced release; pending cleared after released turn; **sequential release batch** polish **lower priority** (acceptable for now) |
 | Switchboard trace + turn archive | ✅ |
-| Switchboard visualization (ambient wave/bubbles) | ❌ Not started | Next per SPEC; [`docs/SWITCHBOARD_VISUALIZATION.md`](docs/SWITCHBOARD_VISUALIZATION.md) |
+| Switchboard visualization (ambient wave/bubbles) | ✅ Done | Queue + [`SwitchboardViz.tsx`](src/components/SwitchboardViz.tsx); `onWaveChatComplete` / [`markWaveSettledForUserDepth`](src/services/switchboardWavesQueue/operations.ts); [`docs/SWITCHBOARD_VISUALIZATION.md`](docs/SWITCHBOARD_VISUALIZATION.md) |
 
 ### Local LLM (Ollama)
 
@@ -96,7 +97,7 @@ Order: email → calendar → contacts → others.
 
 | Spec | Status |
 |------|--------|
-| `data/metadata/` (People, Dates, Events, Projects) | ⚠️ Partial | People-style fields in **world metadata** v1 (`localStorage`); SPEC path / Tauri file TBD |
+| `data/metadata/` (People, Dates, Events, Projects) | ⚠️ Partial | People-style fields in **world metadata** v1 (`localStorage`); SPEC path / Tauri file TBD; **migration** — review and move existing elements into new stores at cutover (SPEC § Shared Metadata) |
 
 ### Behavioral Instructions for AI (Spec § Document Roles)
 
@@ -104,8 +105,8 @@ Order: email → calendar → contacts → others.
 |-------------|--------|
 | Spec-first, response style | ✅ |
 | Tests | ⚠️ Vitest for email + pending helpers |
-| Layout: consult user | ⚠️ Proactive sidebar UX iterated without formal sign-off |
-| Signature phrase | ⚠️ Inconsistent |
+| Layout: consult user | ✅ | Shipped UI collectively approved; **new** major layout/surfaces consult user; see **docs/STYLEGUIDE.md** § 7 |
+| Signature phrase | ✅ | Script + Agent-mode habit in active use (SPEC § Behavioral Instructions) |
 
 ### Dev tooling
 
@@ -122,7 +123,7 @@ Order: email → calendar → contacts → others.
 
 1. **Focus vs Active Task** — Focus UI + `userFocus` for proactive; Active Task / Focus Watcher agents not implemented (SPEC).
 2. **To Do List** — Header quick links; not in SPEC (enhancement).
-3. **Shared metadata** — World metadata v1 in `localStorage` ([`worldMetadata/`](src/services/worldMetadata/)); SPEC `data/metadata/` path and Tauri file backend still open.
+3. **Shared metadata** — World metadata v1 in `localStorage` ([`worldMetadata/`](src/services/worldMetadata/)); SPEC `data/metadata/` path and Tauri file backend still open; plan to **review and migrate** into on-disk stores when implemented (SPEC § Shared Metadata).
 4. **Proactive distribution** — MVP live (pending queue + UI); timer/cue and high-urgency UX still open; **sequential batch** polish **deprioritized** per SPEC roadmap.
 5. **Credentials path** — Spec `data/connections/...` vs app data `%APPDATA%\com.avatars.app\...` (normal for desktop).
 
@@ -141,4 +142,4 @@ Order: email → calendar → contacts → others.
 
 ## Recent milestone bullets
 
-See **[HANDOFF_TOMORROW.md](HANDOFF_TOMORROW.md)** for checklist and **next priorities** (Switchboard visualization first; metadata / projects).
+See **[HANDOFF_TOMORROW.md](HANDOFF_TOMORROW.md)** for checklist and **next priorities** (world model / projects; [`docs/WORLD_MODEL_AND_PREPROCESSOR.md`](docs/WORLD_MODEL_AND_PREPROCESSOR.md)).

@@ -1,3 +1,4 @@
+use std::thread;
 use std::time::Duration;
 
 const OLLAMA_TAGS: &str = "http://127.0.0.1:11434/api/tags";
@@ -77,27 +78,27 @@ pub struct OllamaGenPayload {
     pub prompt: String,
 }
 
-#[tauri::command]
-pub async fn ollama_generate(payload: OllamaGenPayload) -> Result<String, String> {
-    let Some(client) = http_client_long() else {
-        return Err("HTTP client unavailable".to_string());
-    };
-    let model_name = match payload.model {
-        Some(ref m) if !m.trim().is_empty() => m.trim().to_string(),
-        _ => {
-            let names = model_names_from_tags(&client).await;
-            if names.is_empty() {
-                eprintln!("[ollama] ollama_generate: no models pulled; run `ollama pull <model>`");
-                return Err("no models pulled (run `ollama pull <model>`)".to_string());
-            }
-            names[0].clone()
-        }
-    };
+/// True when the first attempt failed before an HTTP status (typical: Ollama briefly unreachable).
+fn ollama_generate_transient(err: &str) -> bool {
+    err.contains("error sending request")
+        || err.contains("connection refused")
+        || err.contains("Connection reset")
+        || err.contains("broken pipe")
+}
 
+async fn ollama_generate_once(
+    client: &reqwest::Client,
+    model_name: &str,
+    prompt: &str,
+) -> Result<String, String> {
+    // Default Ollama context is often 2048; long prompts (context + tools + single-wave) can fail or return empty.
     let body = serde_json::json!({
         "model": model_name,
-        "prompt": payload.prompt,
+        "prompt": prompt,
         "stream": false,
+        "options": {
+            "num_ctx": 8192
+        }
     });
 
     let resp = client
@@ -128,6 +129,45 @@ pub async fn ollama_generate(payload: OllamaGenPayload) -> Result<String, String
         return Err("empty response".to_string());
     }
     Ok(trimmed.to_string())
+}
+
+#[tauri::command]
+pub async fn ollama_generate(payload: OllamaGenPayload) -> Result<String, String> {
+    let Some(client) = http_client_long() else {
+        return Err("HTTP client unavailable".to_string());
+    };
+    let model_name = match payload.model {
+        Some(ref m) if !m.trim().is_empty() => m.trim().to_string(),
+        _ => {
+            let names = model_names_from_tags(&client).await;
+            if names.is_empty() {
+                eprintln!("[ollama] ollama_generate: no models pulled; run `ollama pull <model>`");
+                return Err("no models pulled (run `ollama pull <model>`)".to_string());
+            }
+            names[0].clone()
+        }
+    };
+
+    match ollama_generate_once(&client, &model_name, &payload.prompt).await {
+        Ok(s) => Ok(s),
+        Err(e) if ollama_generate_transient(&e) => {
+            eprintln!("[ollama] generate transient failure, retrying once: {}", e);
+            thread::sleep(Duration::from_millis(350));
+            match ollama_generate_once(&client, &model_name, &payload.prompt).await {
+                Ok(s) => Ok(s),
+                Err(e2) if ollama_generate_transient(&e2) => {
+                    eprintln!(
+                        "[ollama] generate transient failure, retrying a second time: {}",
+                        e2
+                    );
+                    thread::sleep(Duration::from_millis(600));
+                    ollama_generate_once(&client, &model_name, &payload.prompt).await
+                }
+                Err(e2) => Err(e2),
+            }
+        }
+        Err(e) => Err(e),
+    }
 }
 
 fn parse_embedding_json(json: &serde_json::Value) -> Option<Vec<f64>> {

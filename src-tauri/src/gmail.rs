@@ -51,17 +51,33 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub fn fetch_calendar_upcoming(app: tauri::AppHandle, days: Option<u32>) -> Result<Vec<super::CalendarEvent>, String> {
-        super::fetch_calendar_upcoming(app, days.unwrap_or(30))
+    pub fn fetch_calendar_upcoming(
+        app: tauri::AppHandle,
+        days: Option<u32>,
+        max_results: Option<u32>,
+    ) -> Result<Vec<super::CalendarEvent>, String> {
+        super::fetch_calendar_upcoming(app, days.unwrap_or(30), max_results.unwrap_or(50))
     }
 
     #[tauri::command]
     pub fn fetch_contacts(app: tauri::AppHandle, limit: Option<u32>) -> Result<Vec<super::Contact>, String> {
         super::fetch_contacts(app, limit.unwrap_or(50))
     }
+
+    /// Full message body (plain text preferred), capped for prompts.
+    #[tauri::command]
+    pub fn gmail_fetch_message_body(
+        app: tauri::AppHandle,
+        message_id: String,
+    ) -> Result<super::GmailMessageBodyResult, String> {
+        super::fetch_gmail_message_body(app, message_id)
+    }
 }
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE, URL_SAFE_NO_PAD},
+    Engine as _,
+};
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -95,12 +111,24 @@ pub struct GmailTokens {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GmailMessage {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
     pub from: String,
     pub subject: String,
     pub snippet: String,
     pub date: u64,
+}
+
+/// Plain-text body plus optional Gmail thread id (for web URLs).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GmailMessageBodyResult {
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -382,8 +410,10 @@ pub fn fetch_gmail_recent(app: AppHandle, limit: u32) -> Result<Vec<GmailMessage
         }
 
         #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
         struct MessageFull {
             id: String,
+            thread_id: Option<String>,
             snippet: Option<String>,
             internal_date: Option<String>,
             payload: Option<MessagePayload>,
@@ -417,6 +447,7 @@ pub fn fetch_gmail_recent(app: AppHandle, limit: u32) -> Result<Vec<GmailMessage
 
         out.push(GmailMessage {
             id: msg.id,
+            thread_id: msg.thread_id,
             from,
             subject,
             snippet: msg.snippet.unwrap_or_default(),
@@ -424,6 +455,122 @@ pub fn fetch_gmail_recent(app: AppHandle, limit: u32) -> Result<Vec<GmailMessage
         });
     }
     Ok(out)
+}
+
+const MAX_GMAIL_BODY_CHARS: usize = 65536;
+
+/// Fetch full message and extract best-effort plain text for prompts.
+pub fn fetch_gmail_message_body(app: AppHandle, message_id: String) -> Result<GmailMessageBodyResult, String> {
+    let id = message_id.trim();
+    if id.is_empty() {
+        return Err("empty message id".to_string());
+    }
+    let access_token = refresh_if_needed(&app)?;
+    let client = reqwest::blocking::Client::new();
+    let url = format!(
+        "{}/messages/{}?format=full",
+        GMAIL_API_BASE,
+        urlencoding::encode(id)
+    );
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .send()
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Gmail message: {}", resp.text().unwrap_or_default()));
+    }
+    let v: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
+    let thread_id = v
+        .get("threadId")
+        .and_then(|x| x.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let mut plain: Vec<String> = Vec::new();
+    let mut html: Vec<String> = Vec::new();
+    if let Some(payload) = v.get("payload") {
+        collect_body_parts(payload, &mut plain, &mut html);
+    }
+    let mut text = if !plain.is_empty() {
+        plain.join("\n\n")
+    } else if !html.is_empty() {
+        strip_html_basic(&html.join("\n\n"))
+    } else {
+        String::new()
+    };
+    text = text.chars().filter(|c| *c != '\r').collect::<String>();
+    let t = text.trim();
+    let mut out = t.to_string();
+    if out.is_empty() {
+        if let Some(sn) = v.get("snippet").and_then(|x| x.as_str()).map(str::trim) {
+            if !sn.is_empty() {
+                out = sn.to_string();
+            }
+        }
+    }
+    if out.chars().count() > MAX_GMAIL_BODY_CHARS {
+        out = out
+            .chars()
+            .take(MAX_GMAIL_BODY_CHARS.saturating_sub(1))
+            .collect::<String>()
+            + "…";
+    }
+    Ok(GmailMessageBodyResult {
+        text: out,
+        thread_id,
+    })
+}
+
+fn collect_body_parts(v: &serde_json::Value, plain: &mut Vec<String>, html: &mut Vec<String>) {
+    let mime = v
+        .get("mimeType")
+        .and_then(|x| x.as_str())
+        .unwrap_or("");
+    if let Some(data) = v.get("body").and_then(|b| b.get("data")).and_then(|d| d.as_str()) {
+        if !data.is_empty() {
+            if let Ok(text) = decode_gmail_body_data(data) {
+                if mime.starts_with("text/plain") {
+                    plain.push(text);
+                } else if mime.starts_with("text/html") {
+                    html.push(text);
+                }
+            }
+        }
+    }
+    if let Some(parts) = v.get("parts").and_then(|p| p.as_array()) {
+        for part in parts {
+            collect_body_parts(part, plain, html);
+        }
+    }
+}
+
+fn decode_gmail_body_data(data: &str) -> Result<String, String> {
+    let t = data.trim();
+    let bytes = URL_SAFE_NO_PAD
+        .decode(t)
+        .or_else(|_| URL_SAFE.decode(t))
+        .or_else(|_| STANDARD.decode(t))
+        .map_err(|e| e.to_string())?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
+}
+
+fn strip_html_basic(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    let t = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    t.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
 }
 
 fn parse_calendar_timestamp(val: &serde_json::Value) -> u64 {
@@ -443,8 +590,9 @@ fn parse_calendar_timestamp(val: &serde_json::Value) -> u64 {
     0
 }
 
-pub fn fetch_calendar_upcoming(app: AppHandle, days: u32) -> Result<Vec<CalendarEvent>, String> {
+pub fn fetch_calendar_upcoming(app: AppHandle, days: u32, max_results: u32) -> Result<Vec<CalendarEvent>, String> {
     let days = days.max(1).min(365);
+    let max_results = max_results.max(1).min(2500);
     let access_token = refresh_if_needed(&app)?;
 
     let now = Utc::now();
@@ -452,10 +600,11 @@ pub fn fetch_calendar_upcoming(app: AppHandle, days: u32) -> Result<Vec<Calendar
     let time_max = (now + chrono::Duration::days(days as i64)).to_rfc3339();
 
     let url = format!(
-        "{}?timeMin={}&timeMax={}&maxResults=50&singleEvents=true&orderBy=startTime",
+        "{}?timeMin={}&timeMax={}&maxResults={}&singleEvents=true&orderBy=startTime",
         CALENDAR_API_BASE,
         urlencoding::encode(&time_min),
-        urlencoding::encode(&time_max)
+        urlencoding::encode(&time_max),
+        max_results
     );
 
     let client = reqwest::blocking::Client::new();

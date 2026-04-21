@@ -1,6 +1,6 @@
 # Context scoring system (overview)
 
-This document is the **conceptual home** for how the Avatar Interface turns raw connector data into **structured, bounded relevance** for LLM prompts. Per-source details: [email](CONTEXT_SCORING_EMAIL.md), [calendar](CONTEXT_SCORING_CALENDAR.md), [contacts](CONTEXT_SCORING_CONTACTS.md).
+This document is the **conceptual home** for how the Avatar Interface turns raw connector data into **structured, bounded relevance** for LLM prompts. Per-source details: [email](CONTEXT_SCORING_EMAIL.md), [calendar](CONTEXT_SCORING_CALENDAR.md), [contacts](CONTEXT_SCORING_CONTACTS.md). A deterministic **preprocessor** adjusts per-source caps before scoring ([WORLD_MODEL_AND_PREPROCESSOR.md](WORLD_MODEL_AND_PREPROCESSOR.md)).
 
 ---
 
@@ -25,11 +25,11 @@ Connectors (email, calendar, contacts, …) can supply more information than bel
 |------|--------|
 | **Situation Context** | The structured state passed through the app: thread, recent events, `relevantData`, focus, optional WoS rules, proactive fields, etc. See types in `src/types`. |
 | **User turn** | One user message that triggers `processUserTurn`: gather data, merge proactive hints, build `relevantData`, run the switchboard / avatars. |
-| **Corpus** | Lowercase text built from the last **N** conversation messages plus optional `activeTask`, used to measure **keyword overlap** with connector items. |
-| **Focus** | User-selected context (`SituationFocus`): pointers to an email, calendar event, or contact. Drives **id-match bonuses** in scoring and extra focus lines in prompts. |
+| **Corpus** | Lowercase text from the last **N** conversation messages, optional `activeTask`, optional **focus-derived appendix** (focused email subject/snippet/body excerpt, focused calendar title/location/time), and optional **world-metadata scoring corpus** (user profile, focused project text, capped people overlays)—used for **keyword overlap** with connector items. |
+| **Focus** | User-selected context (`SituationFocus`): pointers to an email, calendar event, or contact. Drives **id-match bonuses**, the focus appendix above, and **soft bonuses** (shared tokens / venue-ish overlap, same-day mail vs focused email date, calendar time-window proximity). |
 | **Top-K** | Maximum number of scored lines injected per source per turn (e.g. `EMAIL_CONTEXT_TOP_K`, `CALENDAR_CONTEXT_TOP_K`, `CONTACT_CONTEXT_TOP_K`). |
-| **World metadata** | Versioned local JSON (`schemaVersion: 1`) holding per-person fields (tags, relationship note, notes) keyed by connector contact id. Drives contact **overlay** text in scoring; see [World metadata (JSON)](#world-metadata-json-v1) below. |
-| **Normalized score** | Raw scores are scaled to **0–100** relative to the **best score in the current batch** for display on each line; useful for humans, not a calibrated probability. |
+| **World metadata** | Versioned local JSON holding per-person fields (tags, relationship note, notes), projects, and user profile. Drives contact **overlay** blobs and a **capped scoring corpus** for email/calendar/contacts; see [World metadata (JSON)](#world-metadata-json-v1) below. |
+| **Displayed score (`score` on each line)** | **Focus-relative 0–100** (`normFocus`): when a row matches **focus id** for that source, it shows **100**; other rows normalize against the **max base score among non–focus-id rows** in the same top-**K** batch so related items (e.g. same venue) are not all rounded to **0**. A legacy batch norm is still computed internally as `normScore` for diagnostics. |
 | **`relevantData`** | `string[]` in `SituationContext`: primary channel for connector-derived and rules text that avatars receive as “what’s relevant right now.” |
 | **Switchboard** | Logic that chooses which avatars speak and in what order; uses the situation and tags; works **with** `relevantData` rather than replacing scoring. |
 | **Connector** | Module that reads external or mock data (OAuth, APIs) into typed items (`EmailItem`, `CalendarEvent`, …). |
@@ -77,6 +77,14 @@ That model is meant to **deepen over time** as we add sources, metadata, and bet
 **Migration path:** When JSON grows large or queries are needed, implement a new backend (Tauri **file** under app data, or **SQLite**) behind `WorldMetadataBackend`, optionally one-time import from `localStorage`. **Dedicated device:** `localStorage` is per browser profile; moving to a dedicated machine favors a **file** or **DB** path under the app’s data directory plus export/import if needed.
 
 There is **no chat UI** for editing metadata in this phase; `patchWorldMetadata` is available for future UI or tooling.
+
+**Scoring corpus helper:** [`src/services/worldMetadata/scoringCorpus.ts`](../src/services/worldMetadata/scoringCorpus.ts) — `buildWorldMetadataScoringCorpus` (capped length, optional focused project).
+
+---
+
+## Social solo heuristic
+
+When **no contact is focused** and every contact in the scored top-**K** has **raw score 0** (no overlap with corpus), `processUserTurn` appends one line to `relevantData` (`SOCIAL_SOLO_HEURISTIC_LINE` in [`contacts.ts`](../src/services/contextScoring/contacts.ts)) so avatars can treat the situation as possibly unstated companions / solo context without inventing people.
 
 ---
 

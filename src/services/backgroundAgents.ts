@@ -4,6 +4,7 @@
  * Background agents report through Switchboard to Primary Avatars.
  */
 
+import { suggestActiveTaskFromUserMessage } from "./activeTaskAgent";
 
 export interface BackgroundAgentTask {
   agentId: string;
@@ -54,5 +55,23 @@ export function registerDefaultRunners(): void {
       return String((task.data as { reminder: string }).reminder);
     }
     return null;
+  });
+
+  /** SPEC § Active Task Agent — extension point; main path uses `suggestActiveTaskFromUserMessage` in `processUserTurn`. */
+  registerAgentRunner("active-task", async (task) => {
+    if (!task.data || typeof task.data !== "object" || !("userMessage" in task.data)) {
+      return null;
+    }
+    const msg = String((task.data as { userMessage: string }).userMessage);
+    const s = suggestActiveTaskFromUserMessage(msg);
+    return s ? `Active task suggestion: ${s}` : null;
+  });
+
+  /** SPEC § Focus Watcher — extension point; UI also logs focus changes to `recentEvents`. */
+  registerAgentRunner("focus-watcher", async (task) => {
+    if (!task.data || typeof task.data !== "object" || !("line" in task.data)) {
+      return null;
+    }
+    return String((task.data as { line: string }).line);
   });
 }

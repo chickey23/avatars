@@ -4,9 +4,11 @@
  */
 
 import type { EmailItem } from "./types";
+import { appendSessionLog } from "../services/sessionLog";
 
 export interface GmailMessage {
   id: string;
+  threadId?: string;
   from: string;
   subject: string;
   snippet: string;
@@ -16,6 +18,7 @@ export interface GmailMessage {
 function toEmailItem(m: GmailMessage): EmailItem {
   return {
     id: m.id,
+    ...(m.threadId ? { threadId: m.threadId } : {}),
     from: m.from,
     subject: m.subject,
     snippet: m.snippet,
@@ -110,10 +113,16 @@ export const gmailConnector = {
 };
 
 /** Fetch upcoming calendar events. Uses same Google OAuth as Gmail. Throws on error. */
-export async function fetchCalendarUpcoming(days = 30): Promise<import("./types").CalendarEvent[]> {
+export async function fetchCalendarUpcoming(
+  days = 30,
+  maxResults = 50
+): Promise<import("./types").CalendarEvent[]> {
   if (!isTauri()) return [];
   const { invoke } = await import("@tauri-apps/api/core");
-  return await invoke<import("./types").CalendarEvent[]>("fetch_calendar_upcoming", { days });
+  return await invoke<import("./types").CalendarEvent[]>("fetch_calendar_upcoming", {
+    days,
+    maxResults,
+  });
 }
 
 /** Fetch contacts from Google People API. Uses same Google OAuth as Gmail. Throws on error. */
@@ -121,4 +130,46 @@ export async function fetchContacts(limit = 50): Promise<import("./types").Conta
   if (!isTauri()) return [];
   const { invoke } = await import("@tauri-apps/api/core");
   return await invoke<import("./types").Contact[]>("fetch_contacts", { limit });
+}
+
+export type GmailMessageBodyFetch = {
+  body: string | null;
+  threadId?: string;
+};
+
+/**
+ * Full email body text for a message id (Gmail API `format=full`).
+ * Returns null body if not in Tauri, on error, or empty body.
+ */
+export async function fetchGmailMessageBody(
+  messageId: string
+): Promise<GmailMessageBodyFetch> {
+  if (!isTauri() || !messageId.trim()) {
+    return { body: null };
+  }
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const res = await invoke<{ text: string; threadId?: string }>(
+      "gmail_fetch_message_body",
+      {
+        messageId,
+      }
+    );
+    const text = res?.text?.trim() ?? "";
+    const threadId =
+      typeof res?.threadId === "string" && res.threadId.trim()
+        ? res.threadId.trim()
+        : undefined;
+    return {
+      body: text ? text : null,
+      ...(threadId ? { threadId } : {}),
+    };
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    appendSessionLog("gmail", "gmail_fetch_message_body failed", {
+      level: "warn",
+      detail: errMsg.slice(0, 400),
+    });
+    return { body: null };
+  }
 }

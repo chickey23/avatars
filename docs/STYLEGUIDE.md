@@ -12,8 +12,10 @@ This project overloads **agent** in several domains. Use the definitions below i
 | **Agent** (capital) | A **first-class architecture actor** in SPEC: implements or will implement `Agent`, participates in Switchboard / Situation Context, or is explicitly named in SPEC (Switchboard Agent, Active Task Agent, …). | “The Switchboard Agent routes turns.” |
 | **Avatar Interface Agent** | The **per-avatar chat pipeline** that runs with full Situation Context: `runAvatarAgent` in [`avatarAgents.ts`](../src/services/avatarAgents.ts). Not every `Agent` record in data; this is the **runtime role**. | “The Avatar Interface Agent builds the Ollama prompt.” |
 | **Background agent** | Code in [`backgroundAgents.ts`](../src/services/backgroundAgents.ts): registered runners, optional notification-style outputs. Lowercase when used as a **category** in prose; capitalize when naming a **specific** spec’d agent. | “Register a background agent for weather.” |
-| **Context scoring agent** | SPEC-defined background agents that score connector items (email → calendar → contacts). | Per SPEC § Context scoring agents. |
+| **Context scoring agent** | SPEC-defined **role** per context family: score/rank connector items (email → calendar → contacts → …). **MVP** implements this via user-turn and proactive paths; dedicated **background** runners are incremental. | Per SPEC § Context scoring agents; **TECHSPEC** § 12.3. |
 | **Switchboard** | Coordination layer (`switchboard.ts`): relevance, cascade, `distributeAndRespond`. Often paired with “Switchboard Agent” in SPEC. | “The Switchboard selects responders.” |
+| **Project** | A **real-world container** the user (and Avatars) track in shared metadata: goals, notes, links to people/events; may own **many** tasks. In code, `ProjectMetadataRecord` / world metadata `projects`. | “Assign work to the Q2 launch **Project**.” |
+| **Task** | An **assignable unit** of work: `LongTermTask`, **`Avatar.assignedTasks`**, or UI “to-do” toward a project. **Project** and **task** are sometimes used loosely in conversation; in docs prefer **Project** for the container and **task** for the atomic item. | “This **task** belongs to the renovation **Project**.” |
 
 ---
 
@@ -77,3 +79,9 @@ Code identifiers (`runAvatarAgent`, `BackgroundAgentTask`) stay as-is for stabil
 ### Code comments aligned with §2
 
 Comments in [`wellOfSoulsPrompt.ts`](../src/services/wellOfSoulsPrompt.ts), [`defaultAvatars.ts`](../src/data/defaultAvatars.ts) (Switchboard record), and [`types/index.ts`](../src/types/index.ts) (`ConversationMessage`) use this vocabulary.
+
+---
+
+## 7. UI approval (layout and visual choices)
+
+Aligned with **SPEC.md** § Behavioral Instructions (layout). **Shipped** UI in the repo is treated as **collectively approved**. **New** work that changes layout structure, adds major surfaces, or departs from established patterns should involve the user. Iterative tweaks that stay consistent with existing patterns do not require a separate sign-off each time.

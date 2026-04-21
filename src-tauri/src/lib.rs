@@ -2,6 +2,7 @@ mod gmail;
 mod ollama;
 mod session_log;
 mod shell;
+mod world_metadata;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,6 +17,7 @@ pub fn run() {
             gmail::commands::has_gmail_tokens,
             gmail::commands::start_gmail_oauth,
             gmail::commands::fetch_gmail_recent,
+            gmail::commands::gmail_fetch_message_body,
             gmail::commands::fetch_calendar_upcoming,
             gmail::commands::fetch_contacts,
             ollama::ollama_presence,
@@ -25,6 +27,8 @@ pub fn run() {
             ollama::ollama_embed,
             session_log::session_log_begin_session,
             session_log::session_log_append,
+            world_metadata::world_metadata_read,
+            world_metadata::world_metadata_write,
         ])
         .run(tauri::generate_context!())
         .expect("error while running avatars application");

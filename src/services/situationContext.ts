@@ -7,6 +7,7 @@ import type {
   SituationContext,
   ConversationMessage,
   SituationFocus,
+  EmailFocusArtifacts,
 } from "../types";
 
 export function createEmptyContext(): SituationContext {
@@ -28,6 +29,23 @@ export function appendToConversation(
       ...ctx.recentEvents.slice(-9),
       `msg:${msg.role}:${msg.avatarId ?? "user"}:${msg.timestamp}`,
     ],
+  };
+}
+
+/** Attach Gmail focus prep metadata to an existing user line (after blocking prep). */
+export function patchUserMessageEmailFocusArtifacts(
+  ctx: SituationContext,
+  userMessageId: string,
+  artifacts: EmailFocusArtifacts | undefined
+): SituationContext {
+  if (!artifacts) return ctx;
+  return {
+    ...ctx,
+    conversationThread: ctx.conversationThread.map((m) =>
+      m.id === userMessageId && m.role === "user"
+        ? { ...m, emailFocusArtifacts: artifacts }
+        : m
+    ),
   };
 }
 
@@ -76,6 +94,26 @@ export function getRoutingLastMessage(
     if (found) return found;
   }
   return tail;
+}
+
+/**
+ * Merge focus from a queued job with persisted `userFocus`. Job fields win when present.
+ */
+export function mergeSituationFocus(
+  jobFocus: SituationFocus | undefined,
+  persisted: SituationFocus | undefined
+): SituationFocus {
+  const base = persisted ?? {};
+  if (!jobFocus) return { ...base };
+  return {
+    ...base,
+    ...jobFocus,
+    email: jobFocus.email !== undefined ? jobFocus.email : base.email,
+    calendar:
+      jobFocus.calendar !== undefined ? jobFocus.calendar : base.calendar,
+    contact: jobFocus.contact !== undefined ? jobFocus.contact : base.contact,
+    project: jobFocus.project !== undefined ? jobFocus.project : base.project,
+  };
 }
 
 /** Encode Focus as relevance strings (prepended to connector data in relevantData). */

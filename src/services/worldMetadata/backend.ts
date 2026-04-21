@@ -11,11 +11,12 @@ export type WorldMetadataBackend = {
 
 export const WORLD_METADATA_STORAGE_KEY = "avatars_world_metadata_v1";
 
-/** Normalize persisted JSON; preserves schema v1 documents without `projects`. */
+/** Normalize persisted JSON; migrates v1 to v2 (adds `userProfile`). */
 export function migrateWorldMetadataDoc(raw: unknown): WorldMetadataDoc {
   if (!raw || typeof raw !== "object") return createEmptyWorldMetadataDoc();
   const o = raw as Record<string, unknown>;
-  if (o.schemaVersion !== WORLD_METADATA_SCHEMA_VERSION) {
+  const sv = o.schemaVersion;
+  if (sv !== 1 && sv !== WORLD_METADATA_SCHEMA_VERSION) {
     return createEmptyWorldMetadataDoc();
   }
   const people = o.people;
@@ -27,10 +28,26 @@ export function migrateWorldMetadataDoc(raw: unknown): WorldMetadataDoc {
     projectsRaw && typeof projectsRaw === "object"
       ? (projectsRaw as WorldMetadataDoc["projects"])
       : {};
+  const upRaw = o.userProfile;
+  let userProfile: WorldMetadataDoc["userProfile"];
+  if (upRaw && typeof upRaw === "object") {
+    const u = upRaw as Record<string, unknown>;
+    userProfile = {
+      displayName:
+        typeof u.displayName === "string" ? u.displayName : undefined,
+      pronouns: typeof u.pronouns === "string" ? u.pronouns : undefined,
+      notes: typeof u.notes === "string" ? u.notes : undefined,
+      updatedAt:
+        typeof u.updatedAt === "number" ? u.updatedAt : Date.now(),
+    };
+  } else {
+    userProfile = { updatedAt: Date.now() };
+  }
   return {
     schemaVersion: WORLD_METADATA_SCHEMA_VERSION,
     people: people as WorldMetadataDoc["people"],
     projects,
+    userProfile,
   };
 }
 
@@ -60,7 +77,28 @@ export class LocalStorageWorldMetadataBackend implements WorldMetadataBackend {
   }
 }
 
-/**
- * Future: read/write `world_metadata.json` under app data via Tauri invoke.
- * export class TauriFileWorldMetadataBackend implements WorldMetadataBackend { ... }
- */
+export function worldMetadataDocHasContent(d: WorldMetadataDoc): boolean {
+  const hasUser =
+    Boolean(d.userProfile.displayName?.trim()) ||
+    Boolean(d.userProfile.pronouns?.trim()) ||
+    Boolean(d.userProfile.notes?.trim());
+  return (
+    Object.keys(d.people).length > 0 ||
+    Object.keys(d.projects).length > 0 ||
+    hasUser
+  );
+}
+
+export function mirrorWorldMetadataToLocalStorage(doc: WorldMetadataDoc): void {
+  try {
+    localStorage.setItem(
+      WORLD_METADATA_STORAGE_KEY,
+      JSON.stringify({
+        ...doc,
+        schemaVersion: WORLD_METADATA_SCHEMA_VERSION,
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}

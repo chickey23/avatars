@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
 import type { EmailItem } from "../../connectors/types";
 import type { ConversationMessage } from "../../types";
+import type { RankedEmailForContext } from "./email";
 import {
   scoreEmailItems,
   scoreAndFormatEmails,
+  selectStrongMatchBodyPrefetchIds,
+  rankEmailsLinesAndDiagnostics,
   EMAIL_CONTEXT_TOP_K,
+  EMAIL_STRONG_MATCH_MIN_NORM,
 } from "./email";
 
 function msg(role: "user" | "avatar", content: string): ConversationMessage {
@@ -95,6 +99,7 @@ describe("scoreAndFormatEmails", () => {
       focus: { email: { id: "hi", title: "Important" } },
       conversationThread: [],
     });
+    expect(lines[0]).toContain("id hi");
     expect(lines[0]).toContain("rank 1");
     expect(lines[0]).toContain("score 100");
     expect(lines[0]).toContain("Important");
@@ -102,5 +107,74 @@ describe("scoreAndFormatEmails", () => {
 
   it("returns empty for empty input", () => {
     expect(scoreAndFormatEmails([], { conversationThread: [] })).toEqual([]);
+  });
+
+  it("includes gmail message id in each line", () => {
+    const emails = [email("msg-abc", "Subj", "snip")];
+    const lines = scoreAndFormatEmails(emails, { conversationThread: [] }, 1);
+    expect(lines[0]).toContain("id msg-abc");
+  });
+});
+
+describe("selectStrongMatchBodyPrefetchIds", () => {
+  function rankedStub(
+    specs: Array<{ id: string; normFocus: number }>
+  ): RankedEmailForContext[] {
+    return specs.map((s, i) => ({
+      email: email(s.id, "S", "body"),
+      rawScore: 1,
+      normScore: s.normFocus,
+      normFocus: s.normFocus,
+      rank: i + 1,
+    }));
+  }
+
+  it("excludes focused id and caps at EMAIL_BODY_PREFETCH_MAX_EXTRA", () => {
+    const r = rankedStub([
+      { id: "a", normFocus: EMAIL_STRONG_MATCH_MIN_NORM + 5 },
+      { id: "b", normFocus: EMAIL_STRONG_MATCH_MIN_NORM + 5 },
+      { id: "c", normFocus: EMAIL_STRONG_MATCH_MIN_NORM + 5 },
+    ]);
+    const ids = selectStrongMatchBodyPrefetchIds(r, "a");
+    expect(ids).toEqual(["b", "c"]);
+  });
+
+  it("omits emails below strong-match threshold", () => {
+    const r = rankedStub([
+      { id: "hi", normFocus: EMAIL_STRONG_MATCH_MIN_NORM + 1 },
+      { id: "lo", normFocus: 40 },
+    ]);
+    expect(selectStrongMatchBodyPrefetchIds(r)).toEqual(["hi"]);
+  });
+});
+
+describe("rankEmailsLinesAndDiagnostics", () => {
+  it("returns same email line count as topK and belowTopK for the rest", () => {
+    const emails = Array.from({ length: 8 }, (_, i) =>
+      email(`id${i}`, `S${i}`, `body ${i}`)
+    );
+    const ctx = { conversationThread: [] as ConversationMessage[] };
+    const { emailLines, ranked, diagnostics } = rankEmailsLinesAndDiagnostics(
+      emails,
+      ctx,
+      3
+    );
+    expect(emailLines).toHaveLength(3);
+    expect(ranked).toHaveLength(3);
+    expect(diagnostics.topK).toBe(3);
+    expect(diagnostics.inPrompt).toHaveLength(3);
+    expect(diagnostics.belowTopK).toHaveLength(5);
+    expect(diagnostics.belowTopK[0]!.rank).toBe(4);
+  });
+
+  it("matches scoreAndFormatEmails lines for inPrompt", () => {
+    const emails = [
+      email("a", "A", "one"),
+      email("b", "B", "two"),
+    ];
+    const ctx = { conversationThread: [] };
+    const fromScore = scoreAndFormatEmails(emails, ctx, 2);
+    const { emailLines } = rankEmailsLinesAndDiagnostics(emails, ctx, 2);
+    expect(emailLines).toEqual(fromScore);
   });
 });

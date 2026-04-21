@@ -91,15 +91,20 @@ export function formatBehaviorTuningForOllama(t: ResolvedBehaviorTuning): string
 
 export function formatOllamaClosingInstruction(
   givenName: string,
-  t: ResolvedBehaviorTuning
+  t: ResolvedBehaviorTuning,
+  isExecutor?: boolean
 ): string {
+  const exec =
+    isExecutor === true
+      ? " You are the routing **executor** for this wave: when the user asks to add a **new** tracked project, you must carry that out with the structured tools (new project id + required title) in this reply when appropriate."
+      : "";
   if (t.replyContextFocus >= 65) {
-    return `Respond briefly as ${givenName}, grounded in the context above and the user's message; stay in character without burying the substance.`;
+    return `Respond briefly as ${givenName}, grounded in the context above and the user's message; stay in character without burying the substance. If the user shares facts worth saving (projects, people, preferences), use the structured tools JSON block from the guidelines when appropriate.${exec}`;
   }
   if (t.replyContextFocus <= 35) {
-    return `Respond briefly as ${givenName}, staying vividly in character; let personality lead while still acknowledging the user's words.`;
+    return `Respond briefly as ${givenName}, staying vividly in character; let personality lead while still acknowledging the user's words.${exec}`;
   }
-  return `Respond briefly as ${givenName}, staying in character while addressing what the user actually asked.`;
+  return `Respond briefly as ${givenName}, staying in character while addressing what the user actually asked.${exec}`;
 }
 
 export type RulesTuningFormatOpts = {
@@ -107,42 +112,18 @@ export type RulesTuningFormatOpts = {
   relevantData?: string[];
 };
 
-/** Leading text for template / fallback replies (same semantics as Ollama block, condensed). */
+/**
+ * Prefix for template / rules / fallback replies when Ollama is not used or generation fails.
+ *
+ * **Intentionally empty:** we used to inject mood, engagement, and the first `relevantData` line
+ * (focus/email ids, connector snippets) into chat — that leaked internal context into the visible thread.
+ * Full tuning still applies on the **Ollama** path via `formatBehaviorTuningForOllama`.
+ */
 export function formatBehaviorTuningRulesPrefix(
-  t: ResolvedBehaviorTuning,
-  opts: RulesTuningFormatOpts
+  _t: ResolvedBehaviorTuning,
+  _opts: RulesTuningFormatOpts
 ): string {
-  const parts: string[] = [];
-
-  if (t.userMoodNote) {
-    parts.push(`[User mood: ${t.userMoodNote}]`);
-  }
-
-  if (t.userEngagementLevel < 40) {
-    parts.push("[Keep it to one short sentence.]");
-  } else if (t.userEngagementLevel > 75) {
-    parts.push("[You may use a bit more length if helpful.]");
-  }
-
-  if (t.replyContextFocus >= 65) {
-    const ctxLine = opts.relevantData?.find((s) => s.trim().length > 0);
-    const snippet = ctxLine?.replace(/\s+/g, " ").trim().slice(0, 140);
-    if (snippet) {
-      parts.push(`[Ground in context: ${snippet}]`);
-    } else if (opts.focusSummary) {
-      parts.push(`[Ground in focus: ${opts.focusSummary}.]`);
-    } else {
-      parts.push("[Prioritize the user's literal message over flourish.]");
-    }
-  } else if (t.replyContextFocus <= 35) {
-    parts.push("[Voice first; context is secondary.]");
-  }
-
-  if (opts.focusSummary && t.replyContextFocus >= 50) {
-    parts.push(`[Tracking: ${opts.focusSummary}.]`);
-  }
-
-  return parts.length > 0 ? `${parts.join(" ")} ` : "";
+  return "";
 }
 
 /** Collapse verbose template output when engagement is low. */

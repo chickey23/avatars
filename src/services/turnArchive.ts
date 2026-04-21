@@ -5,6 +5,7 @@
 import type {
   Avatar,
   CompactTurnRecord,
+  EmailFocusArtifacts,
   SituationFocus,
   SwitchboardTraceStep,
 } from "../types";
@@ -67,6 +68,12 @@ export function formatTurnMetaLine(turn: CompactTurnRecord): string {
     if (turn.focus.projectId) bits.push("t");
     if (bits.length) parts.push(`focus:${bits.join("+")}`);
   }
+  if (turn.emailFocusArtifacts) {
+    const a = turn.emailFocusArtifacts;
+    parts.push(
+      `emailPrep:${a.relevance}${a.cacheHit ? ":cache" : ":fresh"}`
+    );
+  }
   parts.push(formatTraceOneLine(turn.switchboardTrace));
   return parts.join(" · ");
 }
@@ -103,6 +110,12 @@ export function getTurnLogDetailLines(
     if (f.projectId) parts.push(`project ${shortenId(f.projectId)}`);
     if (parts.length) lines.push(parts.join(" · "));
   }
+  if (turn.emailFocusArtifacts) {
+    const a = turn.emailFocusArtifacts;
+    lines.push(
+      `email prep: ${a.relevance} · ${a.cacheHit ? "cache" : "fresh"}${a.threadId ? ` · thread ${shortenId(a.threadId)}` : ""}`
+    );
+  }
   for (const step of turn.switchboardTrace) {
     lines.push(
       `trace d${step.depth} ${step.selection} [${step.responderIds.join(", ")}]`
@@ -122,7 +135,12 @@ export function buildCompactTurnRecord(
   focus: SituationFocus | undefined,
   forcedResponderIds: string[] | undefined,
   trace: SwitchboardTraceStep[],
-  responses: Array<{ avatarId: string; content: string }>
+  responses: Array<{
+    avatarId: string;
+    content: string;
+    suppressUserMessage?: boolean;
+  }>,
+  emailFocusArtifacts?: EmailFocusArtifacts
 ): CompactTurnRecord {
   const routingMode =
     forcedResponderIds && forcedResponderIds.length > 0 ? "forced" : "switchboard";
@@ -150,9 +168,12 @@ export function buildCompactTurnRecord(
         ? [...forcedResponderIds]
         : undefined,
     switchboardTrace: trace,
-    replySummary: responses.map((r) => ({
-      avatarId: r.avatarId,
-      preview: replyPreview(r.content),
-    })),
+    ...(emailFocusArtifacts ? { emailFocusArtifacts } : {}),
+    replySummary: responses
+      .filter((r) => !r.suppressUserMessage)
+      .map((r) => ({
+        avatarId: r.avatarId,
+        preview: replyPreview(r.content),
+      })),
   };
 }

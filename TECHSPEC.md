@@ -34,6 +34,8 @@ Avatars/
 │   ├── App.css
 │   ├── index.css
 │   ├── vite-env.d.ts
+│   ├── components/
+│   │   └── SwitchboardViz.tsx   # Chat Visualizer (Waves) column
 │   ├── api/
 │   │   └── client.ts
 │   ├── context/
@@ -57,6 +59,8 @@ Avatars/
 │   │   ├── situationContext.ts
 │   │   ├── switchboard.ts
 │   │   ├── pendingNotifications.ts  # Proactive pending queue; per-avatar scoring; release heuristics
+│   │   ├── switchboardWavesQueue/   # Chat Visualizer queue: persist, operations, types
+│   │   ├── sessionLog.ts           # Tauri session log helper
 │   │   ├── contextScoring/email.ts
 │   │   ├── contextScoring/calendar.ts
 │   │   ├── contextScoring/contacts.ts
@@ -79,6 +83,7 @@ Avatars/
 │       ├── lib.rs          # Tauri entry; registers commands
 │       ├── gmail.rs        # OAuth, Gmail/Calendar/People API
 │       ├── ollama.rs       # ollama_reachable, ollama_generate (HTTP to 127.0.0.1:11434)
+│       ├── session_log.rs  # On-disk session logs; rotation
 │       └── shell.rs        # open_external, get_user_paths
 └── scripts/
     ├── signature.ps1
@@ -314,12 +319,12 @@ npm run tauri build
 ### 12.3 Data Flow
 
 1. User sends message → user line is appended in **`AppContext`** and the send is **enqueued**; a drain loop runs **`processUserTurn`** in `appStore` **one turn at a time** (serialized queue).
-2. **`processUserTurn`** sets ephemeral **`replyToUserMessageId`** for this turn, builds context with **`gatherDataFromSources()`** (connectors), merges focus and optional Well of Souls into **`relevantData`**, then calls **`distributeAndRespond()`**.
-3. **`distributeAndRespond()`** selects Avatar(s), runs `runAvatarAgent`; returns `{ responses, trace }` (Switchboard trace per wave). **`onProgress` / `onAvatarComplete`** callbacks update React state so avatar bubbles appear **incrementally** as each wave completes.
+2. **`processUserTurn`** sets ephemeral **`replyToUserMessageId`** for this turn, builds context with **`gatherDataFromSources()`** (connectors), merges focus and optional Well of Souls into **`relevantData`**, then calls **`distributeAndRespond()`**. **User-turn context scoring** (email, calendar, contacts) runs inside this path via `scoreAndFormat*` helpers in `src/services/contextScoring/`—see `docs/CONTEXT_SCORING.md`. A future **preprocessor** stage may narrow candidates before scoring (see `docs/WORLD_MODEL_AND_PREPROCESSOR.md`).
+3. **`distributeAndRespond()`** selects Avatar(s), runs `runAvatarAgent`; returns `{ responses, trace }` (Switchboard trace per wave). **`onProgress` / `onAvatarComplete`** callbacks update React state so avatar messages appear **incrementally** after each responder. **`onTraceProgress`** feeds the live trace; **`onWaveChatComplete({ depth })`** fires after each wave’s responders finish (before the next cascade evaluation)—used by the **Waves** UI to settle per-row blink state.
 4. Avatar agent uses Ollama if available, else personality rules; final state: responses merged into the conversation thread; **`appendTurn`** / persist; `SituationContext` saved to `localStorage` (`avatars_situation_context`).
 5. One **`CompactTurnRecord`** appended via `turnArchive` (`avatars_turn_archive`).
 
-**Planned (see SPEC § Context scoring agents):** background agents will score/rank connector items (email → calendar → contacts, then others) and feed Switchboard; not implemented yet.
+**Further work (see SPEC § Context scoring agents):** extend scoring as **additional connectors** land; optional dedicated **background** runners for continuous ingestion—**MVP** user-turn (and proactive) ranking is already implemented for email / calendar / contacts. **Ranked relevance** stays; **mechanisms** evolve with metadata and preprocessors.
 
 ### 12.4 Focus (UI State)
 
@@ -334,6 +339,7 @@ npm run tauri build
 | `avatars_turn_archive` | JSON array of `CompactTurnRecord` (append-only, capped) |
 | `avatars_long_term_tasks` | Long-term tasks (see `longTermTasks.ts`) |
 | `avatars_opinion_matrix` | Opinion matrix (see `opinionMatrix.ts`) |
+| `avatars_switchboard_waves_queue_v1` | Chat Visualizer queue (`WavesQueueDoc` in `switchboardWavesQueue/persist.ts`); cleared on **Clear chat** |
 
 ### 12.6 Turn archive and trace types
 

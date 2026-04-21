@@ -37,8 +37,9 @@ const emptyAggregated = (): AggregatedData => ({
   email: [],
   calendar: [],
   contacts: [],
-  weather: { temp: 0, condition: "", location: "", timestamp: 0 },
+  weather: null,
   news: [],
+  availabilityNotes: [],
 });
 
 describe("filterProactiveAvatarOffers", () => {

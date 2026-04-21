@@ -3,7 +3,7 @@
 ## Document Roles
 
 - **SPEC.md** (this file): Work product — canonical project specification. Version-controlled in repo.
-- **docs/STYLEGUIDE.md**: Terminology and writing — when to say **Agent** vs **Avatar** vs tools; parallel development notes. Does not override this spec; aligns UI and docs with it.
+- **docs/STYLEGUIDE.md**: Terminology and writing — when to say **Agent** vs **Avatar** vs tools; parallel development notes; **UI approval** (layout). Does not override this spec; aligns UI and docs with it.
 - **.cursor/plans/**: Planning artifact — AI operational planning, phases, todos. Separate from spec.
 
 ---
@@ -13,9 +13,9 @@
 1. **Spec-first design**: Implement per spec. When a deviation is needed, propose spec changes for user approval before implementing.
 2. **Response style**: Keep explanations succinct. Identify pitfalls and alternatives.
 3. **Tests**: Write and run unit tests. Request user test feedback when user input is better suited than unit tests (e.g. UX, subjective quality, real-world flows).
-4. **Layout and visual choices**: Consult user on all layout and visual choices.
+4. **Layout and visual choices**: Consult the user on **new** layout and visual work (major structural changes, new surfaces, or departures from existing patterns). **Shipped UI** to date is treated as approved as a whole; small iterations that stay consistent with those patterns do not require a separate sign-off each time. Detail: **docs/STYLEGUIDE.md** § UI approval.
 5. **Framework explanations**: Explain test frameworks and tooling briefly as introduced.
-6. **Signature phrase**: At end of each Agent-mode response, include the phrase returned by `scripts/signature.ps1` (or equivalent). Phrase and styling are configurable via `scripts/signature-config.json`.
+6. **Signature phrase**: At end of each Agent-mode response, include the phrase returned by `scripts/signature.ps1` (or equivalent). Phrase and styling are configurable via `scripts/signature-config.json`. This workflow is **in active use**; agents should follow it unless the user says otherwise.
 
 ---
 
@@ -87,11 +87,15 @@ Focus is user-selected context (email, calendar event, or contact) that serves a
 
 The Focus Watcher Agent interprets changes to Focus. He will be personified with an Avatar. He learns how to respond to focus changes over time; this agent is trained incrementally.
 
-### Context scoring agents (background)
+### Context scoring agents
 
-**Purpose:** Background agents that read **connector-backed context** (emails, calendar events, contacts, and later news, weather, social, etc.), **extract structured fields** suitable for assessment (e.g. for email: sender, subject, snippet or body; for calendar: title, time range, location; for contacts: name, identifiers), **score or rank items** against Situation Context (Focus, active task, tags/affinities, conversation thread as applicable), and **feed outputs into the Switchboard** so relevance is not only implied by flat string blobs in prompts.
+**North star (architecture):** Per–context-family agents that read **connector-backed context** (emails, calendar events, contacts, and later news, weather, social, etc.), **extract structured fields** suitable for assessment (e.g. for email: sender, subject, snippet or body; for calendar: title, time range, location; for contacts: name, identifiers), **score or rank items** against Situation Context (Focus, active task, tags/affinities, conversation thread as applicable), and **feed outputs into the Switchboard** so relevance is not only implied by flat string blobs in prompts. One logical agent (or small family) **per context family**, implemented incrementally. Dedicated **background** runners (continuous ingestion and ranking outside user turns) are **incremental**; they are part of this vision, not a contradiction of the MVP below.
 
-**Scope:** One logical agent (or small family) **per context family**, implemented incrementally. Outputs merge into paths the Switchboard already ingests (e.g. enriched `relevantData`, structured side-channels, or `recentEvents`) — exact shape is an implementation detail; the spec requires **scored / ranked signal** from structured fields, not only raw concatenation.
+**MVP (essential):** The product still requires **ranked relevance** early. The **current implementation** delivers that via **user-turn** scoring (and related paths such as proactive evaluation) wired into the Switchboard’s ingest — see `TECHSPEC.md` § 12.3 and `docs/CONTEXT_SCORING.md`. That slice is **required for MVP** and realizes the spec’s demand for **scored / ranked signal** from structured fields, not only raw concatenation.
+
+**Evolving mechanisms:** Concrete **scoring rules, where they run** (in-turn vs background), and **preprocessor / world-model** narrowing are **expected to change** as shared metadata, connectors, and preprocessors land. **Ranked relevance as a capability is not temporary**; only the **current mechanisms** are provisional.
+
+**Scope:** Outputs merge into paths the Switchboard already ingests (e.g. enriched `relevantData`, structured side-channels, or `recentEvents`) — exact shape is an implementation detail.
 
 **Implementation order (required):**
 
@@ -100,7 +104,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 3. **Contacts** — Third.
 4. **Additional sources** — As each connector exists (news, weather, etc.), add or extend scoring in the same pattern.
 
-**Dependency:** Context scoring agents run **after** usable connector data exists for that type; they complement **Active Task** and **Focus Watcher** (which interpret task and focus) rather than replace them.
+**Dependency:** Scoring runs **after** usable connector data exists for that type; it complements **Active Task** and **Focus Watcher** (which interpret task and focus) rather than replace them.
 
 ### Proactive notifications and pending reactions
 
@@ -172,6 +176,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 - **Files**: By type, partition pattern — e.g. `People_Local.json`, `Events_past.json`, `Events_upcoming.json`
 - **Path**: Fixed — `data/metadata/`
 - **Types**: People, Dates, Events, Projects; add helpers as needed
+- **Migration:** When on-disk metadata and Tauri-backed stores land, **review and migrate** existing data (e.g. world metadata v1 in `localStorage`, related keys) into the new layout. Exact cutover, dual-write, or one-time import is an implementation decision at that time.
 
 ---
 
@@ -205,20 +210,20 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 
 1. **Focus in Situation Context** — Selected focus items are passed into `relevantData` for avatars.
 2. **Local LLM (Ollama) UX and diagnostics** — Tri-state presence in the UI (`no_server` / `no_models` / `ready`); reply provenance (`ReplySource`: Ollama, Rules, Fallback) with short errors and prompt panels; Rules-path sub-reasons when the template engine runs without generation; session log (in-app **Log** control; optional on-disk rotation under the app data path in Tauri). Well of Souls (**WoS**) in Context with optional merge into chat context.
+3. **Switchboard Chat Visualizer (Waves)** — Optional column beside chat: persistent routing queue (`SwitchboardTraceStep`–driven rows), user-turn bars, avatar-accent dots per responder, tunable rise motion, per-wave pending blink until that wave’s replies are visible; `prefers-reduced-motion` respected. Conceptual and code map: `docs/SWITCHBOARD_VISUALIZATION.md`. Major layout changes still warrant user consultation per § Behavioral Instructions.
 
 **Next (spec-track priority):**
 
-**Roadmap note:** **Switchboard visualization** and **shared metadata / projects** are prioritized ahead of further proactive polish. **Sequential multi-avatar release** for pending notifications is **lower priority** — current MVP behavior is acceptable until visualization and metadata foundations advance.
+**Roadmap note:** **Shared metadata / projects** (world model) is prioritized ahead of further proactive polish. **Switchboard visualization** is shipped (see completed list). **Sequential multi-avatar release** for pending notifications is **lower priority** — current MVP behavior is acceptable until metadata foundations advance.
 
-1. **Switchboard visualization** — Ambient wave/trace UI (e.g. ascending avatar-colored bubbles) driven by `SwitchboardTraceStep` / cascade timing; conceptual notes in `docs/SWITCHBOARD_VISUALIZATION.md`. **Layout and motion require explicit user consultation** per § Behavioral Instructions; sounds optional and secondary.
-2. **Shared metadata** — Implement `data/metadata/` for People, Events, **Projects** (enables contact affinity, structured project lists, and a path toward **project execution** — `Avatar.assignedTasks`, situation context, and future Active Task / Project agents). World metadata v1 in `localStorage` is a partial step; on-disk / Tauri persistence TBD.
-3. **Conversation archive (follow-on)** — **Archive segment / dismiss topic** and richer project-linked “chapters” — deferred in § Conversation archive; becomes more important alongside metadata and todo/project surfaces.
-4. **Background agents in action** — **(a)** **Context scoring** — user-turn scoring for Gmail email, calendar, and contacts is in place; extend as **additional connectors** land (see § Context scoring agents). **(b)** **Active Task Agent** and **Focus Watcher Agent**; all must **feed into Switchboard** (and situation context) as specified.
-5. **Proactive pending notifications (ongoing)** — Timer/cue integration; high-urgency surface per user consult. **Sequential multi-avatar release batch** — polish when prioritized; MVP in § Implemented UI is sufficient for now.
-6. **Additional connectors** — Hotmail, Weather (real API), Groundnews, reference/social sources in § Data Sources (Gmail email, calendar, contacts done.)
-7. **Tests** — Unit tests for Switchboard, connectors, Situation Context, proactive notification helpers.
-8. **Signature phrase** — Ensure Agent-mode responses include the phrase from `scripts/signature.ps1`.
-9. (Deferred items as above)
+1. **Shared metadata / world model** — Implement `data/metadata/` for People, Events, **Projects** (enables contact affinity, structured project lists, user importance signals, preprocessor-friendly narrowing — see `docs/WORLD_MODEL_AND_PREPROCESSOR.md`); path toward **project execution** (`Avatar.assignedTasks`, situation context, and future Active Task / Project agents). World metadata v1 in `localStorage` is a partial step; on-disk / Tauri persistence TBD (see § Shared Metadata **Migration**).
+2. **Conversation archive (follow-on)** — **Archive segment / dismiss topic** and richer project-linked “chapters” — deferred in § Conversation archive; becomes more important alongside metadata and todo/project surfaces.
+3. **Background agents in action** — **(a)** **Context scoring** — MVP user-turn (and proactive) scoring for Gmail email, calendar, and contacts is in place; extend as **additional connectors** land; dedicated **background** scoring runners remain part of the north star (see § Context scoring agents). **(b)** **Active Task Agent** and **Focus Watcher Agent**; all must **feed into Switchboard** (and situation context) as specified.
+4. **Proactive pending notifications (ongoing)** — Timer/cue integration; high-urgency surface per user consult. **Sequential multi-avatar release batch** — polish when prioritized; MVP in § Implemented UI is sufficient for now.
+5. **Additional connectors** — Hotmail, Weather (real API), Groundnews, reference/social sources in § Data Sources (Gmail email, calendar, contacts done.)
+6. **Tests** — Unit tests for Switchboard, connectors, Situation Context, proactive notification helpers.
+7. **Signature phrase** — Continue following § Behavioral Instructions; script and config under `scripts/`.
+8. (Deferred items as above)
 
 **Phased detail (non-normative):** See `docs/IMPLEMENTATION_ROADMAP.md` for the full sequence—including **bench responders** (cheap non-primary matches; see `routingDirectAddress`) and **usage-based primary ordering**—without duplicating normative requirements here.
 
@@ -230,7 +235,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 - **Focus**: User can select email, calendar event, or contact as focus; display shows titles; Clear button.
 - **Environment**: Tauri indicator; **Ollama** tri-state badge (refresh on click); **Log** opens session diagnostics (connectivity / Ollama / chat pipeline notes).
 - **Chat**: **Clear chat** (no confirm; clears visible thread, recent events, and queued pending turns)—**layout/readability reset**, not topic dismissal; see § Conversation archive. **View** selector (Chat / Chat + routing / Routing + log); inline trace and optional expanded log under user messages; compact turn archive in `localStorage` (see § Conversation archive and Switchboard trace). **User messages** appear immediately; **avatar replies** append incrementally as each response completes. **Pending reply** indicator when one or more turns are still processing; **input and Send stay enabled** so the user can send additional messages while replies are in flight (turns are queued). Optional **Well of Souls** output merged into `relevantData` when “Use in chat context” is on.
-- **Next UI build (consult user before building):** **Switchboard visualization** — ambient trace/wave UI (e.g. ascending avatar-colored bubbles timed to waves); conceptual notes in `docs/SWITCHBOARD_VISUALIZATION.md`; layout and motion require explicit user approval per § Behavioral Instructions. **Sounds** remain optional and secondary.
+- **Chat Visualizer (Waves):** Optional toolbar toggle shows a **persistent waves column** next to chat: user-turn entries and one row per `SwitchboardTraceStep` with avatar-colored responder dots (accent from catalog), optional user-chrome styling, resizable width, rise-into-slot motion (tunable `SWITCHBOARD_WAVE_TRAVEL_MS`), and per-wave **pending blink** until that wave’s avatar replies are visible—see `docs/SWITCHBOARD_VISUALIZATION.md`. **`prefers-reduced-motion`** short-circuits long motion and blink. **Sounds** for waves are not implemented; remain optional and secondary if added later.
 - **To Do List** (header, upper right): Quick links — Google, Screenshots folder, Downloads folder. Opens in browser or file explorer.
 - **Progress & spec review**: See `PROGRESS.md` for status, conflicts, and next steps.
 - **Technical specification**: See `TECHSPEC.md` for components and implementation details to rebuild the project.

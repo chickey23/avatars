@@ -4,6 +4,7 @@ import type { ConversationMessage } from "../../types";
 import {
   scoreContactItems,
   scoreAndFormatContacts,
+  shouldInjectSocialSoloHint,
   CONTACT_CONTEXT_TOP_K,
 } from "./contacts";
 
@@ -114,5 +115,27 @@ describe("scoreAndFormatContacts", () => {
 
   it("returns empty for empty input", () => {
     expect(scoreAndFormatContacts([], { conversationThread: [] })).toEqual([]);
+  });
+});
+
+describe("shouldInjectSocialSoloHint", () => {
+  it("is false when a contact is focused", () => {
+    const contacts = [person("a", "Nobody")];
+    expect(
+      shouldInjectSocialSoloHint(contacts, {
+        focus: { contact: { id: "a", title: "Nobody" } },
+        conversationThread: [],
+      })
+    ).toBe(false);
+  });
+
+  it("is true when top contacts all score zero and no contact focus", () => {
+    const contacts = [
+      person("a", "Xyz Abc"),
+      person("b", "Def Ghi"),
+    ];
+    expect(
+      shouldInjectSocialSoloHint(contacts, { conversationThread: [] }, 5)
+    ).toBe(true);
   });
 });

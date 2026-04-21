@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import type { SwitchboardTraceStep } from "../types";
 import type { UserTurnJob } from "../store/appStore";
+import type { WavesQueueEntry } from "../services/switchboardWavesQueue";
 
 export type SendMessageOptions = Pick<
   UserTurnJob,
@@ -36,6 +37,8 @@ export interface AppContextValue {
   processingUserMessageId: string | null;
   /** Incremental trace while the current turn runs; cleared when the turn finishes. */
   liveSwitchboardTrace: SwitchboardTraceStep[];
+  /** Persistent Switchboard Waves queue (session log UI); survives reload; cleared on clear chat. */
+  wavesQueue: WavesQueueEntry[];
 }
 
 export const AppContext = createContext<AppContextValue | null>(null);

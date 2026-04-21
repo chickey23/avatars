@@ -40,10 +40,10 @@ export const mockCalendarConnector = {
 };
 
 export const mockContactsConnector = {
-  async fetchAll(): Promise<Contact[]> {
+  async fetchAll(limit = 50): Promise<Contact[]> {
     return [
       { id: "co1", name: "Jane Doe", email: "jane@example.com", birthday: "03-15" },
-    ];
+    ].slice(0, limit);
   },
 };
 

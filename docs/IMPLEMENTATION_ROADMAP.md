@@ -6,12 +6,14 @@
 
 ---
 
-## Phase A — Switchboard visualization (immediate next)
+## Phase A — Switchboard visualization (**shipped**)
 
 1. **Design checkpoint (blocking):** Placement, density, off-by-default vs toggle, `prefers-reduced-motion`; sound optional/secondary.
-2. **MVP:** Replay-from-`SwitchboardTraceStep` after `distributeAndRespond`; optional `onWaveComplete` for live wave sync.
-3. **UI:** Component beside or near chat; gate so default Chat stays readable.
-4. **Docs:** Update SPEC § Implemented UI / PROGRESS when shipped.
+2. **MVP:** Replay-from-`SwitchboardTraceStep` after `distributeAndRespond`; live sync via **`onWaveChatComplete`** (per cascade depth) plus `markWaveSettledForUserDepth`.
+3. **UI:** Component beside chat (`SwitchboardViz`); default Chat remains readable when the column is off.
+4. **Docs:** SPEC § Implemented UI / PROGRESS / this file updated.
+
+**Immediate next focus:** Phases **B–C** (avatar builder usage, **`assignedTasks`**, shared metadata / **Projects**). See [`WORLD_MODEL_AND_PREPROCESSOR.md`](WORLD_MODEL_AND_PREPROCESSOR.md).
 
 ---
 
@@ -76,7 +78,7 @@ Reddit, Wikipedia, Wookieepedia, Memory Alpha, etc. — read-only **supplemental
 
 ## Documentation realignment (done)
 
-SPEC / PROGRESS / HANDOFF prioritize visualization and metadata; proactive **sequential batch** polish is lower priority.
+SPEC / PROGRESS / HANDOFF prioritize **world model / metadata** after shipped visualization; proactive **sequential batch** polish is lower priority.
 
 ---
 

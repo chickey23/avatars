@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Avatar } from "../types";
+import { DEFAULT_ROSTER_SCORE } from "../services/avatarRoster";
 import { PERSONALITY_TRAITS, type PersonalityTraitId } from "../theme/designTokens";
 import { AI_RULE_BLOCKS, AI_RULE_SETS } from "../data/aiRulesLibrary";
 
@@ -17,8 +18,10 @@ type Props = {
   open: boolean;
   onClose: () => void;
   initial: AvatarBuilderInitial | null;
+  /** When editing, roster priority score (0–100) from persisted context. */
+  initialRosterScore?: number;
   existingUserAvatars: Avatar[];
-  onSave: (avatar: Avatar) => void;
+  onSave: (payload: { avatar: Avatar; rosterScore: number }) => void;
 };
 
 function splitComma(s: string): string[] {
@@ -41,10 +44,35 @@ function ruleBlockIdsFromAvatar(a: Avatar): Set<string> {
   return new Set(set?.blockIds ?? []);
 }
 
+const SIGNATURE_COLOR_PRESETS = [
+  "#7dd3fc",
+  "#e94560",
+  "#4ecca3",
+  "#a78bfa",
+  "#fb923c",
+  "#f472b6",
+] as const;
+
+const DEFAULT_SIGNATURE_COLOR = SIGNATURE_COLOR_PRESETS[0];
+
+function normalizeHex6(s: string | undefined): string | null {
+  if (!s) return null;
+  const t = s.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(t)) return t.toLowerCase();
+  if (/^#[0-9A-Fa-f]{3}$/.test(t)) {
+    const r = t[1]!;
+    const g = t[2]!;
+    const b = t[3]!;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return null;
+}
+
 export function AvatarBuilderModal({
   open,
   onClose,
   initial,
+  initialRosterScore,
   existingUserAvatars,
   onSave,
 }: Props) {
@@ -58,6 +86,8 @@ export function AvatarBuilderModal({
   );
   const [ruleBlocks, setRuleBlocks] = useState<Set<string>>(() => new Set());
   const [supplementalRules, setSupplementalRules] = useState("");
+  const [rosterScore, setRosterScore] = useState(DEFAULT_ROSTER_SCORE);
+  const [accentColor, setAccentColor] = useState<string>(DEFAULT_SIGNATURE_COLOR);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,6 +102,8 @@ export function AvatarBuilderModal({
       setTraits(new Set(initial.traitIds));
       setRuleBlocks(new Set(initial.ruleBlockIds));
       setSupplementalRules(initial.supplementalRules.trim());
+      setRosterScore(DEFAULT_ROSTER_SCORE);
+      setAccentColor(DEFAULT_SIGNATURE_COLOR);
     } else {
       const a = initial.avatar;
       setGivenName(a.givenName);
@@ -88,8 +120,16 @@ export function AvatarBuilderModal({
       setTraits(traitSet);
       setRuleBlocks(ruleBlockIdsFromAvatar(a));
       setSupplementalRules(a.supplementalRules?.trim() ?? "");
+      const rs =
+        typeof initialRosterScore === "number" && !Number.isNaN(initialRosterScore)
+          ? Math.round(initialRosterScore)
+          : DEFAULT_ROSTER_SCORE;
+      setRosterScore(Math.max(0, Math.min(100, rs)));
+      setAccentColor(
+        normalizeHex6(a.appearance?.accentColor) ?? DEFAULT_SIGNATURE_COLOR
+      );
     }
-  }, [open, initial]);
+  }, [open, initial, initialRosterScore]);
 
   useEffect(() => {
     if (!open) return;
@@ -141,6 +181,9 @@ export function AvatarBuilderModal({
       return;
     }
 
+    const accentOut =
+      normalizeHex6(accentColor) ?? DEFAULT_SIGNATURE_COLOR;
+
     if (initial.kind === "edit") {
       const base = initial.avatar;
       const avatar: Avatar = {
@@ -155,8 +198,12 @@ export function AvatarBuilderModal({
         ruleSetId: undefined,
         traitIds: traitIdsOut,
         supplementalRules: supp,
+        appearance: {
+          ...base.appearance,
+          accentColor: accentOut,
+        },
       };
-      onSave(avatar);
+      onSave({ avatar, rosterScore });
       onClose();
       return;
     }
@@ -189,11 +236,13 @@ export function AvatarBuilderModal({
       ruleBlockIds: blockIdsOrdered,
       traitIds: traitIdsOut,
       supplementalRules: supp,
+      appearance: { accentColor: accentOut },
     };
-    onSave(avatar);
+    onSave({ avatar, rosterScore });
     onClose();
   }, [
     initial,
+    rosterScore,
     givenName,
     appellation,
     personality,
@@ -202,6 +251,7 @@ export function AvatarBuilderModal({
     traits,
     ruleBlocks,
     supplementalRules,
+    accentColor,
     existingUserAvatars,
     onSave,
     onClose,
@@ -289,6 +339,52 @@ export function AvatarBuilderModal({
             className="avatar-builder-input"
             value={interestsStr}
             onChange={(e) => setInterestsStr(e.target.value)}
+          />
+        </label>
+        <div className="avatar-builder-label">
+          <span>Signature color</span>
+          <p className="avatar-builder-signature-hint">
+            Chat visualizer dots and portrait fallback when no image is set.
+          </p>
+          <div className="avatar-builder-signature-row">
+            {SIGNATURE_COLOR_PRESETS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={`avatar-builder-swatch${
+                  accentColor.toLowerCase() === c ? " is-selected" : ""
+                }`}
+                style={{ background: c }}
+                title={c}
+                aria-label={`Use signature color ${c}`}
+                onClick={() => setAccentColor(c)}
+              />
+            ))}
+            <input
+              type="color"
+              className="avatar-builder-color-native"
+              value={normalizeHex6(accentColor) ?? DEFAULT_SIGNATURE_COLOR}
+              onChange={(e) => setAccentColor(e.target.value)}
+              aria-label="Pick custom signature color"
+              title="Custom color"
+            />
+          </div>
+        </div>
+        <label className="avatar-builder-label">
+          Roster priority (0–100)
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step={1}
+            className="avatar-builder-input"
+            value={rosterScore}
+            onChange={(e) => {
+              const n = parseInt(e.target.value, 10);
+              setRosterScore(
+                Number.isNaN(n) ? DEFAULT_ROSTER_SCORE : Math.max(0, Math.min(100, n))
+              );
+            }}
           />
         </label>
         <div className="avatar-builder-traits">

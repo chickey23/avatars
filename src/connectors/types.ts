@@ -11,6 +11,8 @@ export interface DataSourceConfig {
 
 export interface EmailItem {
   id: string;
+  /** Gmail thread id when known (web open-in-Gmail). */
+  threadId?: string;
   from: string;
   subject: string;
   snippet: string;

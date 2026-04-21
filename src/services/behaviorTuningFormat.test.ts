@@ -42,7 +42,7 @@ describe("formatBehaviorTuningForOllama", () => {
 });
 
 describe("formatBehaviorTuningRulesPrefix", () => {
-  it("includes mood and context snippet for high focus", () => {
+  it("does not inject mood, focus, or relevantData into user-visible rules replies", () => {
     const t = resolveBehaviorTuning({
       behaviorTuning: {
         userMoodNote: "tired",
@@ -50,10 +50,10 @@ describe("formatBehaviorTuningRulesPrefix", () => {
       },
     });
     const p = formatBehaviorTuningRulesPrefix(t, {
-      relevantData: ["email [rank 1]: Budget — Q4 numbers"],
+      relevantData: ["focus: email [secret-id-123] Subject line"],
+      focusSummary: "a selected email",
     });
-    expect(p).toContain("tired");
-    expect(p).toContain("Budget");
+    expect(p).toBe("");
   });
 });
 

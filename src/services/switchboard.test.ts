@@ -79,6 +79,17 @@ describe("pickRespondersForUserMessage", () => {
     expect(r.responderIds[0]).toBe("accomplice");
   });
 
+  it("deprioritizes avatar when roster routing bias is low vs peers", () => {
+    const r = pickRespondersForUserMessage(
+      "qqqqqqqqqqqqqqqqqq",
+      defaultAvatars,
+      3,
+      undefined,
+      { muse: 0, accomplice: 100, skeptic: 100 }
+    );
+    expect(r.responderIds[0]).not.toBe("muse");
+  });
+
   it("prioritizes distinctive appellation vocative (Tier B)", () => {
     const r = pickRespondersForUserMessage("Triumvir, hear me out", defaultAvatars);
     expect(r.selection).toBe("tag_interest_match");
@@ -272,5 +283,33 @@ describe("distributeAndRespond", () => {
     );
     expect(snapshots.length).toBeGreaterThanOrEqual(1);
     expect(snapshots[0]?.length).toBe(1);
+  });
+
+  it("single_wave stops after first wave", async () => {
+    const userMsg = {
+      id: "um-sw",
+      role: "user" as const,
+      content: "hi",
+      timestamp: 1,
+    };
+    const ctx: SituationContext = {
+      ...createEmptyContext(),
+      conversationThread: [userMsg],
+      replyToUserMessageId: userMsg.id,
+    };
+    const previews: string[][] = [];
+    const { trace } = await distributeAndRespond(
+      ctx,
+      defaultAvatars,
+      ["muse"],
+      3,
+      {
+        routingMode: "single_wave",
+        onSingleWaveCascadePreview: ({ wouldRespondIds }) =>
+          previews.push([...wouldRespondIds]),
+      }
+    );
+    expect(trace.length).toBe(1);
+    expect(previews.length).toBe(1);
   });
 });

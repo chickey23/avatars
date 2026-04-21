@@ -5,10 +5,17 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  type PointerEvent,
+  type CSSProperties,
 } from "react";
 import { AppProvider } from "./context/AppContext";
 import { useApp } from "./context/useApp";
 import { assignTask, getTasksForAvatar } from "./services/longTermTasks";
+import { describeFocusChange } from "./services/focusWatcher";
+import {
+  appendTopicSegment,
+  buildTopicSegmentRecord,
+} from "./services/conversationSegments";
 import { useSpeechToText } from "./hooks/useSpeechToText";
 import {
   isGmailEnabled,
@@ -28,6 +35,7 @@ import type {
   PendingNotification,
   BehaviorTuning,
   Avatar,
+  ConversationMessage,
 } from "./types";
 import {
   DEFAULT_PROACTIVE_MIN_COMBINED_SCORE,
@@ -50,6 +58,7 @@ import {
   type OllamaPresence,
 } from "./services/ollama";
 import { openLink } from "./utils/openLink";
+import { resolveContextEntryBudgets } from "./utils/contextEntryBudget";
 import {
   appendSessionLog,
   initSessionLogDisk,
@@ -57,12 +66,32 @@ import {
 } from "./services/sessionLog";
 import { SessionLogPanel } from "./components/SessionLogPanel";
 import { SwitchboardViz } from "./components/SwitchboardViz";
-import { selectDisplayTrace } from "./services/switchboardVizModel";
+import { SourceCacheViz } from "./components/SourceCacheViz";
+import {
+  WAVES_BLINK_ONLY_MAX_WIDTH_PX,
+  WAVES_COLUMN_HIDE_MAX_WIDTH_PX,
+  WAVES_QUEUE_STORAGE_KEY,
+  countWavesQueueByKind,
+} from "./services/switchboardWavesQueue";
+import { parseRankedEmailLinesFromRelevantData } from "./services/sourceCacheViz";
 import { usePrefersReducedMotion } from "./hooks/usePrefersReducedMotion";
 import {
   getWorldMetadata,
   patchWorldMetadataProjects,
+  patchUserProfile,
 } from "./services/worldMetadata";
+import {
+  loadWorldviewAudit,
+  applyWorldviewAuditRevert,
+} from "./services/worldviewAudit";
+import {
+  applyScoreDeltaWithCap,
+  applyUnhelpfulDecrement,
+  getRosterScore,
+  listPopInAvatarIdsForProjectFocus,
+  resolveExecutorAvatarId,
+  scoresFromCoreOrder,
+} from "./services/avatarRoster";
 import {
   MAX_PRIMARY_SLOTS,
   resolvePrimarySlotCount,
@@ -73,9 +102,27 @@ import {
   readPortraitFileAsDataUrl,
   MAX_PORTRAIT_FILE_BYTES,
 } from "./services/avatarPortrait";
+import { getAvatarVizColor } from "./services/avatarVizColor";
+import { peekEmailInsight, loadEmailInsightsDoc } from "./services/emailInsights";
+import { AGENT_CAPABILITIES } from "./data/agentCapabilities";
 import "./App.css";
 
 const SWITCHBOARD_VIZ_STORAGE_KEY = "avatars_switchboard_viz_enabled";
+const CHAT_VIZ_WIDTH_STORAGE_KEY = "avatars_chat_visualizer_width_px";
+const CHAT_VIZ_WIDTH_MIN = 8;
+const CHAT_VIZ_WIDTH_MAX = 320;
+const CHAT_VIZ_WIDTH_DEFAULT = 120;
+const SOURCE_CACHE_VIZ_STORAGE_KEY = "avatars_source_cache_viz_enabled";
+const SOURCE_CACHE_VIZ_WIDTH_STORAGE_KEY = "avatars_source_cache_viz_width_px";
+const USER_CHROME_STORAGE_KEY = "avatars_user_chrome_color";
+const USER_CHROME_DEFAULT = "#0f3460";
+
+const FUTURE_SOURCE_COLUMNS = [
+  { id: "reddit", label: "Reddit" },
+  { id: "hotmail", label: "Hotmail / Outlook" },
+  { id: "youtube", label: "YouTube (now playing / recent)" },
+  { id: "steam", label: "Steam" },
+] as const;
 
 function AppContent() {
   const {
@@ -91,9 +138,13 @@ function AppContent() {
     situationContext,
     patchSituationContext,
     pendingTurnCount,
-    processingUserMessageId,
-    liveSwitchboardTrace,
+    wavesQueue,
   } = useApp();
+
+  const contextEntryBudgets = useMemo(
+    () => resolveContextEntryBudgets(situationContext.contextEntryDepth),
+    [situationContext.contextEntryDepth]
+  );
 
   const reducedMotion = usePrefersReducedMotion();
   const [showSwitchboardViz, setShowSwitchboardViz] = useState(() => {
@@ -114,6 +165,198 @@ function AppContent() {
       /* ignore */
     }
   }, [showSwitchboardViz]);
+
+  const [chatVizWidthPx, setChatVizWidthPx] = useState(() => {
+    try {
+      const raw = localStorage.getItem(CHAT_VIZ_WIDTH_STORAGE_KEY);
+      if (raw) {
+        const n = parseInt(raw, 10);
+        if (!Number.isNaN(n)) {
+          return Math.min(
+            CHAT_VIZ_WIDTH_MAX,
+            Math.max(CHAT_VIZ_WIDTH_MIN, n)
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return CHAT_VIZ_WIDTH_DEFAULT;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CHAT_VIZ_WIDTH_STORAGE_KEY, String(chatVizWidthPx));
+    } catch {
+      /* ignore */
+    }
+  }, [chatVizWidthPx]);
+
+  const [showSourceCacheViz, setShowSourceCacheViz] = useState(() => {
+    try {
+      return localStorage.getItem(SOURCE_CACHE_VIZ_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SOURCE_CACHE_VIZ_STORAGE_KEY,
+        showSourceCacheViz ? "1" : "0"
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [showSourceCacheViz]);
+
+  const [sourceCacheVizWidthPx, setSourceCacheVizWidthPx] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SOURCE_CACHE_VIZ_WIDTH_STORAGE_KEY);
+      if (raw) {
+        const n = parseInt(raw, 10);
+        if (!Number.isNaN(n)) {
+          return Math.min(
+            CHAT_VIZ_WIDTH_MAX,
+            Math.max(CHAT_VIZ_WIDTH_MIN, n)
+          );
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    return CHAT_VIZ_WIDTH_DEFAULT;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        SOURCE_CACHE_VIZ_WIDTH_STORAGE_KEY,
+        String(sourceCacheVizWidthPx)
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [sourceCacheVizWidthPx]);
+
+  const [userChromeColor, setUserChromeColor] = useState(() => {
+    try {
+      const v = localStorage.getItem(USER_CHROME_STORAGE_KEY);
+      if (v && /^#[0-9A-Fa-f]{6}$/.test(v)) return v;
+    } catch {
+      /* ignore */
+    }
+    return USER_CHROME_DEFAULT;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(USER_CHROME_STORAGE_KEY, userChromeColor);
+    } catch {
+      /* ignore */
+    }
+  }, [userChromeColor]);
+
+  const [vizDebug, setVizDebug] = useState(false);
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search).get("debugViz");
+      setVizDebug(
+        Boolean(import.meta.env.DEV) || q === "1" || q === "true"
+      );
+    } catch {
+      setVizDebug(Boolean(import.meta.env.DEV));
+    }
+  }, []);
+
+  const vizResizeDragRef = useRef<{
+    active: boolean;
+    startX: number;
+    startW: number;
+  }>({ active: false, startX: 0, startW: 0 });
+
+  const onVizResizePointerDown = useCallback(
+    (e: PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      vizResizeDragRef.current = {
+        active: true,
+        startX: e.clientX,
+        startW: chatVizWidthPx,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [chatVizWidthPx]
+  );
+
+  const onVizResizePointerMove = useCallback(
+    (e: PointerEvent<HTMLButtonElement>) => {
+      if (!vizResizeDragRef.current.active) return;
+      const { startX, startW } = vizResizeDragRef.current;
+      const dx = e.clientX - startX;
+      const next = startW + dx;
+      setChatVizWidthPx(
+        Math.min(CHAT_VIZ_WIDTH_MAX, Math.max(CHAT_VIZ_WIDTH_MIN, next))
+      );
+    },
+    []
+  );
+
+  const onVizResizePointerUp = useCallback(
+    (e: PointerEvent<HTMLButtonElement>) => {
+      vizResizeDragRef.current.active = false;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    },
+    []
+  );
+
+  const sourceCacheVizResizeDragRef = useRef<{
+    active: boolean;
+    startX: number;
+    startW: number;
+  }>({ active: false, startX: 0, startW: 0 });
+
+  const onSourceCacheVizResizePointerDown = useCallback(
+    (e: PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      sourceCacheVizResizeDragRef.current = {
+        active: true,
+        startX: e.clientX,
+        startW: sourceCacheVizWidthPx,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [sourceCacheVizWidthPx]
+  );
+
+  const onSourceCacheVizResizePointerMove = useCallback(
+    (e: PointerEvent<HTMLButtonElement>) => {
+      if (!sourceCacheVizResizeDragRef.current.active) return;
+      const { startX, startW } = sourceCacheVizResizeDragRef.current;
+      const dx = e.clientX - startX;
+      const next = startW - dx;
+      setSourceCacheVizWidthPx(
+        Math.min(CHAT_VIZ_WIDTH_MAX, Math.max(CHAT_VIZ_WIDTH_MIN, next))
+      );
+    },
+    []
+  );
+
+  const onSourceCacheVizResizePointerUp = useCallback(
+    (e: PointerEvent<HTMLButtonElement>) => {
+      sourceCacheVizResizeDragRef.current.active = false;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    },
+    []
+  );
 
   const [inputValue, setInputValue] = useState("");
   /** Selected world-metadata project id for “Assign task” (dropdown). */
@@ -142,11 +385,20 @@ function AppContent() {
   );
 
   const handleAvatarBuilderSave = useCallback(
-    (avatar: Avatar) => {
+    (payload: { avatar: Avatar; rosterScore: number }) => {
+      const { avatar, rosterScore } = payload;
+      const nextScores = {
+        ...(situationContext.avatarRosterPriorityScoreById ?? {}),
+      };
+      nextScores[avatar.id] = Math.max(
+        0,
+        Math.min(100, Math.round(rosterScore))
+      );
       if (isDefaultAvatarId(avatar.id)) {
         const prev = situationContext.builtinAvatarEdits ?? {};
         patchSituationContext({
           builtinAvatarEdits: { ...prev, [avatar.id]: avatar },
+          avatarRosterPriorityScoreById: nextScores,
         });
         return;
       }
@@ -155,12 +407,23 @@ function AppContent() {
       if (idx >= 0) {
         const next = [...userPrev];
         next[idx] = avatar;
-        patchSituationContext({ userAvatars: next });
+        patchSituationContext({
+          userAvatars: next,
+          avatarRosterPriorityScoreById: nextScores,
+        });
       } else {
-        patchSituationContext({ userAvatars: [...userPrev, avatar] });
+        patchSituationContext({
+          userAvatars: [...userPrev, avatar],
+          avatarRosterPriorityScoreById: nextScores,
+        });
       }
     },
-    [situationContext.userAvatars, situationContext.builtinAvatarEdits, patchSituationContext]
+    [
+      situationContext.userAvatars,
+      situationContext.builtinAvatarEdits,
+      situationContext.avatarRosterPriorityScoreById,
+      patchSituationContext,
+    ]
   );
 
   const primaryCatalogLen = fullAvatarCatalog.length;
@@ -178,10 +441,124 @@ function AppContent() {
   const [gmailConnecting, setGmailConnecting] = useState(false);
   const [gmailError, setGmailError] = useState<string | null>(null);
   const [contextTab, setContextTab] = useState<
-    "email" | "calendar" | "contacts" | "projects" | "well"
+    | "email"
+    | "calendar"
+    | "contacts"
+    | "projects"
+    | "user"
+    | "worldview"
+    | "well"
   >("email");
+  const openWorldviewTab = useCallback(() => {
+    setContextTab("worldview");
+  }, []);
   const [projectsRefresh, setProjectsRefresh] = useState(0);
+  const selectedIdsKey = selectedAvatarIds.join("\0");
+  const executorAvatarId = useMemo(
+    () =>
+      resolveExecutorAvatarId(
+        situationContext,
+        selectedAvatarIds.length > 0 ? selectedAvatarIds : undefined
+      ),
+    [situationContext, selectedIdsKey]
+  );
+  const popInAvatarIds = useMemo(
+    () =>
+      listPopInAvatarIdsForProjectFocus(situationContext.userFocus?.project?.id),
+    [situationContext.userFocus?.project?.id, projectsRefresh]
+  );
+  /**
+   * Pop-up avatars: selected via "Talk to" but not in the primary roster and
+   * not already shown in the project pop-in panel. Rendered in the sidebar as
+   * a temporary location so the user sees who they're addressing.
+   */
+  const popUpAvatarIds = useMemo(() => {
+    const primary = new Set(avatars.map((a) => a.id));
+    const popin = new Set(popInAvatarIds);
+    return selectedAvatarIds.filter(
+      (id) => !primary.has(id) && !popin.has(id)
+    );
+  }, [selectedAvatarIds, avatars, popInAvatarIds]);
+  const popInScoreBumpedRef = useRef<{ projectId: string; ids: Set<string> } | null>(
+    null
+  );
+  useEffect(() => {
+    const pid = situationContext.userFocus?.project?.id?.trim() ?? "";
+    if (!pid) {
+      popInScoreBumpedRef.current = null;
+      return;
+    }
+    if (
+      !popInScoreBumpedRef.current ||
+      popInScoreBumpedRef.current.projectId !== pid
+    ) {
+      popInScoreBumpedRef.current = { projectId: pid, ids: new Set() };
+    }
+  }, [situationContext.userFocus?.project?.id]);
+
+  const handlePopInAvatarClick = useCallback(
+    (avatarId: string) => {
+      const pid = situationContext.userFocus?.project?.id?.trim();
+      if (!pid) return;
+      let bump = popInScoreBumpedRef.current;
+      if (!bump || bump.projectId !== pid) {
+        bump = { projectId: pid, ids: new Set() };
+        popInScoreBumpedRef.current = bump;
+      }
+      const allIds = fullAvatarCatalog.map((a) => a.id);
+      let nextScores = {
+        ...(situationContext.avatarRosterPriorityScoreById ?? {}),
+      };
+      if (!bump.ids.has(avatarId)) {
+        nextScores = applyScoreDeltaWithCap(nextScores, avatarId, 1, allIds);
+        bump.ids.add(avatarId);
+      }
+      patchSituationContext({
+        avatarRosterPriorityScoreById: nextScores,
+        executorOverrideAvatarId: avatarId,
+      });
+    },
+    [
+      situationContext.userFocus?.project?.id,
+      situationContext.avatarRosterPriorityScoreById,
+      fullAvatarCatalog,
+      patchSituationContext,
+    ]
+  );
+
+  const handleMoveCoreRoster = useCallback(
+    (avatarId: string, delta: -1 | 1) => {
+      const ids = avatars.map((a) => a.id);
+      const i = ids.indexOf(avatarId);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= ids.length) return;
+      const next = [...ids];
+      [next[i], next[j]] = [next[j]!, next[i]!];
+      const allIds = fullAvatarCatalog.map((a) => a.id);
+      patchSituationContext({
+        avatarRosterPriorityScoreById: scoresFromCoreOrder(
+          situationContext.avatarRosterPriorityScoreById,
+          next,
+          allIds
+        ),
+        executorOverrideAvatarId: undefined,
+      });
+    },
+    [
+      avatars,
+      fullAvatarCatalog,
+      situationContext.avatarRosterPriorityScoreById,
+      patchSituationContext,
+    ]
+  );
+
+  const [userProfileRefresh, setUserProfileRefresh] = useState(0);
+  const [worldviewAuditRefresh, setWorldviewAuditRefresh] = useState(0);
+  const [userDisplayName, setUserDisplayName] = useState("");
+  const [userPronouns, setUserPronouns] = useState("");
+  const [userNotes, setUserNotes] = useState("");
   const [newProjectTitle, setNewProjectTitle] = useState("");
+  const [newProjectSummary, setNewProjectSummary] = useState("");
   const [newProjectNotes, setNewProjectNotes] = useState("");
   const [recentEmails, setRecentEmails] = useState<EmailItem[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<CalendarEvent[]>([]);
@@ -199,6 +576,22 @@ function AppContent() {
   useEffect(() => {
     patchSituationContext({ userFocus: focus });
   }, [focus, patchSituationContext]);
+
+  const prevFocusRef = useRef<SituationFocus | undefined>(undefined);
+  const focusWatcherBoot = useRef(true);
+  useEffect(() => {
+    if (focusWatcherBoot.current) {
+      focusWatcherBoot.current = false;
+      prevFocusRef.current = focus;
+      return;
+    }
+    const line = describeFocusChange(prevFocusRef.current, focus);
+    prevFocusRef.current = focus;
+    if (!line) return;
+    patchSituationContext({
+      recentEvents: [...(situationContext.recentEvents ?? []).slice(-19), line],
+    });
+  }, [focus, patchSituationContext, situationContext.recentEvents]);
   const [chatViewMode, setChatViewMode] = useState<ChatViewMode>("chat");
   const [ollamaPresence, setOllamaPresence] = useState<
     "checking" | OllamaPresence
@@ -279,6 +672,7 @@ function AppContent() {
   const [avatarPendingListOpenId, setAvatarPendingListOpenId] = useState<string | null>(
     null
   );
+  const [behaviorPanelOpen, setBehaviorPanelOpen] = useState(false);
   const [sessionLogOpen, setSessionLogOpen] = useState(false);
   const [sessionDiskInfo, setSessionDiskInfo] = useState<SessionLogDiskInfo | null>(
     null
@@ -362,20 +756,53 @@ function AppContent() {
     );
   }, [projectsRefresh]);
 
+  useEffect(() => {
+    void userProfileRefresh;
+    if (contextTab !== "user") return;
+    const up = getWorldMetadata().userProfile;
+    setUserDisplayName(up.displayName ?? "");
+    setUserPronouns(up.pronouns ?? "");
+    setUserNotes(up.notes ?? "");
+  }, [contextTab, userProfileRefresh]);
+
+  const handleSaveUserProfile = useCallback(() => {
+    patchUserProfile({
+      displayName: userDisplayName.trim() || undefined,
+      pronouns: userPronouns.trim() || undefined,
+      notes: userNotes.trim() || undefined,
+    });
+    setUserProfileRefresh((n) => n + 1);
+  }, [userDisplayName, userPronouns, userNotes]);
+
+  const worldviewAuditRecords = useMemo(() => {
+    void worldviewAuditRefresh;
+    return loadWorldviewAudit()
+      .slice(-40)
+      .reverse();
+  }, [worldviewAuditRefresh]);
+
+  useEffect(() => {
+    if (contextTab === "worldview") {
+      setWorldviewAuditRefresh((n) => n + 1);
+    }
+  }, [contextTab]);
+
   const handleAddWorldProject = useCallback(() => {
     const title = newProjectTitle.trim();
     if (!title) return;
     patchWorldMetadataProjects({
       [crypto.randomUUID()]: {
         title,
+        summary: newProjectSummary.trim() || undefined,
         notes: newProjectNotes.trim() || undefined,
         updatedAt: Date.now(),
       },
     });
     setNewProjectTitle("");
+    setNewProjectSummary("");
     setNewProjectNotes("");
     setProjectsRefresh((n) => n + 1);
-  }, [newProjectTitle, newProjectNotes]);
+  }, [newProjectTitle, newProjectSummary, newProjectNotes]);
 
   const handleRemoveWorldProject = useCallback((id: string) => {
     patchWorldMetadataProjects({ [id]: null });
@@ -396,26 +823,115 @@ function AppContent() {
 
   const archivedTurnCount = useMemo(() => loadArchive().length, [messageIdsKey]);
 
-  const displaySwitchboardTrace = useMemo(
-    () =>
-      selectDisplayTrace({
-        messages,
-        liveTrace: liveSwitchboardTrace,
-        processingUserMessageId,
-        turnByUserId,
-      }),
-    [
-      messages,
-      liveSwitchboardTrace,
-      processingUserMessageId,
-      turnByUserId,
-    ]
+  const sourceCacheVizSnapshot = useMemo(() => {
+    void projectsRefresh;
+    void userProfileRefresh;
+    void worldviewAuditRefresh;
+    const doc = loadEmailInsightsDoc();
+    const entries = Object.values(doc.entries);
+    const byRelevance = { relevant: 0, irrelevant: 0, uncertain: 0 };
+    for (const row of entries) {
+      byRelevance[row.relevance]++;
+    }
+    const recentSamples = [...entries]
+      .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt)
+      .slice(0, 6)
+      .map((row) => ({
+        messageId: row.messageId,
+        summary: row.summary.replace(/\s+/g, " ").trim(),
+        relevance: row.relevance,
+      }));
+    const wm = getWorldMetadata();
+    const wvTail = loadWorldviewAudit()
+      .slice(-8)
+      .reverse()
+      .map((r) => ({
+        id: r.id,
+        ts: r.ts,
+        avatarId: r.avatarId,
+        revertedAt: r.revertedAt,
+        tools: r.toolResults
+          .map((t) => `${t.name}${t.ok ? "" : "!"}`)
+          .join(", "),
+      }));
+    const lastUser = [...messages]
+      .reverse()
+      .find((m) => m.role === "user" && m.emailFocusArtifacts);
+    return {
+      diagnostics: situationContext.lastEmailRankingDiagnostics,
+      parsedFallbackLines: parseRankedEmailLinesFromRelevantData(
+        situationContext.relevantData
+      ),
+      emailInsights: {
+        total: entries.length,
+        byRelevance,
+        recentSamples,
+      },
+      worldMeta: {
+        peopleCount: Object.keys(wm.people).length,
+        projectsCount: Object.keys(wm.projects).length,
+        userProfileUpdatedAt: wm.userProfile.updatedAt,
+      },
+      worldviewAuditTail: wvTail,
+      wavesQueueLength: wavesQueue.length,
+      wavesStorageKey: WAVES_QUEUE_STORAGE_KEY,
+      lastUserEmailFocus: lastUser?.emailFocusArtifacts,
+      futureSources: [...FUTURE_SOURCE_COLUMNS],
+    };
+  }, [
+    messageIdsKey,
+    pendingTurnCount,
+    projectsRefresh,
+    userProfileRefresh,
+    worldviewAuditRefresh,
+    situationContext.lastEmailRankingDiagnostics,
+    situationContext.relevantData,
+    messages,
+    wavesQueue.length,
+  ]);
+
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1200
+  );
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const wavesColumnVisible =
+    viewportWidth > WAVES_COLUMN_HIDE_MAX_WIDTH_PX;
+  const wavesMotionTier = !wavesColumnVisible
+    ? "hidden"
+    : viewportWidth <= WAVES_BLINK_ONLY_MAX_WIDTH_PX
+      ? "blink"
+      : "full";
+
+  const [hoverMetaMessageId, setHoverMetaMessageId] = useState<string | null>(
+    null
   );
 
-  const accentForSwitchboard = useCallback(
+  const handleMessageRowActivate = useCallback(
+    (msg: ConversationMessage) => {
+      const row = chatMessagesRef.current?.querySelector(
+        `[data-message-id="${msg.id}"]`
+      );
+      row?.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (msg.role === "avatar" && msg.promptDebug) {
+        const s = msg.replySource;
+        if (s === "ollama" || s === "fallback" || s === "rules") {
+          setExpandedPromptId(msg.id);
+        }
+      }
+    },
+    []
+  );
+
+  const getAvatarVizColorForSwitchboard = useCallback(
     (avatarId: string) =>
-      fullAvatarCatalog.find((a) => a.id === avatarId)?.appearance?.accentColor ??
-      "rgba(120, 120, 140, 0.65)",
+      getAvatarVizColor(avatarId, (id) =>
+        fullAvatarCatalog.find((a) => a.id === id)
+      ),
     [fullAvatarCatalog]
   );
 
@@ -518,7 +1034,7 @@ function AppContent() {
     if (contextTab === "email" && gmailConnected) {
       setEmailsLoading(true);
       setEmailError(null);
-      fetchGmailRecent(3)
+      fetchGmailRecent(contextEntryBudgets.emailFetchLimit)
         .then((emails) => {
           setRecentEmails(emails);
           setEmailError(null);
@@ -532,13 +1048,16 @@ function AppContent() {
       setRecentEmails([]);
       setEmailError(null);
     }
-  }, [contextTab, gmailConnected]);
+  }, [contextTab, gmailConnected, contextEntryBudgets.emailFetchLimit]);
 
   useEffect(() => {
     if (contextTab === "calendar" && gmailConnected) {
       setCalendarLoading(true);
       setCalendarError(null);
-      fetchCalendarUpcoming(30)
+      fetchCalendarUpcoming(
+        contextEntryBudgets.calendarDays,
+        contextEntryBudgets.calendarMaxResults
+      )
         .then((events) => {
           setUpcomingEvents(events);
           setCalendarError(null);
@@ -552,13 +1071,18 @@ function AppContent() {
       setUpcomingEvents([]);
       setCalendarError(null);
     }
-  }, [contextTab, gmailConnected]);
+  }, [
+    contextTab,
+    gmailConnected,
+    contextEntryBudgets.calendarDays,
+    contextEntryBudgets.calendarMaxResults,
+  ]);
 
   useEffect(() => {
     if (contextTab === "contacts" && gmailConnected) {
       setContactsLoading(true);
       setContactsError(null);
-      fetchContacts(50)
+      fetchContacts(contextEntryBudgets.contactsFetchLimit)
         .then((c) => {
           setContacts(c);
           setContactsError(null);
@@ -572,7 +1096,7 @@ function AppContent() {
       setContacts([]);
       setContactsError(null);
     }
-  }, [contextTab, gmailConnected]);
+  }, [contextTab, gmailConnected, contextEntryBudgets.contactsFetchLimit]);
 
   const handleConnectGmail = useCallback(async () => {
     setGmailConnecting(true);
@@ -605,18 +1129,82 @@ function AppContent() {
     if (!exists) setTaskProjectId("");
   }, [projectsList, taskProjectId]);
 
+  const mergeAssignedTaskIdOntoAvatar = useCallback(
+    (avatarId: string, taskId: string) => {
+      const av = fullAvatarCatalog.find((a) => a.id === avatarId);
+      if (!av) return;
+      const prevIds = av.assignedTasks ?? [];
+      if (prevIds.includes(taskId)) return;
+      const assignedTasks = [...prevIds, taskId];
+      if (isDefaultAvatarId(avatarId)) {
+        const prev = situationContext.builtinAvatarEdits ?? {};
+        const base = prev[avatarId] ?? av;
+        patchSituationContext({
+          builtinAvatarEdits: {
+            ...prev,
+            [avatarId]: { ...base, assignedTasks },
+          },
+        });
+      } else {
+        const userPrev = situationContext.userAvatars ?? [];
+        const idx = userPrev.findIndex((a) => a.id === avatarId);
+        if (idx >= 0) {
+          const next = [...userPrev];
+          next[idx] = { ...next[idx], assignedTasks };
+          patchSituationContext({ userAvatars: next });
+        }
+      }
+    },
+    [
+      fullAvatarCatalog,
+      situationContext.builtinAvatarEdits,
+      situationContext.userAvatars,
+      patchSituationContext,
+    ]
+  );
+
+  useEffect(() => {
+    const onAssigned = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ avatarId: string; taskId: string }>)
+        .detail;
+      if (!detail?.avatarId || !detail.taskId) return;
+      mergeAssignedTaskIdOntoAvatar(detail.avatarId, detail.taskId);
+      setProjectsRefresh((n) => n + 1);
+      refreshTasks();
+    };
+    window.addEventListener("avatars:assigned-task", onAssigned);
+    return () =>
+      window.removeEventListener("avatars:assigned-task", onAssigned);
+  }, [mergeAssignedTaskIdOntoAvatar, refreshTasks]);
+
   const handleAssignTask = useCallback(() => {
     if (!firstSelectedId || !taskProjectId) return;
     const proj = getWorldMetadata().projects[taskProjectId];
     if (!proj?.title?.trim()) return;
-    assignTask(
+    const task = assignTask(
       firstSelectedId,
       proj.title.trim(),
-      proj.notes?.trim() || undefined
+      proj.notes?.trim() || undefined,
+      taskProjectId
     );
+    mergeAssignedTaskIdOntoAvatar(firstSelectedId, task.id);
     setTaskProjectId("");
     refreshTasks();
-  }, [taskProjectId, firstSelectedId, refreshTasks]);
+  }, [
+    taskProjectId,
+    firstSelectedId,
+    refreshTasks,
+    mergeAssignedTaskIdOntoAvatar,
+  ]);
+
+  const handleEndTopicSegment = useCallback(() => {
+    const users = situationContext.conversationThread.filter(
+      (m) => m.role === "user"
+    );
+    const last = users[users.length - 1];
+    if (!last) return;
+    appendTopicSegment(buildTopicSegmentRecord(last.id, focus));
+  }, [situationContext.conversationThread, focus]);
 
   const handleSend = useCallback(() => {
     if (!inputValue.trim()) return;
@@ -654,7 +1242,20 @@ function AppContent() {
       <header className="header">
         <div className="header-left">
           <h1>Avatars</h1>
-          <p className="subtitle">Interface layer for complex data</p>
+          <p className="subtitle">
+            Local-first avatars with grounded Gmail, calendar, contacts, and
+            world memory.
+          </p>
+          <ul
+            className="header-capabilities"
+            aria-label="Agent capabilities"
+          >
+            {AGENT_CAPABILITIES.map((c) => (
+              <li key={c.label} title={c.detail}>
+                {c.label}
+              </li>
+            ))}
+          </ul>
           <div className="env-indicator" title="Runtime environment">
             <span className={`env-tag ${envTauri ? "env-ok" : "env-warn"}`}>
               Tauri: {envTauri ? "✓" : "✗"}
@@ -776,9 +1377,87 @@ function AppContent() {
                 ALL CHAT
               </button>
             )}
+            <button
+              type="button"
+              className={`avatar-detail-toggle behavior-panel-gear${
+                behaviorPanelOpen ? " behavior-panel-gear--open" : ""
+              }`}
+              aria-expanded={behaviorPanelOpen}
+              aria-controls="behavior-tuning-panel"
+              title="Behavior — proactive notifications and reply balance"
+              aria-label={
+                behaviorPanelOpen ? "Close behavior settings" : "Open behavior settings"
+              }
+              onClick={() => setBehaviorPanelOpen((o) => !o)}
+            >
+              <span className="avatar-detail-toggle-icon" aria-hidden>
+                &#9881;
+              </span>
+            </button>
           </div>
         </div>
-        {avatars.map((avatar) => {
+        {behaviorPanelOpen && (
+          <div
+            id="behavior-tuning-panel"
+            className="behavior-tuning-panel behavior-tuning-panel--dropdown"
+            role="region"
+            aria-label="Behavior"
+          >
+            <h3 className="behavior-tuning-title">Behavior</h3>
+            <p className="behavior-tuning-hint">
+              Proactive email notifications and reply balance (saved with your session).
+            </p>
+            <label className="tuning-row">
+              <span className="tuning-label">
+                Proactive min score <output>{proactiveMinCombined}</output>
+              </span>
+              <input
+                type="range"
+                min={35}
+                max={75}
+                value={proactiveMinCombined}
+                onChange={(e) =>
+                  patchBehaviorTuning({
+                    proactiveMinCombinedScore: Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+            <label className="tuning-row">
+              <span className="tuning-label">
+                Extra avatar affinity <output>{proactiveMinAffinity}</output>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={25}
+                value={proactiveMinAffinity}
+                onChange={(e) =>
+                  patchBehaviorTuning({
+                    proactiveMinAffinityBonus: Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+            <label className="tuning-row">
+              <span className="tuning-label">
+                Reply: 0 persona · 100 context <output>{replyContextFocus}</output>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={replyContextFocus}
+                onChange={(e) =>
+                  patchBehaviorTuning({
+                    replyContextFocus: Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+          </div>
+        )}
+        {avatars.map((avatar, rosterIndex) => {
           const portraitSrc = getAvatarPortraitSrc(
             situationContext.avatarPortraitSrcById,
             avatar.id,
@@ -795,9 +1474,35 @@ function AppContent() {
               key={avatar.id}
               className={`avatar-card ${
                 selectedAvatarIds.includes(avatar.id) ? "selected" : ""
-              }`}
+              }${executorAvatarId === avatar.id ? " is-executor" : ""}`}
             >
               <div className="avatar-card-row avatar-card-row--top">
+                <div
+                  className="avatar-roster-reorder"
+                  role="group"
+                  aria-label="Roster order"
+                >
+                  <button
+                    type="button"
+                    className="avatar-roster-reorder-btn"
+                    disabled={rosterIndex <= 0}
+                    title="Move up in roster priority"
+                    aria-label={`Move ${avatar.givenName} up in roster`}
+                    onClick={() => handleMoveCoreRoster(avatar.id, -1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="avatar-roster-reorder-btn"
+                    disabled={rosterIndex >= avatars.length - 1}
+                    title="Move down in roster priority"
+                    aria-label={`Move ${avatar.givenName} down in roster`}
+                    onClick={() => handleMoveCoreRoster(avatar.id, 1)}
+                  >
+                    ↓
+                  </button>
+                </div>
                 <button
                   type="button"
                   className="avatar-card-select"
@@ -1098,6 +1803,106 @@ function AppContent() {
             </div>
           );
         })}
+        {popUpAvatarIds.length > 0 && (
+          <div
+            className="avatar-popin-panel avatar-popup-panel"
+            role="region"
+            aria-label="Pop-up avatars"
+          >
+            <h3 className="avatar-popin-title">Pop-up avatars</h3>
+            <p className="avatar-popin-hint">
+              Selected via Talk to but not in the primary lineup. Click to remove.
+            </p>
+            <ul className="avatar-popin-list">
+              {popUpAvatarIds.map((id) => {
+                const a = fullAvatarCatalog.find((x) => x.id === id);
+                if (!a) return null;
+                const src = getAvatarPortraitSrc(
+                  situationContext.avatarPortraitSrcById,
+                  a.id,
+                  a.appearance?.portraitUrl
+                );
+                const initial = a.givenName.trim().charAt(0).toUpperCase() || "?";
+                return (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      className="avatar-popin-card avatar-popup-card"
+                      aria-label={`Remove ${a.givenName} from Talk to selection`}
+                      onClick={() => toggleAvatarSelection(id)}
+                    >
+                      <span className="avatar-portrait avatar-portrait--sm" aria-hidden>
+                        {src ? (
+                          <img src={src} alt="" className="avatar-portrait-img" />
+                        ) : (
+                          <span
+                            className="avatar-portrait-fallback"
+                            style={{
+                              background:
+                                a.appearance?.accentColor ?? "rgba(120,120,140,0.5)",
+                            }}
+                          >
+                            {initial}
+                          </span>
+                        )}
+                      </span>
+                      <span className="avatar-popin-name">{a.givenName}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+        {situationContext.userFocus?.project?.id && popInAvatarIds.length > 0 && (
+          <div className="avatar-popin-panel" role="region" aria-label="Project pop-in avatars">
+            <h3 className="avatar-popin-title">Project team</h3>
+            <p className="avatar-popin-hint">
+              Managed avatars for this focus. Click to set executor (+1 roster once per focus per
+              avatar).
+            </p>
+            <ul className="avatar-popin-list">
+              {popInAvatarIds.map((id) => {
+                const a = fullAvatarCatalog.find((x) => x.id === id);
+                if (!a) return null;
+                const src = getAvatarPortraitSrc(
+                  situationContext.avatarPortraitSrcById,
+                  a.id,
+                  a.appearance?.portraitUrl
+                );
+                const initial = a.givenName.trim().charAt(0).toUpperCase() || "?";
+                return (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      className={`avatar-popin-card${
+                        situationContext.executorOverrideAvatarId === id ? " is-override" : ""
+                      }`}
+                      onClick={() => handlePopInAvatarClick(id)}
+                    >
+                      <span className="avatar-portrait avatar-portrait--sm" aria-hidden>
+                        {src ? (
+                          <img src={src} alt="" className="avatar-portrait-img" />
+                        ) : (
+                          <span
+                            className="avatar-portrait-fallback"
+                            style={{
+                              background:
+                                a.appearance?.accentColor ?? "rgba(120,120,140,0.5)",
+                            }}
+                          >
+                            {initial}
+                          </span>
+                        )}
+                      </span>
+                      <span className="avatar-popin-name">{a.givenName}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
         <details className="task-assign-details">
           <summary className="task-assign-summary">
             {taskAssignAvatar
@@ -1151,60 +1956,6 @@ function AppContent() {
           </div>
         </details>
         <AiRulesLibraryPanel />
-        <div className="behavior-tuning-panel">
-          <h3 className="behavior-tuning-title">Behavior</h3>
-          <p className="behavior-tuning-hint">
-            Proactive email notifications and reply balance (saved with your session).
-          </p>
-          <label className="tuning-row">
-            <span className="tuning-label">
-              Proactive min score <output>{proactiveMinCombined}</output>
-            </span>
-            <input
-              type="range"
-              min={35}
-              max={75}
-              value={proactiveMinCombined}
-              onChange={(e) =>
-                patchBehaviorTuning({
-                  proactiveMinCombinedScore: Number(e.target.value),
-                })
-              }
-            />
-          </label>
-          <label className="tuning-row">
-            <span className="tuning-label">
-              Extra avatar affinity <output>{proactiveMinAffinity}</output>
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={25}
-              value={proactiveMinAffinity}
-              onChange={(e) =>
-                patchBehaviorTuning({
-                  proactiveMinAffinityBonus: Number(e.target.value),
-                })
-              }
-            />
-          </label>
-          <label className="tuning-row">
-            <span className="tuning-label">
-              Reply: 0 persona · 100 context <output>{replyContextFocus}</output>
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={replyContextFocus}
-              onChange={(e) =>
-                patchBehaviorTuning({
-                  replyContextFocus: Number(e.target.value),
-                })
-              }
-            />
-          </label>
-        </div>
       </aside>
 
       <main
@@ -1213,6 +1964,11 @@ function AppContent() {
             ? ` chat-frame--${selectedAvatar.id.replace(/[^a-z0-9_-]/gi, "")}`
             : ""
         }`}
+        style={
+          {
+            ["--user-chrome-color"]: userChromeColor,
+          } as CSSProperties
+        }
       >
             <div className="chat-header">
               <h2>
@@ -1227,9 +1983,32 @@ function AppContent() {
                     className="chat-switchboard-viz-check"
                     checked={showSwitchboardViz}
                     onChange={(e) => setShowSwitchboardViz(e.target.checked)}
-                    aria-label="Show Switchboard wave column"
+                    aria-label="Show Chat Visualizer column"
                   />
-                  <span className="chat-view-mode-label-text">Waves</span>
+                  <span className="chat-view-mode-label-text">
+                    Chat Visualizer
+                  </span>
+                </label>
+                <label className="chat-view-mode-label chat-switchboard-viz-label">
+                  <input
+                    type="checkbox"
+                    className="chat-switchboard-viz-check"
+                    checked={showSourceCacheViz}
+                    onChange={(e) => setShowSourceCacheViz(e.target.checked)}
+                    aria-label="Show Storage visualizer column"
+                  />
+                  <span className="chat-view-mode-label-text">Storage viz</span>
+                </label>
+                <label className="chat-user-chrome-label">
+                  <span className="chat-view-mode-label-text">You</span>
+                  <input
+                    type="color"
+                    className="chat-user-chrome-swatch"
+                    value={userChromeColor}
+                    onChange={(e) => setUserChromeColor(e.target.value)}
+                    aria-label="Color for your messages and Chat Visualizer user marker"
+                    title="Color for your messages and Chat Visualizer user marker"
+                  />
                 </label>
                 <label className="chat-view-mode-label">
                   <span className="chat-view-mode-label-text">View</span>
@@ -1270,22 +2049,58 @@ function AppContent() {
                 >
                   Clear chat
                 </button>
+                <button
+                  type="button"
+                  className="end-topic-segment-btn"
+                  onClick={handleEndTopicSegment}
+                  disabled={
+                    situationContext.conversationThread.filter((m) => m.role === "user")
+                      .length === 0
+                  }
+                  title="Mark this topic as ended (distinct from Clear chat; archive kept)"
+                >
+                  End topic
+                </button>
               </div>
             </div>
 
             <div className="chat-body-row">
-            {showSwitchboardViz && (
-              <aside
-                className="switchboard-viz-column"
-                aria-label="Switchboard routing waves"
-              >
-                <SwitchboardViz
-                  trace={displaySwitchboardTrace}
-                  getAccentColor={accentForSwitchboard}
-                  isLive={processingUserMessageId !== null}
-                  reducedMotion={reducedMotion}
+            {showSwitchboardViz && wavesColumnVisible && (
+              <>
+                <aside
+                  className="switchboard-viz-column"
+                  style={{ width: chatVizWidthPx }}
+                  aria-label="Chat Visualizer routing"
+                >
+                  <SwitchboardViz
+                    entries={wavesQueue}
+                    getAccentColor={getAvatarVizColorForSwitchboard}
+                    motionTier={wavesMotionTier === "blink" ? "blink" : "full"}
+                    reducedMotion={reducedMotion}
+                    vizDebug={vizDebug}
+                    rosterEmpty={avatars.length === 0}
+                    onActivateUserMessage={(uid) => {
+                      const row = chatMessagesRef.current?.querySelector(
+                        `[data-message-id="${uid}"]`
+                      );
+                      row?.scrollIntoView({
+                        block: "center",
+                        behavior: "smooth",
+                      });
+                    }}
+                  />
+                </aside>
+                <button
+                  type="button"
+                  className="chat-viz-resize-handle"
+                  aria-label="Resize Chat Visualizer panel"
+                  aria-orientation="vertical"
+                  onPointerDown={onVizResizePointerDown}
+                  onPointerMove={onVizResizePointerMove}
+                  onPointerUp={onVizResizePointerUp}
+                  onPointerCancel={onVizResizePointerUp}
                 />
-              </aside>
+              </>
             )}
             <div
               ref={chatMessagesRef}
@@ -1361,14 +2176,45 @@ function AppContent() {
                             ? "Fallback"
                             : ""
                       : "";
+                  const hoverOneLine =
+                    msg.role === "user"
+                      ? turn
+                        ? formatTurnMetaLine(turn)
+                        : msg.content.trim().slice(0, 120)
+                      : msg.role === "avatar"
+                        ? `${sourceLabel || String(src)} · ${msg.avatarId ?? ""} · ${new Date(
+                            msg.timestamp
+                          ).toLocaleTimeString()}`
+                        : "";
+                  const compactPromptToolbar =
+                    msg.role === "avatar" &&
+                    msg.promptDebug &&
+                    (src === "ollama" || src === "fallback");
                   return (
                     <div
                       key={msg.id}
-                      className={`message-block ${
+                      className={`message-block message-block--interactive ${
                         msg.role === "user" ? "message-block-user" : "message-block-avatar"
-                      } ${sourceClass}`}
+                      } ${compactPromptToolbar ? "message-block-avatar--compact-prompt" : ""} ${sourceClass}`}
+                      data-message-id={msg.id}
                       data-avatar-id={msg.role === "avatar" ? msg.avatarId : undefined}
+                      onMouseEnter={() => setHoverMetaMessageId(msg.id)}
+                      onMouseLeave={() =>
+                        setHoverMetaMessageId((id) =>
+                          id === msg.id ? null : id
+                        )
+                      }
+                      onClick={(e) => {
+                        const t = e.target as HTMLElement;
+                        if (t.closest("button, a, input, textarea, select")) return;
+                        handleMessageRowActivate(msg);
+                      }}
                     >
+                      {hoverMetaMessageId === msg.id && hoverOneLine && (
+                        <div className="message-hover-meta" title={hoverOneLine}>
+                          {hoverOneLine}
+                        </div>
+                      )}
                       <div
                         className={`message ${msg.role}`}
                         data-avatar-id={msg.avatarId}
@@ -1429,26 +2275,105 @@ function AppContent() {
                         >
                           {msg.content}
                         </p>
+                        {msg.role === "user" && msg.emailFocusArtifacts && (
+                          <div className="message-email-focus-toolbar">
+                            <span
+                              className={`email-focus-chip email-focus-chip--cache-${
+                                msg.emailFocusArtifacts.cacheHit ? "hit" : "miss"
+                              }`}
+                              title={
+                                msg.emailFocusArtifacts.cacheHit
+                                  ? "Summary from local cache"
+                                  : "Summary computed this turn"
+                              }
+                            >
+                              {msg.emailFocusArtifacts.cacheHit
+                                ? "Cached summary"
+                                : "New summary"}
+                            </span>
+                            <span
+                              className={`email-focus-chip email-focus-chip--rel-${msg.emailFocusArtifacts.relevance}`}
+                              title="Model estimate: is this focused email useful for your message?"
+                            >
+                              {msg.emailFocusArtifacts.relevance === "relevant"
+                                ? "Email: relevant"
+                                : msg.emailFocusArtifacts.relevance === "irrelevant"
+                                  ? "Email: low relevance"
+                                  : "Email: uncertain"}
+                            </span>
+                            {msg.emailFocusArtifacts.openUrl && (
+                              <button
+                                type="button"
+                                className="message-email-gmail-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void openLink(msg.emailFocusArtifacts!.openUrl!);
+                                }}
+                              >
+                                Open in Gmail
+                              </button>
+                            )}
+                          </div>
+                        )}
                         {msg.role === "avatar" &&
                           msg.promptDebug &&
                           (src === "ollama" || src === "fallback") && (
-                          <div className="message-prompt-tools">
-                            <button
-                              type="button"
-                              className="message-prompt-toggle"
-                              aria-expanded={expandedPromptId === msg.id}
-                              onClick={() =>
-                                setExpandedPromptId((id) =>
-                                  id === msg.id ? null : msg.id
-                                )
-                              }
-                            >
-                              {expandedPromptId === msg.id ? "▼" : "▶"}{" "}
-                              {src === "ollama"
-                                ? "Prompt sent to Ollama"
-                                : "Ollama generation failed"}
-                            </button>
-                            {expandedPromptId === msg.id && (
+                          <div className="message-prompt-toolbar">
+                            <div className="message-prompt-tools message-prompt-tools--row">
+                              <button
+                                type="button"
+                                className={`message-prompt-toggle ${
+                                  src === "fallback"
+                                    ? "message-prompt-toggle--fallback"
+                                    : "message-prompt-toggle--ollama"
+                                }`}
+                                aria-expanded={expandedPromptId === msg.id}
+                                onClick={() =>
+                                  setExpandedPromptId((id) =>
+                                    id === msg.id ? null : msg.id
+                                  )
+                                }
+                              >
+                                <span className="message-prompt-toggle-icon" aria-hidden="true">
+                                  {expandedPromptId === msg.id ? "▼" : "▶"}
+                                </span>
+                                <span>
+                                  {src === "ollama"
+                                    ? "Prompt sent to Ollama"
+                                    : "Ollama generation failed"}
+                                </span>
+                              </button>
+                            </div>
+                            {msg.avatarId && (
+                              <button
+                                type="button"
+                                className="message-feedback-btn message-feedback-btn--downrank"
+                                title="This reply was unhelpful — lowers this avatar's automatic routing priority (local)"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const allIds = fullAvatarCatalog.map((a) => a.id);
+                                  patchSituationContext({
+                                    avatarRosterPriorityScoreById: applyUnhelpfulDecrement(
+                                      situationContext.avatarRosterPriorityScoreById ?? {},
+                                      msg.avatarId!,
+                                      allIds
+                                    ),
+                                  });
+                                  appendSessionLog("ui", "avatar_unhelpful_feedback", {
+                                    level: "info",
+                                    detail: msg.avatarId!,
+                                  });
+                                }}
+                              >
+                                Unhelpful reply
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {msg.role === "avatar" &&
+                          msg.promptDebug &&
+                          (src === "ollama" || src === "fallback") &&
+                          expandedPromptId === msg.id && (
                               <div className="message-prompt-expanded">
                                 {src === "fallback" && msg.replyError && (
                                   <div
@@ -1473,6 +2398,63 @@ function AppContent() {
                                   {msg.promptDebug.fullPrompt}
                                 </pre>
                                 <details className="message-prompt-details">
+                                  <summary>Model reply / tools parse</summary>
+                                  <div className="message-prompt-parse-block">
+                                    {msg.promptDebug.rawModelReply != null && (
+                                      <>
+                                        <div className="message-prompt-section-label">
+                                          Raw model reply
+                                        </div>
+                                        <pre className="message-prompt-raw-model">
+                                          {msg.promptDebug.rawModelReply}
+                                        </pre>
+                                      </>
+                                    )}
+                                    <div className="message-prompt-section-label">
+                                      Parsed tool names (intent)
+                                    </div>
+                                    <p className="message-prompt-parse-line">
+                                      {(msg.promptDebug.worldviewParsedToolIntentNames
+                                        ?.length ?? 0) > 0
+                                        ? msg.promptDebug.worldviewParsedToolIntentNames!.join(
+                                            ", "
+                                          )
+                                        : "(none — no valid avatars_tools_v1 envelope)"}
+                                    </p>
+                                    <div className="message-prompt-section-label">
+                                      Executed tools
+                                    </div>
+                                    <p className="message-prompt-parse-line">
+                                      {(msg.promptDebug.worldviewExecutedToolNames
+                                        ?.length ?? 0) > 0
+                                        ? msg.promptDebug.worldviewExecutedToolNames!.join(
+                                            ", "
+                                          )
+                                        : "(none)"}
+                                    </p>
+                                    {(msg.promptDebug.worldviewParseHints?.length ??
+                                      0) > 0 && (
+                                      <>
+                                        <div className="message-prompt-section-label message-prompt-section-label--warn">
+                                          Parse mismatch hints
+                                        </div>
+                                        <ul className="message-prompt-hints-list">
+                                          {msg.promptDebug.worldviewParseHints!.map(
+                                            (h, i) => (
+                                              <li key={i}>{h}</li>
+                                            )
+                                          )}
+                                        </ul>
+                                        {msg.promptDebug.worldviewParseReason && (
+                                          <p className="message-prompt-parse-reason">
+                                            {msg.promptDebug.worldviewParseReason}
+                                          </p>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </details>
+                                <details className="message-prompt-details">
                                   <summary>Structured details</summary>
                                   <pre className="message-prompt-panel message-prompt-panel--json">
                                     {JSON.stringify(
@@ -1482,7 +2464,11 @@ function AppContent() {
                                             string,
                                             unknown
                                           >
-                                        ).filter(([k]) => k !== "fullPrompt")
+                                        ).filter(
+                                          ([k]) =>
+                                            k !== "fullPrompt" &&
+                                            k !== "rawModelReply"
+                                        )
                                       ),
                                       null,
                                       2
@@ -1496,8 +2482,6 @@ function AppContent() {
                                   </p>
                                 )}
                               </div>
-                            )}
-                          </div>
                         )}
                         {msg.role === "avatar" && src === "rules" && fromAvatar && (
                           <div className="message-prompt-tools">
@@ -1579,18 +2563,70 @@ function AppContent() {
                 })
               )}
             </div>
+            {showSourceCacheViz && wavesColumnVisible && (
+              <>
+                <button
+                  type="button"
+                  className="chat-viz-resize-handle chat-viz-resize-handle--source-cache"
+                  aria-label="Resize Storage visualizer panel"
+                  aria-orientation="vertical"
+                  onPointerDown={onSourceCacheVizResizePointerDown}
+                  onPointerMove={onSourceCacheVizResizePointerMove}
+                  onPointerUp={onSourceCacheVizResizePointerUp}
+                  onPointerCancel={onSourceCacheVizResizePointerUp}
+                />
+                <aside
+                  className="source-cache-viz-column"
+                  style={{ width: sourceCacheVizWidthPx }}
+                  aria-label="Storage and cache diagnostics"
+                >
+                  <SourceCacheViz
+                    diagnostics={sourceCacheVizSnapshot.diagnostics}
+                    parsedFallbackLines={
+                      sourceCacheVizSnapshot.parsedFallbackLines
+                    }
+                    emailInsights={sourceCacheVizSnapshot.emailInsights}
+                    worldMeta={sourceCacheVizSnapshot.worldMeta}
+                    worldviewAuditTail={sourceCacheVizSnapshot.worldviewAuditTail}
+                    wavesQueueLength={sourceCacheVizSnapshot.wavesQueueLength}
+                    wavesStorageKey={sourceCacheVizSnapshot.wavesStorageKey}
+                    lastUserEmailFocus={sourceCacheVizSnapshot.lastUserEmailFocus}
+                    futureSources={sourceCacheVizSnapshot.futureSources}
+                    onOpenWorldviewTab={openWorldviewTab}
+                  />
+                </aside>
+              </>
+            )}
             </div>
 
-            {pendingTurnCount > 0 && (
+            {(pendingTurnCount > 0 ||
+              (showSwitchboardViz && wavesColumnVisible && vizDebug)) && (
               <div className="chat-pending-bar" role="status" aria-live="polite">
-                <span className="chat-pending-icon" aria-hidden>
-                  ⏳
-                </span>
-                <span className="chat-pending-text">
-                  {pendingTurnCount === 1
-                    ? "Reply in progress…"
-                    : `${pendingTurnCount} replies in progress…`}
-                </span>
+                {showSwitchboardViz && wavesColumnVisible && vizDebug && (() => {
+                  const counts = countWavesQueueByKind(wavesQueue);
+                  return (
+                    <span className="chat-viz-debug" aria-hidden>
+                      user:{counts.user} · wave:{counts.wave} · wv:
+                      {counts.worldview}
+                      {counts.toolError > 0 ? ` · err:${counts.toolError}` : ""}
+                      {counts.systemCommand > 0
+                        ? ` · cmd:${counts.systemCommand} [n:${counts.cmdNoTools} q:${counts.cmdQueued} v:${counts.cmdValidated} a:${counts.cmdApplied} f:${counts.cmdFailed}]`
+                        : ""}
+                    </span>
+                  );
+                })()}
+                {pendingTurnCount > 0 && (
+                  <>
+                    <span className="chat-pending-icon" aria-hidden>
+                      ⏳
+                    </span>
+                    <span className="chat-pending-text">
+                      {pendingTurnCount === 1
+                        ? "Reply in progress…"
+                        : `${pendingTurnCount} replies in progress…`}
+                    </span>
+                  </>
+                )}
               </div>
             )}
 
@@ -1599,7 +2635,7 @@ function AppContent() {
               role="group"
               aria-label="Choose avatars to address in your next message"
             >
-              <span className="chat-avatar-picker-label">Speaking</span>
+              <span className="chat-avatar-picker-label">Talk to</span>
               <div className="chat-avatar-picker-scroll">
                 {fullAvatarCatalog.map((a) => {
                   const selected = selectedAvatarIds.includes(a.id);
@@ -1845,6 +2881,22 @@ function AppContent() {
           </button>
           <button
             type="button"
+            className={`context-tab ${contextTab === "user" ? "active" : ""}`}
+            onClick={() => setContextTab("user")}
+            title="Your name, pronouns, and notes for prompts"
+          >
+            You
+          </button>
+          <button
+            type="button"
+            className={`context-tab ${contextTab === "worldview" ? "active" : ""}`}
+            onClick={() => setContextTab("worldview")}
+            title="Worldview tool audit (local)"
+          >
+            WV log
+          </button>
+          <button
+            type="button"
             className={`context-tab ${contextTab === "well" ? "active" : ""}`}
             onClick={() => setContextTab("well")}
             title="Well of Souls (WoS) — personality rule generator"
@@ -1866,8 +2918,13 @@ function AppContent() {
               ) : recentEmails.length === 0 ? (
                 <p className="context-empty">No recent emails.</p>
               ) : (
-                <ul className="email-list">
-                  {recentEmails.map((e) => (
+                <ul
+                  className="email-list"
+                  key={`email-insights-${recentEmails.map((x) => x.id).join("|")}|${messages.length}|${pendingTurnCount}`}
+                >
+                  {recentEmails.map((e) => {
+                    const insight = peekEmailInsight(e.id);
+                    return (
                     <li
                       key={e.id}
                       className={`email-item ${focus.email?.id === e.id ? "focused" : ""}`}
@@ -1878,11 +2935,24 @@ function AppContent() {
                         onClick={() =>
                           setFocus((f) => ({
                             ...f,
-                            email: { id: e.id, title: e.subject || "(No subject)" },
+                            email: {
+                              id: e.id,
+                              title: e.subject || "(No subject)",
+                              snippet: e.snippet,
+                            },
                           }))
                         }
                       >
-                        <span className="email-from">{e.from}</span>
+                        <div className="email-item-head">
+                          {insight ? (
+                            <span
+                              className={`email-item-insight email-item-insight--${insight.relevance}`}
+                              title={`Focused-turn insight: ${insight.relevance}`}
+                              aria-label={`Email insight: ${insight.relevance}`}
+                            />
+                          ) : null}
+                          <span className="email-from">{e.from}</span>
+                        </div>
                         <span className="email-subject">{e.subject}</span>
                         <span className="email-snippet">{e.snippet}</span>
                         <span className="email-date">
@@ -1890,7 +2960,8 @@ function AppContent() {
                         </span>
                       </button>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -1946,6 +3017,188 @@ function AppContent() {
               )}
             </div>
           )}
+          {contextTab === "worldview" && (
+            <div className="context-worldview-audit">
+              <p className="context-projects-hint">
+                Append-only log when avatars run structured tools (world metadata
+                patches, Gmail body fetch, etc.). Stored locally. Use{" "}
+                <strong>Revert bad patches</strong> when a row applied incorrect
+                world metadata — it removes touched project/person ids and restores
+                your profile if that tool ran.
+              </p>
+              {worldviewAuditRecords.length === 0 ? (
+                <p className="context-empty">No entries yet.</p>
+              ) : (
+                <ul className="worldview-audit-list">
+                  {worldviewAuditRecords.map((r) => {
+                    const canRevert =
+                      !r.revertedAt &&
+                      ((r.revertiblePatchCalls?.length ?? 0) > 0 ||
+                        !!r.userProfileBefore);
+                    return (
+                      <li key={r.id} className="worldview-audit-item">
+                        <div className="worldview-audit-item-head">
+                          <span className="worldview-audit-meta">
+                            {new Date(r.ts).toLocaleString()} · {r.avatarId}
+                            {r.sourceEmailId
+                              ? ` · email ${r.sourceEmailId.slice(0, 8)}…`
+                              : ""}
+                            {r.revertedAt && (
+                              <span className="worldview-audit-reverted">
+                                {" "}
+                                · reverted{" "}
+                                {new Date(r.revertedAt).toLocaleString()}
+                              </span>
+                            )}
+                          </span>
+                          {canRevert && (
+                            <button
+                              type="button"
+                              className="worldview-audit-revert-btn"
+                              title="Remove world metadata written by these successful patches (best-effort)"
+                              onClick={() => {
+                                if (
+                                  !window.confirm(
+                                    "Revert world metadata from this row? Project/person ids touched by successful patches will be removed; user profile will be restored if this row changed it."
+                                  )
+                                ) {
+                                  return;
+                                }
+                                if (applyWorldviewAuditRevert(r.id)) {
+                                  const removedProjectIds = new Set<string>();
+                                  const removedContactIds = new Set<string>();
+                                  for (const t of r.revertiblePatchCalls ?? []) {
+                                    if (t.name === "world_metadata.patch_projects") {
+                                      const patch = t.args.patch as
+                                        | Record<string, unknown>
+                                        | undefined;
+                                      if (patch) {
+                                        for (const k of Object.keys(patch)) {
+                                          removedProjectIds.add(k);
+                                        }
+                                      }
+                                    }
+                                    if (t.name === "world_metadata.patch_people") {
+                                      const patch = t.args.patch as
+                                        | Record<string, unknown>
+                                        | undefined;
+                                      if (patch) {
+                                        for (const k of Object.keys(patch)) {
+                                          removedContactIds.add(k);
+                                        }
+                                      }
+                                    }
+                                  }
+                                  if (
+                                    removedProjectIds.size > 0 ||
+                                    removedContactIds.size > 0
+                                  ) {
+                                    setFocus((f) => {
+                                      let next = f;
+                                      if (
+                                        f.project?.id &&
+                                        removedProjectIds.has(f.project.id)
+                                      ) {
+                                        next = { ...next, project: undefined };
+                                      }
+                                      if (
+                                        f.contact?.id &&
+                                        removedContactIds.has(f.contact.id)
+                                      ) {
+                                        next = { ...next, contact: undefined };
+                                      }
+                                      return next;
+                                    });
+                                  }
+                                  setWorldviewAuditRefresh((n) => n + 1);
+                                  setProjectsRefresh((n) => n + 1);
+                                  setUserProfileRefresh((n) => n + 1);
+                                  appendSessionLog(
+                                    "ui",
+                                    "worldview_audit_reverted",
+                                    {
+                                      level: "info",
+                                      detail: r.id,
+                                    }
+                                  );
+                                }
+                              }}
+                            >
+                              Revert bad patches
+                            </button>
+                          )}
+                        </div>
+                        <ul className="worldview-audit-tools">
+                          {r.toolResults.map((t, i) => (
+                            <li key={i} className="worldview-audit-tool-line">
+                              <div className="worldview-audit-tool-summary">
+                                {t.name}
+                                {t.detail ? ` (${t.detail})` : ""}{" "}
+                                {t.ok ? "ok" : `fail: ${t.error ?? "?"}`}
+                              </div>
+                              {t.argsPreview ? (
+                                <pre className="worldview-audit-args">
+                                  {t.argsPreview}
+                                </pre>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+          {contextTab === "user" && (
+            <div className="context-user-profile">
+              <p className="context-projects-hint">
+                Shown to avatars as <code>User profile (local):</code> in chat
+                context (local metadata).
+              </p>
+              <label className="context-user-label">
+                Display name
+                <input
+                  type="text"
+                  className="context-projects-title-input"
+                  value={userDisplayName}
+                  onChange={(e) => setUserDisplayName(e.target.value)}
+                  placeholder="How you want to be addressed"
+                  aria-label="Your display name"
+                />
+              </label>
+              <label className="context-user-label">
+                Pronouns
+                <input
+                  type="text"
+                  className="context-projects-title-input"
+                  value={userPronouns}
+                  onChange={(e) => setUserPronouns(e.target.value)}
+                  placeholder="e.g. they/them"
+                  aria-label="Your pronouns"
+                />
+              </label>
+              <label className="context-user-label">
+                Notes
+                <textarea
+                  className="context-projects-notes-input"
+                  value={userNotes}
+                  onChange={(e) => setUserNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Optional context for avatars"
+                  aria-label="Notes about you"
+                />
+              </label>
+              <button
+                type="button"
+                className="context-projects-add-btn"
+                onClick={handleSaveUserProfile}
+              >
+                Save profile
+              </button>
+            </div>
+          )}
           {contextTab === "projects" && (
             <div className="context-projects">
               <p className="context-projects-hint">
@@ -1963,6 +3216,14 @@ function AppContent() {
                     e.key === "Enter" && (e.preventDefault(), handleAddWorldProject())
                   }
                   aria-label="New project title"
+                />
+                <textarea
+                  className="context-projects-notes-input"
+                  placeholder="Summary for prompts (optional)"
+                  value={newProjectSummary}
+                  onChange={(e) => setNewProjectSummary(e.target.value)}
+                  rows={2}
+                  aria-label="New project summary"
                 />
                 <textarea
                   className="context-projects-notes-input"
@@ -2004,6 +3265,9 @@ function AppContent() {
                         aria-label={`Set focus to project ${proj.title}`}
                       >
                         <span className="wm-project-title">{proj.title}</span>
+                        {proj.summary?.trim() && (
+                          <span className="wm-project-summary">{proj.summary.trim()}</span>
+                        )}
                         {proj.notes?.trim() && (
                           <span className="wm-project-notes">{proj.notes.trim()}</span>
                         )}
@@ -2087,6 +3351,52 @@ function AppContent() {
           )}
         </div>
         </div>
+        {(() => {
+          const depthKey =
+            contextTab === "email" ||
+            contextTab === "calendar" ||
+            contextTab === "contacts" ||
+            contextTab === "projects"
+              ? contextTab
+              : null;
+          if (!depthKey) return null;
+          const depthMap = situationContext.contextEntryDepth ?? {};
+          const t = depthMap[depthKey] ?? 0;
+          const readout =
+            depthKey === "email"
+              ? `${contextEntryBudgets.emailTopK} emails`
+              : depthKey === "calendar"
+                ? `${contextEntryBudgets.calendarTopK} events`
+                : depthKey === "contacts"
+                  ? `${contextEntryBudgets.contactsTopK} contacts`
+                  : `${contextEntryBudgets.projectExtraTopK} extra`;
+          return (
+            <div className="context-entry-depth">
+              <div className="context-entry-depth-row">
+                <span className="context-entry-depth-title">Context Depth</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1000}
+                  value={Math.round(t * 1000)}
+                  onChange={(e) =>
+                    patchSituationContext({
+                      contextEntryDepth: {
+                        ...depthMap,
+                        [depthKey]: Number(e.target.value) / 1000,
+                      },
+                    })
+                  }
+                  aria-label={`Context depth (${depthKey})`}
+                  className="context-entry-depth-slider"
+                />
+                <output className="context-entry-depth-readout" aria-live="polite">
+                  {readout}
+                </output>
+              </div>
+            </div>
+          );
+        })()}
         <div className="context-user-mood">
           <h3 className="context-user-mood-title">You right now</h3>
           <label className="tuning-row">
@@ -2132,6 +3442,14 @@ function AppContent() {
           setAvatarBuilderInitial(null);
         }}
         initial={avatarBuilderInitial}
+        initialRosterScore={
+          avatarBuilderInitial?.kind === "edit"
+            ? getRosterScore(
+                situationContext.avatarRosterPriorityScoreById,
+                avatarBuilderInitial.avatar.id
+              )
+            : undefined
+        }
         existingUserAvatars={situationContext.userAvatars ?? []}
         onSave={handleAvatarBuilderSave}
       />

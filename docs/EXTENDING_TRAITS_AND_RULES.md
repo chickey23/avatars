@@ -30,6 +30,10 @@ Avatars may still resolve rules via `ruleSetId` when `ruleBlockIds` is absent ([
 
 - Run tests (`avatarRules`, etc.) and smoke-test: open AI rules library panel, avatar builder rule checkboxes, Well of Souls, and one chat turn to confirm prompts include new blocks.
 
+## Injection prefixes (user profile and world metadata)
+
+Relevant-context lines injected by the app use **fixed prefixes** (see `userProfileToRelevanceLines`, project metadata, email body fetch). Rule blocks such as `user-context-contract` refer to these strings by name. If you change prefix text in code, update the corresponding rule block bodies in `AI_RULE_BLOCKS` so models stay aligned.
+
 ## Related docs
 
 - [`DISTRIBUTION.md`](DISTRIBUTION.md) — `uneditable`, `builtinAvatarEdits`, blocks-first routing in distribution contexts.

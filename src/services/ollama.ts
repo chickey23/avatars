@@ -274,6 +274,7 @@ export async function generateWithOllama(
         model,
         prompt: options.prompt,
         stream: options.stream ?? false,
+        options: { num_ctx: 8192 },
       }),
       signal: AbortSignal.timeout(120000),
     });

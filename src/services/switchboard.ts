@@ -13,7 +13,9 @@ import type {
   OllamaPromptDebug,
   ReplySource,
   RulesSkipReason,
+  WorldviewActivityAction,
 } from "../types";
+import type { WavesSystemCommandStatus } from "./switchboardWavesQueue";
 import { getRoutingLastMessage } from "./situationContext";
 import { runAvatarAgent } from "./avatarAgents";
 import { shouldReact } from "./opinionMatrix";
@@ -26,8 +28,20 @@ import {
 } from "./avatarRoutingProfile";
 import {
   getAddressTier,
-  addressTierBonus,
 } from "./routingDirectAddress";
+import { buildActiveTasksByAvatar, getRoutingScoreForAvatar } from "./routingScore";
+import {
+  getSemanticBiasFromRosterScore,
+  getRosterScore,
+  mergePopInIntoResponderIds,
+} from "./avatarRoster";
+import { appendSessionLog } from "./sessionLog";
+
+export {
+  scoreAvatarForUserMessageContent,
+  scoreTaskMatchForAvatar,
+  getRoutingScoreForAvatar,
+} from "./routingScore";
 
 export interface SwitchboardResult {
   responderIds: string[];
@@ -38,90 +52,6 @@ export interface EvaluateRelevanceMetaResult extends SwitchboardResult {
   selection: SwitchboardSelection;
 }
 
-const MIN_TASK_TITLE_MATCH_LEN = 4;
-const TASK_MATCH_BONUS = 5;
-const MAX_TASK_MATCH_SCORE_PER_AVATAR = 18;
-const MAX_TAG_INTEREST_SCORE = 40;
-/** Combined tag/interest + task match ceiling (40 + 18). */
-const MAX_COMBINED_MATCH_SCORE = 58;
-
-function sumTagInterestScoreUncapped(avatar: Avatar, contentLower: string): number {
-  let n = 0;
-  for (const t of avatar.tags) {
-    if (contentLower.includes(t.toLowerCase())) n += 6;
-  }
-  for (const i of avatar.interests) {
-    if (contentLower.includes(i.toLowerCase())) n += 5;
-  }
-  return n;
-}
-
-/** Tag/interest overlap score vs user message (aligned with proactive affinity weights). */
-export function scoreAvatarForUserMessageContent(
-  avatar: Avatar,
-  contentLower: string
-): number {
-  return Math.min(MAX_TAG_INTEREST_SCORE, sumTagInterestScoreUncapped(avatar, contentLower));
-}
-
-function buildActiveTasksByAvatar(tasks: LongTermTask[]): Map<string, LongTermTask[]> {
-  const map = new Map<string, LongTermTask[]>();
-  for (const task of tasks) {
-    if (task.status !== "active") continue;
-    const arr = map.get(task.avatarId) ?? [];
-    arr.push(task);
-    map.set(task.avatarId, arr);
-  }
-  return map;
-}
-
-/**
- * Bounded bonus when user text overlaps active long-term task title/description.
- */
-export function scoreTaskMatchForAvatar(
-  avatarId: string,
-  contentLower: string,
-  tasksByAvatar: Map<string, LongTermTask[]>
-): number {
-  const tasks = tasksByAvatar.get(avatarId) ?? [];
-  let total = 0;
-  for (const task of tasks) {
-    if (total >= MAX_TASK_MATCH_SCORE_PER_AVATAR) break;
-    const title = task.title.trim();
-    let matched = false;
-    if (title.length >= MIN_TASK_TITLE_MATCH_LEN) {
-      matched = contentLower.includes(title.toLowerCase());
-    }
-    if (!matched && task.description?.trim()) {
-      const blob = task.description.trim().toLowerCase();
-      if (blob.length >= 12 && contentLower.includes(blob)) {
-        matched = true;
-      } else {
-        for (const word of blob.split(/[^a-z0-9]+/)) {
-          if (word.length >= 5 && contentLower.includes(word)) {
-            matched = true;
-            break;
-          }
-        }
-      }
-    }
-    if (matched) {
-      total += TASK_MATCH_BONUS;
-    }
-  }
-  return Math.min(MAX_TASK_MATCH_SCORE_PER_AVATAR, total);
-}
-
-function combinedMatchScoreForAvatar(
-  avatar: Avatar,
-  contentLower: string,
-  tasksByAvatar: Map<string, LongTermTask[]>
-): number {
-  const ti = Math.min(MAX_TAG_INTEREST_SCORE, sumTagInterestScoreUncapped(avatar, contentLower));
-  const taskPart = scoreTaskMatchForAvatar(avatar.id, contentLower, tasksByAvatar);
-  return Math.min(MAX_COMBINED_MATCH_SCORE, ti + taskPart);
-}
-
 /**
  * Picks up to K avatars with positive tag/interest (and optional task) match; else first avatar.
  * @param tasksOverride - For tests; when omitted, loads from `loadTasks()`.
@@ -130,17 +60,15 @@ export function pickRespondersForUserMessage(
   content: string,
   avatars: Avatar[],
   maxAvatars: number = PROACTIVE_MAX_AVATARS_PER_CLUSTER,
-  tasksOverride?: LongTermTask[]
+  tasksOverride?: LongTermTask[],
+  rosterScores?: Record<string, number>
 ): { responderIds: string[]; selection: SwitchboardSelection } {
   const contentLower = content.toLowerCase();
-  const tasks = tasksOverride ?? loadTasks();
-  const tasksByAvatar = buildActiveTasksByAvatar(tasks);
   const scored = avatars.map((a) => {
-    const base = combinedMatchScoreForAvatar(a, contentLower, tasksByAvatar);
     const tier = getAddressTier(a, contentLower);
     return {
       id: a.id,
-      score: base + addressTierBonus(tier),
+      score: getRoutingScoreForAvatar(a, content, tasksOverride, rosterScores),
       tier,
     };
   });
@@ -171,7 +99,8 @@ async function trySemanticUserRouting(
   content: string,
   avatars: Avatar[],
   tasksByAvatar: Map<string, LongTermTask[]>,
-  maxAvatars: number
+  maxAvatars: number,
+  rosterScores?: Record<string, number>
 ): Promise<{ responderIds: string[]; selection: "semantic_match" } | null> {
   const userEmb = await embedWithOllama(content);
   if (!userEmb.ok) return null;
@@ -184,7 +113,11 @@ async function trySemanticUserRouting(
     if (!emb.ok) return null;
     const sim = cosineSimilarity(userEmb.embedding, emb.embedding);
     const tier = getAddressTier(a, contentLower);
-    scored.push({ id: a.id, sim, tier });
+    scored.push({
+      id: a.id,
+      sim: sim + getSemanticBiasFromRosterScore(getRosterScore(rosterScores, a.id)),
+      tier,
+    });
   }
   scored.sort((x, y) => {
     if (y.tier !== x.tier) return y.tier - x.tier;
@@ -221,22 +154,30 @@ export async function evaluateRelevanceWithMeta(
   if (lastMsg.role === "user") {
     const tasks = loadTasks();
     const tasksByAvatar = buildActiveTasksByAvatar(tasks);
+    const rosterScores = ctx.avatarRosterPriorityScoreById;
     const semantic = await trySemanticUserRouting(
       lastMsg.content,
       avatars,
       tasksByAvatar,
-      PROACTIVE_MAX_AVATARS_PER_CLUSTER
+      PROACTIVE_MAX_AVATARS_PER_CLUSTER,
+      rosterScores
     );
     if (semantic) {
       return {
-        responderIds: semantic.responderIds,
+        responderIds: mergePopInIntoResponderIds(semantic.responderIds, ctx),
         relevantData,
         selection: semantic.selection,
       };
     }
-    const picked = pickRespondersForUserMessage(lastMsg.content, avatars);
+    const picked = pickRespondersForUserMessage(
+      lastMsg.content,
+      avatars,
+      PROACTIVE_MAX_AVATARS_PER_CLUSTER,
+      tasks,
+      rosterScores
+    );
     return {
-      responderIds: picked.responderIds,
+      responderIds: mergePopInIntoResponderIds(picked.responderIds, ctx),
       relevantData,
       selection: picked.selection,
     };
@@ -273,11 +214,68 @@ export type DistributeAndRespondOptions = {
   }) => void;
   /** Called after each routing wave is scheduled (a trace step is appended). */
   onTraceProgress?: (args: { trace: SwitchboardTraceStep[] }) => void;
+  /**
+   * After each wave’s responders have run and their messages are appended to context
+   * (before the next routing evaluation). Use to align UI with visible chat for that wave.
+   */
+  onWaveChatComplete?: (args: { depth: number }) => void;
+  /** After an avatar reply applied worldview JSON tools (Ollama path). */
+  onWorldviewActivity?: (args: {
+    avatarId: string;
+    userMessageId: string;
+    toolNames: string[];
+    /** Short per-tool summaries for the waves queue (non-secret). */
+    actions?: WorldviewActivityAction[];
+    sourceEmailId?: string;
+  }) => void;
+  /** Lexical malformed or tool execution failure (one callback per error string). */
+  onToolResolutionError?: (args: {
+    avatarId: string;
+    userMessageId: string;
+    message: string;
+    detail?: string;
+    sourceEmailId?: string;
+  }) => void;
+  /** Model output looked like tools but did not parse as avatars_tools_v1. */
+  onWorldviewParseDiagnostic?: (args: {
+    avatarId: string;
+    userMessageId: string;
+    hints: string[];
+    reason: string | null;
+    sourceEmailId?: string;
+  }) => void;
+  /** Deferred system-command lifecycle emitted for visualizer/debug UX. */
+  onSystemCommandStatus?: (args: {
+    avatarId: string;
+    userMessageId: string;
+    status: WavesSystemCommandStatus;
+    detail?: string;
+    sourceEmailId?: string;
+  }) => void;
+  /** `single_wave` = one wave only (no cascade re-routing). Default: `cascade`. */
+  routingMode?: "cascade" | "single_wave";
+  /** Fired in `single_wave` mode with ids that would have been scheduled next (not run). */
+  onSingleWaveCascadePreview?: (args: { wouldRespondIds: string[] }) => void;
 };
 
 function filterKnownAvatarIds(ids: string[], avatars: Avatar[]): string[] {
   const known = new Set(avatars.map((a) => a.id));
   return ids.filter((id) => known.has(id));
+}
+
+/** Run the routing executor first when they are in this wave’s responder list. */
+function orderRespondersWithExecutorFirst(
+  ids: string[],
+  executorId: string | undefined
+): string[] {
+  const ex = executorId?.trim();
+  if (!ex || ids.length <= 1) return ids;
+  const i = ids.indexOf(ex);
+  if (i <= 0) return ids;
+  const copy = [...ids];
+  copy.splice(i, 1);
+  copy.unshift(ex);
+  return copy;
 }
 
 /**
@@ -299,6 +297,8 @@ export async function distributeAndRespond(
     promptDebug?: OllamaPromptDebug;
     replyError?: string;
     rulesSkipReason?: RulesSkipReason;
+    suppressUserMessage?: boolean;
+    preflightSkip?: { score: number; threshold: number };
   }>;
   trace: SwitchboardTraceStep[];
 }> {
@@ -309,6 +309,8 @@ export async function distributeAndRespond(
     promptDebug?: OllamaPromptDebug;
     replyError?: string;
     rulesSkipReason?: RulesSkipReason;
+    suppressUserMessage?: boolean;
+    preflightSkip?: { score: number; threshold: number };
   }> = [];
   const trace: SwitchboardTraceStep[] = [];
   let currentCtx = { ...ctx };
@@ -319,13 +321,17 @@ export async function distributeAndRespond(
 
   const forced = filterKnownAvatarIds(forcedResponderIds ?? [], avatars);
   if (forced.length > 0) {
-    toRespond = forced;
+    toRespond = mergePopInIntoResponderIds(forced, currentCtx);
     selection = forced.length === 1 ? "forced_primary" : "forced_multi";
   } else {
     const m = await evaluateRelevanceWithMeta(currentCtx, avatars);
     toRespond = m.responderIds;
     selection = m.selection;
   }
+  toRespond = orderRespondersWithExecutorFirst(
+    toRespond,
+    currentCtx.executorAvatarIdForTurn
+  );
 
   while (toRespond.length > 0 && depth < maxCascadeDepth) {
     trace.push({
@@ -340,6 +346,114 @@ export async function distributeAndRespond(
       if (!avatar) continue;
 
       const result = await runAvatarAgent(avatar, currentCtx);
+      const userMessageId = currentCtx.replyToUserMessageId ?? "";
+      const sourceEmailId = currentCtx.userFocus?.email?.id;
+      const parseHints = result.worldviewParseDiagnosis?.hints ?? [];
+      const parsedIntents =
+        result.promptDebug?.worldviewParsedToolIntentNames?.length ?? 0;
+      const executedIntents =
+        result.promptDebug?.worldviewExecutedToolNames?.length ?? 0;
+      const resErrCount = result.toolResolutionErrors?.length ?? 0;
+      if (parseHints.length > 0) {
+        options?.onSystemCommandStatus?.({
+          avatarId,
+          userMessageId,
+          status: "failed",
+          detail:
+            `parse failed: ${parseHints.slice(0, 2).join(" | ")}`.slice(
+              0,
+              240
+            ),
+          sourceEmailId,
+        });
+      } else if (parsedIntents === 0) {
+        options?.onSystemCommandStatus?.({
+          avatarId,
+          userMessageId,
+          status: "no_tools",
+          detail: "no system commands returned",
+          sourceEmailId,
+        });
+      } else {
+        options?.onSystemCommandStatus?.({
+          avatarId,
+          userMessageId,
+          status: "queued",
+          detail: `${parsedIntents} command(s) returned by model`,
+          sourceEmailId,
+        });
+        options?.onSystemCommandStatus?.({
+          avatarId,
+          userMessageId,
+          status: "validated",
+          detail: "tool envelope parsed",
+          sourceEmailId,
+        });
+        if (executedIntents > 0) {
+          options?.onSystemCommandStatus?.({
+            avatarId,
+            userMessageId,
+            status: "applied",
+            detail: `${executedIntents} command(s) applied`,
+            sourceEmailId,
+          });
+        }
+        if (resErrCount > 0) {
+          options?.onSystemCommandStatus?.({
+            avatarId,
+            userMessageId,
+            status: "failed",
+            detail: `${resErrCount} command error(s): ${result.toolResolutionErrors?.[0] ?? "failed"}`.slice(
+              0,
+              240
+            ),
+            sourceEmailId,
+          });
+        } else if (executedIntents === 0) {
+          options?.onSystemCommandStatus?.({
+            avatarId,
+            userMessageId,
+            status: "failed",
+            detail: "commands returned but none applied",
+            sourceEmailId,
+          });
+        }
+      }
+      const act = result.worldviewActivity;
+      const toolNames =
+        act?.names && act.names.length > 0
+          ? act.names
+          : (result.worldviewToolSummary?.names ?? []);
+      if (toolNames.length > 0) {
+        options?.onWorldviewActivity?.({
+          avatarId,
+          userMessageId,
+          toolNames,
+          actions: act?.actions,
+          sourceEmailId,
+        });
+      }
+      const resErrs = result.toolResolutionErrors;
+      if (resErrs?.length) {
+        for (const msg of resErrs) {
+          options?.onToolResolutionError?.({
+            avatarId,
+            userMessageId,
+            message: msg.slice(0, 160),
+            detail: msg.length > 160 ? msg.slice(160, 480) : undefined,
+            sourceEmailId,
+          });
+        }
+      }
+      if (result.worldviewParseDiagnosis?.hints.length) {
+        options?.onWorldviewParseDiagnostic?.({
+          avatarId,
+          userMessageId,
+          hints: result.worldviewParseDiagnosis.hints,
+          reason: result.worldviewParseDiagnosis.reason,
+          sourceEmailId,
+        });
+      }
       options?.onAvatarComplete?.({ avatarId, result });
       responses.push({
         avatarId,
@@ -348,28 +462,48 @@ export async function distributeAndRespond(
         promptDebug: result.promptDebug,
         replyError: result.replyError,
         rulesSkipReason: result.rulesSkipReason,
+        suppressUserMessage: result.suppressUserMessage,
+        preflightSkip: result.preflightSkip,
       });
 
-      const msg = {
-        id: crypto.randomUUID(),
-        role: "avatar" as const,
-        avatarId,
-        content: result.content,
-        timestamp: Date.now(),
-      };
-      currentCtx = {
-        ...currentCtx,
-        conversationThread: [...currentCtx.conversationThread, msg],
-        recentEvents: [
-          ...currentCtx.recentEvents.slice(-9),
-          `msg:avatar:${avatarId}:${Date.now()}`,
-        ],
-      };
+      if (!result.suppressUserMessage) {
+        const msg = {
+          id: crypto.randomUUID(),
+          role: "avatar" as const,
+          avatarId,
+          content: result.content,
+          timestamp: Date.now(),
+        };
+        currentCtx = {
+          ...currentCtx,
+          conversationThread: [...currentCtx.conversationThread, msg],
+          recentEvents: [
+            ...currentCtx.recentEvents.slice(-9),
+            `msg:avatar:${avatarId}:${Date.now()}`,
+          ],
+        };
+      }
+    }
+
+    options?.onWaveChatComplete?.({ depth });
+
+    if (options?.routingMode === "single_wave") {
+      const nextPreview = await evaluateRelevanceWithMeta(currentCtx, avatars);
+      const wouldRespondIds = nextPreview.responderIds.filter(
+        (id) => !responses.some((r) => r.avatarId === id)
+      );
+      options?.onSingleWaveCascadePreview?.({ wouldRespondIds });
+      appendSessionLog("chat", "switchboard_single_wave", {
+        level: "info",
+        detail: `one_wave_done would_have_cascaded=${wouldRespondIds.join("+") || "none"}`,
+      });
+      break;
     }
 
     const next = await evaluateRelevanceWithMeta(currentCtx, avatars);
-    toRespond = next.responderIds.filter(
-      (id) => !responses.some((r) => r.avatarId === id)
+    toRespond = orderRespondersWithExecutorFirst(
+      next.responderIds.filter((id) => !responses.some((r) => r.avatarId === id)),
+      currentCtx.executorAvatarIdForTurn
     );
     selection = next.selection;
     depth++;

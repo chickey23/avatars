@@ -1,14 +1,19 @@
 import type {
   PersonMetadataRecord,
   ProjectMetadataRecord,
+  UserProfileRecord,
   WorldMetadataDoc,
 } from "./types";
 import { createEmptyWorldMetadataDoc } from "./types";
 import {
   LocalStorageWorldMetadataBackend,
+  migrateWorldMetadataDoc,
+  mirrorWorldMetadataToLocalStorage,
   readWorldMetadataFromLocalStorageSync,
+  worldMetadataDocHasContent,
   type WorldMetadataBackend,
 } from "./backend";
+import { WORLD_METADATA_SCHEMA_VERSION } from "./types";
 
 let doc: WorldMetadataDoc = createEmptyWorldMetadataDoc();
 let loaded = false;
@@ -108,9 +113,99 @@ export function patchWorldMetadataProjects(
   return doc;
 }
 
+/**
+ * Replace the singleton user profile (merge partial fields into existing).
+ */
+export function patchUserProfile(
+  patch: Partial<Omit<UserProfileRecord, "updatedAt">>
+): WorldMetadataDoc {
+  ensureWorldMetadataLoaded();
+  const now = Date.now();
+  const prev = doc.userProfile;
+  doc = {
+    ...doc,
+    userProfile: {
+      ...prev,
+      ...patch,
+      updatedAt: now,
+    },
+  };
+  schedulePersistWorldMetadata();
+  return doc;
+}
+
+/** Replace the singleton user profile (e.g. reverting a bad tool patch). */
+export function replaceUserProfile(profile: UserProfileRecord): WorldMetadataDoc {
+  ensureWorldMetadataLoaded();
+  const now = Date.now();
+  doc = {
+    ...doc,
+    userProfile: {
+      ...profile,
+      updatedAt: now,
+    },
+  };
+  schedulePersistWorldMetadata();
+  return doc;
+}
+
 function flushPersist(): void {
   persistTimer = null;
-  void defaultBackend.write(doc);
+  void (async () => {
+    const tauri =
+      typeof window !== "undefined" && "__TAURI__" in window;
+    if (tauri) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("world_metadata_write", {
+          payload: JSON.stringify({
+            ...doc,
+            schemaVersion: WORLD_METADATA_SCHEMA_VERSION,
+          }),
+        });
+      } catch {
+        /* disk write failed; still mirror LS */
+      }
+    }
+    await defaultBackend.write(doc);
+  })();
+}
+
+/**
+ * Call once before UI (e.g. from `main.tsx`). On Tauri, prefers on-disk
+ * `data/metadata/world_metadata.json`; migrates from localStorage when disk is empty.
+ */
+export async function hydrateWorldMetadataFromDisk(): Promise<void> {
+  if (loaded) return;
+  const tauri =
+    typeof window !== "undefined" && "__TAURI__" in window;
+  if (!tauri) {
+    doc = readWorldMetadataFromLocalStorageSync();
+    loaded = true;
+    return;
+  }
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const diskRaw = await invoke<string | null>("world_metadata_read");
+    const fromLs = readWorldMetadataFromLocalStorageSync();
+    if (diskRaw?.trim()) {
+      doc = migrateWorldMetadataDoc(JSON.parse(diskRaw));
+      mirrorWorldMetadataToLocalStorage(doc);
+    } else if (worldMetadataDocHasContent(fromLs)) {
+      doc = fromLs;
+      await invoke("world_metadata_write", {
+        payload: JSON.stringify({
+          ...doc,
+          schemaVersion: WORLD_METADATA_SCHEMA_VERSION,
+        }),
+      });
+    } else {
+      doc = fromLs;
+    }
+  } catch {
+    doc = readWorldMetadataFromLocalStorageSync();
+  }
+  loaded = true;
 }
 
 /** Debounced full-document replace write so UI stays responsive. */
