@@ -1,6 +1,7 @@
 import type { SwitchboardTraceStep } from "../../types";
 import type {
   WavesQueueEntry,
+  WavesMonitorPromptEntry,
   WavesSystemCommandEntry,
   WavesSystemCommandStatus,
   WavesToolErrorEntry,
@@ -97,6 +98,28 @@ export function appendToolResolutionErrorEntry(
   return [...entries, row];
 }
 
+export function appendMonitorPromptEntry(
+  entries: WavesQueueEntry[],
+  args: {
+    userMessageId: string;
+    avatarId: string;
+    monitorTag: string;
+    label: string;
+  }
+): WavesQueueEntry[] {
+  const row: WavesMonitorPromptEntry = {
+    kind: "monitor_prompt",
+    id: crypto.randomUUID(),
+    userMessageId: args.userMessageId,
+    createdAt: Date.now(),
+    avatarId: args.avatarId,
+    monitorTag: args.monitorTag,
+    label: args.label,
+    settled: true,
+  };
+  return [...entries, row];
+}
+
 export function appendSystemCommandEntry(
   entries: WavesQueueEntry[],
   args: {
@@ -185,6 +208,7 @@ export function countWavesQueueByKind(
   worldview: number;
   toolError: number;
   systemCommand: number;
+  monitorPrompt: number;
   cmdNoTools: number;
   cmdQueued: number;
   cmdValidated: number;
@@ -196,6 +220,7 @@ export function countWavesQueueByKind(
   let worldview = 0;
   let toolError = 0;
   let systemCommand = 0;
+  let monitorPrompt = 0;
   let cmdNoTools = 0;
   let cmdQueued = 0;
   let cmdValidated = 0;
@@ -205,6 +230,7 @@ export function countWavesQueueByKind(
     if (e.kind === "user") user++;
     else if (e.kind === "worldview") worldview++;
     else if (e.kind === "tool_error") toolError++;
+    else if (e.kind === "monitor_prompt") monitorPrompt++;
     else if (e.kind === "system_command") {
       systemCommand++;
       if (e.status === "no_tools") cmdNoTools++;
@@ -221,6 +247,7 @@ export function countWavesQueueByKind(
     worldview,
     toolError,
     systemCommand,
+    monitorPrompt,
     cmdNoTools,
     cmdQueued,
     cmdValidated,

@@ -26,15 +26,38 @@ import {
   patchSituationContext as storePatchSituationContext,
   writePersistedContext,
 } from "../store/appStore";
-import { gatherDataFromSources } from "../connectors";
+import {
+  gatherDataFromCacheFirst,
+  startPlatformRunners,
+  startPlatformScheduler,
+  subscribePlatformEvents,
+  ensurePlatformStoreLoadedAsync,
+  migrateProjectsFromWorldMetadata,
+  syncWorldMetadataProjectsAdditive,
+  prunePlatformPlaceholderProjects,
+} from "../services/platform";
+import {
+  getWorldMetadata,
+  pruneWorldMetadataPlaceholderProjects,
+  seedProjectsIntoWorldMetadata,
+} from "../services/worldMetadata/store";
+import { PROJECT_SEED_LIST } from "../data/projectSeedList";
 import { resolveContextEntryBudgets } from "../utils/contextEntryBudget";
-import { mergeProactiveEvaluation } from "../services/pendingNotifications";
+import {
+  addPendingNotifications,
+  mergeProactiveEvaluation,
+} from "../services/pendingNotifications";
 import { ensureWorldMetadataLoaded } from "../services/worldMetadata/store";
 import { resolvePrimarySlotCount } from "../store/primaryRoster";
 import { getFullAvatarCatalog } from "../store/avatarCatalog";
 import { getSortedCoreAvatars } from "../services/avatarRoster";
 import {
+  filterOutSystemAvatars,
+  setRoutingCatalogRef,
+} from "../services/platform";
+import {
   WAVES_QUEUE_SCHEMA_VERSION,
+  appendMonitorPromptEntry,
   appendSystemCommandEntry,
   appendToolResolutionErrorEntry,
   appendTraceDelta,
@@ -49,6 +72,12 @@ import {
 } from "../services/switchboardWavesQueue";
 import type { WavesQueueEntry } from "../services/switchboardWavesQueue";
 import { appendSessionLog } from "../services/sessionLog";
+import {
+  runMonitorsAndPost,
+  setSyntheticPostSink,
+} from "../services/monitors";
+import { subscribePlatformStore } from "../services/platform";
+import { installDefaultMonitors } from "../services/monitors/bootstrap";
 
 export type { SendMessageOptions } from "./app-context";
 
@@ -86,6 +115,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const rosterScoresKey = JSON.stringify(
     state.situationContext.avatarRosterPriorityScoreById ?? {}
   );
+  /**
+   * Sidebar primary strip includes system avatars so the user can
+   * address them directly. The switchboard / proactive path internally calls
+   * `filterOutSystemAvatars` to keep them out of default scoring.
+   */
   const slotCount = resolvePrimarySlotCount(
     state.situationContext,
     fullAvatarCatalog.length
@@ -127,6 +161,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state.selectedAvatarIds]);
 
   /**
+   * Keep the routing catalog reference in sync with the merged catalog so
+   * `isSystemAvatarId(id)` (single-arg, legacy) can resolve via tag lookup
+   * without every caller threading the catalog through.
+   */
+  useEffect(() => {
+    setRoutingCatalogRef(fullAvatarCatalog);
+  }, [fullAvatarCatalog]);
+
+  /**
+   * Latest catalog pointer for the synthetic-post sink and monitor drivers —
+   * they run outside React render and cannot close over `fullAvatarCatalog`
+   * directly.
+   */
+  const fullCatalogRef = useRef(fullAvatarCatalog);
+  useEffect(() => {
+    fullCatalogRef.current = fullAvatarCatalog;
+  }, [fullAvatarCatalog]);
+
+  /**
+   * Synthetic-post sink: monitor-authored `ConversationMessage`s are appended
+   * to the active thread (no Ollama) and a `?`-glyph row is enqueued in the
+   * waves queue so the Waves column shows a question-mark dot.
+   */
+  useEffect(() => {
+    setSyntheticPostSink(({ message, wavesLabel, avatarId, monitorTag }) => {
+      setState((prev) => {
+        const next = appendToConversation(prev.situationContext, message);
+        situationContextRef.current = next;
+        writePersistedContext(next);
+        return { ...prev, situationContext: next };
+      });
+      setWavesQueue((prev) => {
+        const updated = appendMonitorPromptEntry(prev, {
+          userMessageId: message.id,
+          avatarId,
+          monitorTag,
+          label: wavesLabel,
+        });
+        schedulePersistWaves(updated);
+        return updated;
+      });
+      appendSessionLog("monitors", "synthetic_posted", {
+        level: "info",
+        detail: `${monitorTag} by=${avatarId}`,
+      });
+    });
+    return () => setSyntheticPostSink(null);
+  }, [schedulePersistWaves]);
+
+  /**
+   * Install the built-in monitor set once. Monitors claim work via
+   * `systemTags`; if no avatar claims a required contract the `unclaimed_contracts`
+   * post will warn the user via whichever avatar still carries `system`.
+   */
+  useEffect(() => {
+    installDefaultMonitors();
+  }, []);
+
+  /**
    * Drop selections for avatars no longer in the full catalog. Non-primary
    * selections (made via "Talk to") remain and surface as pop-up avatars in
    * the sidebar.
@@ -142,6 +235,114 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     ensureWorldMetadataLoaded();
+    /**
+     * Platform store hydrates from disk (or localStorage fallback), then does a
+     * one-shot import of any `world_metadata.projects` so existing user
+     * projects get lifecycle state without manual re-entry. The first monitor
+     * poll runs after hydration so monitors see the same state the user does.
+     */
+    void ensurePlatformStoreLoadedAsync().then(() => {
+      /**
+       * Startup hygiene + seeding (order matters):
+       *   1. prune placeholder-title rows ("…", "...", "<title>") from both
+       *      stores so the downstream sync doesn't re-import ghost projects.
+       *   2. seed `PROJECT_SEED_LIST` into world_metadata idempotently
+       *      (match by normalized title; deterministic `seed_<slug>` ids).
+       *   3. run the one-shot world→platform-store migration (first install only).
+       *   4. additive sync picks up any seed ids that arrived after the
+       *      one-shot stamp was already set on an existing install.
+       */
+      pruneWorldMetadataPlaceholderProjects();
+      prunePlatformPlaceholderProjects();
+      seedProjectsIntoWorldMetadata(PROJECT_SEED_LIST);
+      migrateProjectsFromWorldMetadata(getWorldMetadata().projects);
+      syncWorldMetadataProjectsAdditive(getWorldMetadata().projects);
+      /**
+       * Startup hygiene happens in an async `.then()` after the first UI
+       * render, so memoized views of `world_metadata.projects` (e.g. the
+       * left-column Assign-task dropdown) may have captured stale ids that
+       * just got pruned. Emit a cheap DOM event so those views can refresh.
+       */
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("avatars:world-metadata-changed"));
+      }
+      void runMonitorsAndPost("startup", fullCatalogRef.current);
+    });
+  }, []);
+
+  /**
+   * Monitor triggers: any cache refresh (source_change) or any store mutation
+   * (store_change) re-runs the subset of monitors that listen for them.
+   * Monitor-internal dedup prevents these from flooding the thread.
+   */
+  useEffect(() => {
+    const offBus = subscribePlatformEvents((evt) => {
+      if (
+        evt.type === "source_cache_updated" ||
+        evt.type === "source_top_changed"
+      ) {
+        void runMonitorsAndPost("source_change", fullCatalogRef.current);
+      }
+    });
+    const offStore = subscribePlatformStore(() => {
+      void runMonitorsAndPost("store_change", fullCatalogRef.current);
+    });
+    return () => {
+      offBus();
+      offStore();
+    };
+  }, []);
+
+  /**
+   * Platform source runners fetch, cache, and diff in the background —
+   * the per-turn preprocessor reads the cache (no live connector round-trip).
+   * Subscribing here lets the UI surface top-K changes with platform/background
+   * Wave rows once the waves queue plumbing is ready (todo `runner-email`).
+   */
+  useEffect(() => {
+    const bundle = startPlatformRunners();
+    const scheduler = startPlatformScheduler();
+    const unsubscribe = subscribePlatformEvents((evt) => {
+      if (evt.type === "source_top_changed") {
+        appendSessionLog("chat", "platform_top_changed", {
+          level: "info",
+          detail: `${evt.kind} +${evt.addedIds.length} -${evt.removedIds.length}`,
+        });
+        return;
+      }
+      if (evt.type === "scheduler_fire") {
+        /**
+         * Scheduler fires are attributed to the *owner avatar*, never to
+         * The scheduler, not a persona. We translate the fire into a pending notification
+         * so the normal proactive UI path surfaces it in the sidebar / waves
+         * queue with the correct avatar accent.
+         */
+        const notification = {
+          id: `sched_${evt.itemKind}_${evt.itemId}_${evt.reason}_${evt.firedAt}`,
+          avatarId: evt.ownerAvatarId,
+          urgency: evt.urgency,
+          topicSummary: evt.topicSummary,
+          sourceRef: evt.sourceRef,
+          score: evt.urgency === "high" ? 90 : evt.urgency === "medium" ? 70 : 50,
+          createdAt: evt.firedAt,
+          topicClusterId: `sched_${evt.itemKind}_${evt.itemId}`,
+        };
+        setState((prev) => {
+          const next = addPendingNotifications(prev.situationContext, [
+            notification,
+          ]);
+          situationContextRef.current = next;
+          writePersistedContext(next);
+          return { ...prev, situationContext: next };
+        });
+        return;
+      }
+    });
+    return () => {
+      unsubscribe();
+      bundle.stopAll();
+      scheduler.stop();
+    };
   }, []);
 
   /** Non-blocking proactive notification refresh after connector-style data changes. */
@@ -149,7 +350,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const run = async () => {
       try {
-        const data = await gatherDataFromSources(
+        const data = await gatherDataFromCacheFirst(
           resolveContextEntryBudgets(
             situationContextRef.current.contextEntryDepth
           )
@@ -157,9 +358,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setState((prev) => {
           const cat = getFullAvatarCatalog(prev.situationContext);
-          const sc = resolvePrimarySlotCount(prev.situationContext, cat.length);
+          const routable = filterOutSystemAvatars(cat);
+          const sc = resolvePrimarySlotCount(prev.situationContext, routable.length);
           const primaryAvatars = getSortedCoreAvatars(
-            cat,
+            routable,
             prev.situationContext.avatarRosterPriorityScoreById,
             sc
           );

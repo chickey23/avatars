@@ -58,8 +58,10 @@ const WORLDVIEW_TOOL_INSTRUCTIONS = `Optional — structured tools: add exactly 
 
 Schema (required): "avatars_tools_v1" with a "tools" array.
 \`\`\`json
-{"schema":"avatars_tools_v1","tools":[{"name":"world_metadata.patch_projects","args":{"patch":{"proj_new_1":{"title":"…","notes":"…","summary":"…"}}}}]}
+{"schema":"avatars_tools_v1","tools":[{"name":"world_metadata.patch_projects","args":{"patch":{"proj_new_1":{"title":"<project title>","notes":"<optional notes>","summary":"<optional summary>"}}}}]}
 \`\`\`
+The \`<...>\` strings in the example above are **placeholders**; replace them with real values. Never submit literal "...", "<title>", "TBD", ellipsis characters, or similar placeholder text as a title — rows with those titles are rejected.
+
 Exact tool names (use underscores; no spaces):
 - world_metadata.patch_projects (args.patch: project id -> partial fields: title, notes, summary, etc.). For a **new** project use a fresh opaque id (e.g. proj_ plus random letters/digits); **title is required** on create. For updates, reuse ids from "World metadata — project [id]" lines in Relevant context.
 - world_metadata.patch_people (args.patch: contact id -> partial person fields; use ids from contact lines or focus)
@@ -192,8 +194,23 @@ function stripNoCommentMarkdownNoise(line: string): string {
   return t;
 }
 
+function lineIsNoCommentToken(line: string): boolean {
+  const t = stripNoCommentMarkdownNoise(line);
+  if (t === "") return false;
+  for (const token of [AVATARS_NO_COMMENT, AVATAR_NO_COMMENT_ALIAS]) {
+    if (new RegExp(`^${token}\\s*$`, "i").test(t)) return true;
+  }
+  return false;
+}
+
+/** Single shared regex for "token appears anywhere in the text" checks. */
+const NO_COMMENT_TOKEN_ANYWHERE = /\bAVATARS?_NO_COMMENT\b/i;
+
 /**
- * Visible reply is only the no-comment token (or empty) — hide from chat when no tools ran.
+ * Treat reply as no-comment when the token appears on its own line anywhere
+ * in the visible output, or when the visible output is empty after stripping.
+ * Models sometimes pair prose with the token ("Sure.\nAVATARS_NO_COMMENT");
+ * the user's intent there is still suppression.
  * Exported for unit tests.
  */
 export function isAvatarsNoCommentOnly(visible: string): boolean {
@@ -202,13 +219,11 @@ export function isAvatarsNoCommentOnly(visible: string): boolean {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   if (lines.length === 0) return true;
-  if (lines.length > 1) return false;
-  const t = stripNoCommentMarkdownNoise(lines[0]!);
-  if (t === "") return true;
-  for (const token of [AVATARS_NO_COMMENT, AVATAR_NO_COMMENT_ALIAS]) {
-    if (new RegExp(`^${token}\\s*$`, "i").test(t)) return true;
+  for (const line of lines) {
+    if (lineIsNoCommentToken(line)) return true;
   }
-  return false;
+  /** Token pasted inline after prose ("You're welcome. AVATARS_NO_COMMENT"). */
+  return NO_COMMENT_TOKEN_ANYWHERE.test(visible);
 }
 
 /**

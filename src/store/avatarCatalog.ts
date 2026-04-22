@@ -1,10 +1,23 @@
 import type { Avatar, SituationContext } from "../types";
 import { defaultAvatars } from "../data/defaultAvatars";
 
-/** Built-in avatars first (with persisted edits), then user-created (no id collision with defaults in v1). */
+/**
+ * Built-in avatars first (with persisted edits), then user-created.
+ *
+ * `systemTags` are metadata that a persisted edit should never strip or
+ * forge. If an edit lacks `systemTags`, we restore them from the default
+ * record; if the default lacks them, nothing is added.
+ */
 export function getFullAvatarCatalog(ctx: SituationContext): Avatar[] {
   const edits = ctx.builtinAvatarEdits ?? {};
-  const mergedDefaults = defaultAvatars.map((a) => edits[a.id] ?? a);
+  const mergedDefaults = defaultAvatars.map((a) => {
+    const edit = edits[a.id];
+    if (!edit) return a;
+    if (edit.systemTags && edit.systemTags.length) return edit;
+    return a.systemTags && a.systemTags.length
+      ? { ...edit, systemTags: a.systemTags }
+      : edit;
+  });
   const user = ctx.userAvatars ?? [];
   return [...mergedDefaults, ...user];
 }

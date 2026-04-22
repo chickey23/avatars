@@ -20,8 +20,16 @@ describe("isAvatarsNoCommentOnly", () => {
     expect(isAvatarsNoCommentOnly("AVATAR_NO_COMMENT!")).toBe(true);
   });
 
-  it("does not suppress when there is other prose", () => {
+  it("does not suppress when there is only prose and no token", () => {
     expect(isAvatarsNoCommentOnly("Hello")).toBe(false);
-    expect(isAvatarsNoCommentOnly(`Sure.\n${AVATARS_NO_COMMENT}`)).toBe(false);
+    expect(isAvatarsNoCommentOnly("You're welcome.")).toBe(false);
+  });
+
+  it("suppresses when the token appears alongside stray prose (model noise)", () => {
+    expect(isAvatarsNoCommentOnly(`Sure.\n${AVATARS_NO_COMMENT}`)).toBe(true);
+    expect(
+      isAvatarsNoCommentOnly(`You're welcome. ${AVATARS_NO_COMMENT}`)
+    ).toBe(true);
+    expect(isAvatarsNoCommentOnly("Ok. AVATAR_NO_COMMENT")).toBe(true);
   });
 });

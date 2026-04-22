@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import { executeWorldviewTools } from "./execute";
+import { __resetPlatformStoreForTests } from "../platform/store";
 import {
   ensureWorldMetadataLoaded,
   replaceUserProfile,
@@ -56,6 +57,7 @@ describe("executeWorldviewTools permissions", () => {
   });
 
   beforeEach(() => {
+    __resetPlatformStoreForTests();
     ensureWorldMetadataLoaded();
     replaceUserProfile({ displayName: "", pronouns: "", notes: "", updatedAt: 0 });
     saveTasks([]);

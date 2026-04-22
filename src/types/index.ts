@@ -156,6 +156,19 @@ export interface Avatar extends Profile {
    * Omit or empty = all registered tools allowed (backward compatible).
    */
   allowedAgenticToolIds?: string[];
+  /**
+   * Machine-only tags that drive system behavior (routing exclusion, tool
+   * ownership groups, monitor contracts). Distinct from the user-facing
+   * `tags` field on `Profile` which is part of persona/taxonomy.
+   *
+   * Reserved prefixes:
+   *   - `"system"` — excluded from automatic routing/scoring.
+   *   - `"tool_owner:<group>"` — may invoke tools in that group (e.g. `drafts`).
+   *   - `"monitor:<name>"` — contracted to run the named monitor.
+   *
+   * Omitted / empty = plain user avatar.
+   */
+  systemTags?: string[];
 }
 
 /** Agent - manages data processes; can be foreground (as Avatar) or background */
@@ -178,6 +191,14 @@ export type EmailFocusArtifacts = {
   openUrl?: string;
 };
 
+/** Inline button rendered on synthetic (monitor-authored) chat messages. */
+export interface SyntheticChatAction {
+  id: string;
+  label: string;
+  /** Opaque payload consumed by the monitor's registered action handler. */
+  payload?: unknown;
+}
+
 /** A single message in the conversation thread */
 export interface ConversationMessage {
   id: string;
@@ -197,6 +218,16 @@ export interface ConversationMessage {
   replyError?: string;
   /** Template-only path: server down vs Ollama up with zero models. */
   rulesSkipReason?: RulesSkipReason;
+  /**
+   * True when the message was produced by a monitor (no Ollama call).
+   * Renders with a tag chip and optional inline action buttons; dismissed
+   * via the normal "unhelpful" affordance.
+   */
+  synthetic?: boolean;
+  /** E.g. `"monitor:unassigned_projects"`. Displayed as a tag chip. */
+  monitorTag?: string;
+  /** Inline buttons offered by the monitor. */
+  syntheticActions?: SyntheticChatAction[];
 }
 
 /** User-selected context item (email, calendar event, or contact) */
@@ -219,11 +250,13 @@ export interface SituationFocus {
 /** Proactive notification urgency (SPEC § Proactive notifications) */
 export type NotificationUrgency = "low" | "medium" | "high";
 
-/** Connector item reference for a pending notification */
+/** Connector / store item reference for a pending notification */
 export type NotificationSourceRef =
   | { kind: "email"; id: string }
   | { kind: "calendar"; id: string }
-  | { kind: "contact"; id: string };
+  | { kind: "contact"; id: string }
+  | { kind: "project"; id: string }
+  | { kind: "task"; id: string };
 
 /**
  * User-adjustable knobs for proactive gating and reply style; persisted on situation context.

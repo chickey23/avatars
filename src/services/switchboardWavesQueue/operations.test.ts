@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { PLATFORM_ATTRIBUTION_AVATAR_ID } from "../platform/constants";
 import {
+  appendMonitorPromptEntry,
   appendSystemCommandEntry,
   appendToolResolutionErrorEntry,
   appendTraceDelta,
@@ -131,6 +133,7 @@ describe("switchboardWavesQueue operations", () => {
       worldview: 0,
       toolError: 0,
       systemCommand: 0,
+      monitorPrompt: 0,
       cmdNoTools: 0,
       cmdQueued: 0,
       cmdValidated: 0,
@@ -166,6 +169,7 @@ describe("switchboardWavesQueue operations", () => {
       worldview: 0,
       toolError: 1,
       systemCommand: 0,
+      monitorPrompt: 0,
       cmdNoTools: 0,
       cmdQueued: 0,
       cmdValidated: 0,
@@ -197,6 +201,7 @@ describe("switchboardWavesQueue operations", () => {
       worldview: 0,
       toolError: 0,
       systemCommand: 3,
+      monitorPrompt: 0,
       cmdNoTools: 0,
       cmdQueued: 1,
       cmdValidated: 1,
@@ -228,6 +233,20 @@ describe("switchboardWavesQueue operations", () => {
     expect(c.cmdApplied).toBe(1);
     expect(c.systemCommand).toBe(1);
     expect(c.user).toBe(2);
+  });
+
+  it("appendMonitorPromptEntry adds a monitor_prompt row", () => {
+    let e: WavesQueueEntry[] = appendUserEntry([], "u1");
+    e = appendMonitorPromptEntry(e, {
+      userMessageId: "syn_1",
+      avatarId: PLATFORM_ATTRIBUTION_AVATAR_ID,
+      monitorTag: "monitor:unassigned_projects",
+      label: "monitor:unassigned_projects",
+    });
+    const c = countWavesQueueByKind(e);
+    expect(c.monitorPrompt).toBe(1);
+    expect(c.wave).toBe(0);
+    expect(e[1]?.kind).toBe("monitor_prompt");
   });
 
   it("migrateWavesQueueDoc upgrades v1 to v2", () => {

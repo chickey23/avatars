@@ -17,7 +17,7 @@ SQLite/Tauri on-disk persistence for metadata is **out of scope** until SPEC/Tec
 
 ## World model anchor: Projects
 
-**Existing types:** [`WorldMetadataDoc`](../src/services/worldMetadata/types.ts) includes `projects: Record<string, ProjectMetadataRecord>` with `title`, `notes`, `updatedAt`. **People** overlays exist; Projects are not yet first-class in chat routing.
+**Existing types:** [`WorldMetadataDoc`](../src/services/worldMetadata/types.ts) includes `projects: Record<string, ProjectMetadataRecord>` with `title`, `notes`, `updatedAt`. **People** overlays exist. **Projects — partial bridge today:** ids are synced into the **platform** project store ([`platform/store.ts`](../src/services/platform/store.ts) under [`services/platform/`](../src/services/platform/)) for stewardship / scheduler / context blocks; [`LongTermTask`](../src/services/longTermTasks.ts) rows (with `projectId`) and [`routingScore.ts`](../src/services/routingScore.ts) tie user-turn routing to project titles; [`projectAvatarLink.ts`](../src/services/projectAvatarLink.ts) links world-metadata patches and the Assign-task UI to long-term tasks and per-row steward `ownerAvatarId`. Full “projects hub” UX and preprocessor-first-class treatment remain roadmap; see [PROGRESS.md](../PROGRESS.md).
 
 **Suggested phased implementation**
 

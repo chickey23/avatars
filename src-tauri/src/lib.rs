@@ -1,3 +1,4 @@
+mod platform_cache;
 mod gmail;
 mod ollama;
 mod session_log;
@@ -29,6 +30,9 @@ pub fn run() {
             session_log::session_log_append,
             world_metadata::world_metadata_read,
             world_metadata::world_metadata_write,
+            platform_cache::platform_cache_read,
+            platform_cache::platform_cache_write,
+            platform_cache::platform_cache_dir_display,
         ])
         .run(tauri::generate_context!())
         .expect("error while running avatars application");

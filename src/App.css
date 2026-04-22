@@ -1063,6 +1063,24 @@ button.env-tag.session-log-open-btn {
   cursor: not-allowed;
 }
 
+.task-assign-status {
+  font-size: 0.75rem;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1.3;
+}
+
+.task-assign-status--ok {
+  color: #a7e2b0;
+  background: rgba(80, 160, 100, 0.18);
+}
+
+.task-assign-status--warn {
+  color: #f0c27b;
+  background: rgba(200, 130, 60, 0.18);
+}
+
 .task-list {
   font-size: 0.8rem;
   list-style: none;
@@ -1080,7 +1098,7 @@ button.env-tag.session-log-open-btn {
   min-height: 0;
 }
 
-/* Per-primary avatar chat “window” frame (Calliope white, Mark Antony red, Diogenes black) */
+/* Per-primary avatar chat ???window??? frame (Calliope white, Mark Antony red, Diogenes black) */
 .chat-main.chat-frame--muse {
   border: 2px solid rgba(255, 255, 255, 0.92);
   border-radius: 10px;
@@ -2367,6 +2385,47 @@ button.env-tag.session-log-open-btn {
   color: #fca5a5;
 }
 
+.message-monitor-chip {
+  margin-left: 0.5rem;
+  font-size: 0.6rem;
+  font-weight: 500;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  vertical-align: middle;
+  background: rgba(212, 175, 55, 0.15);
+  color: #d4af37;
+  letter-spacing: 0.02em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.message-content--synthetic {
+  opacity: 0.92;
+  font-style: italic;
+}
+
+.message-synthetic-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.4rem;
+}
+
+.message-synthetic-action-btn {
+  font-size: 0.72rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  background: rgba(212, 175, 55, 0.08);
+  color: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.message-synthetic-action-btn:hover {
+  background: rgba(212, 175, 55, 0.18);
+  border-color: rgba(212, 175, 55, 0.7);
+}
+
 .message-prompt-error-banner {
   margin-bottom: 0.5rem;
   padding: 0.45rem 0.55rem;
@@ -2623,7 +2682,7 @@ button.env-tag.session-log-open-btn {
 
 /* Chat window skins */
 .chat-skin--default {
-  /* base — no extra */
+  /* base ??? no extra */
 }
 
 /* Aurora: cool teal/cyan/blue field, red-orange accents, black depth */
@@ -3561,6 +3620,19 @@ button.env-tag.session-log-open-btn {
   font-weight: 700;
 }
 
+.switchboard-viz-monitor-prompt-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-weight: 600;
+  opacity: 0.9;
+  font-size: 0.75rem;
+}
+
 .chat-switchboard-viz-label {
   gap: 0.35rem;
 }
@@ -3953,4 +4025,103 @@ button.env-tag.session-log-open-btn {
 
 .source-cache-viz-linkish:hover {
   color: #bae6fd;
+}
+
+/* Background chip + panel inside the Store visualizer (not sidebar).
+ * Color is derived per-row from the current steward avatar's accent via
+ * the `--steward-accent` custom property; the chip uses `--background-accent`
+ * for the dot. `chip--platform` mirrors `chip--background` for the
+ * default platform-attribution accent.
+ */
+.source-cache-viz-chip--background,
+.source-cache-viz-chip--platform {
+  border-color: var(--background-accent, rgba(148, 163, 184, 0.45));
+}
+.source-cache-viz-chip--background.is-open,
+.source-cache-viz-chip--background:hover,
+.source-cache-viz-chip--platform.is-open,
+.source-cache-viz-chip--platform:hover {
+  background: color-mix(in srgb, var(--background-accent, #94a3b8) 12%, transparent);
+}
+.source-cache-viz-chip-dot--background,
+.source-cache-viz-chip-dot--platform {
+  background: var(--background-accent, #94a3b8);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--background-accent, #94a3b8) 70%, transparent);
+}
+
+.source-cache-viz-background-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.source-cache-viz-background-row,
+.source-cache-viz-platform-runner {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.source-cache-viz-steward-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--steward-accent, #94a3b8);
+  box-shadow: 0 0 3px color-mix(in srgb, var(--steward-accent, #94a3b8) 60%, transparent);
+  transform: translateY(0.05rem);
+}
+.source-cache-viz-steward-dot--small {
+  width: 0.4rem;
+  height: 0.4rem;
+}
+.source-cache-viz-steward-name {
+  font-weight: 600;
+  color: var(--steward-accent, #cbd5e1);
+  min-width: 6em;
+}
+.source-cache-viz-platform-kind {
+  min-width: 4.5em;
+  font-weight: 500;
+  color: #cbd5e1;
+  letter-spacing: 0.02em;
+}
+.source-cache-viz-platform-meta {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+}
+
+.source-cache-viz-platform-log,
+.source-cache-viz-background-log {
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.source-cache-viz-platform-log-row,
+.source-cache-viz-background-log-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: baseline;
+  padding: 0.1rem 0;
+}
+.source-cache-viz-platform-log-row--warn {
+  color: #f5c770;
+}
+.source-cache-viz-platform-log-row--error {
+  color: #ff8f8f;
+}
+.source-cache-viz-platform-log-cat {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+  color: var(--steward-accent, #cbd5e1);
+  min-width: 8em;
+}
+.source-cache-viz-platform-log-msg {
+  font-size: 0.72rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.source-cache-viz-platform-log-detail {
+  font-size: 0.66rem;
+  flex-basis: 100%;
+  padding-left: 8em;
 }

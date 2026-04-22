@@ -11,6 +11,12 @@ import { managedProjectIdsForAvatar } from "../avatarRoster/popIn";
 import { appendWorldviewAuditRecord } from "../worldviewAudit";
 import { formatWorldviewToolArgsForAudit } from "../worldviewAuditArgsPreview";
 import { avatarMayUseAgenticTool } from "../agenticTools/registry";
+import {
+  recordDraft,
+  type PlatformCalendarDraftPayload,
+  type PlatformEmailDraftPayload,
+  type PlatformTaskDraftPayload,
+} from "../platform";
 import type { WorldviewToolCall } from "./parse";
 
 const MAX_PATCH_KEYS = 12;
@@ -128,6 +134,107 @@ export function executeWorldviewTools(
             displayName: clampStr(p.displayName, MAX_STRING_FIELD),
             pronouns: clampStr(p.pronouns, 200),
             notes: clampStr(p.notes, MAX_STRING_FIELD),
+          });
+          results.push({ name: tool.name, ok: true });
+          break;
+        }
+        case "drafts.tasks": {
+          const a = tool.args as Record<string, unknown>;
+          const projectId = clampStr(a.projectId, 200);
+          const title = clampStr(a.title, 400);
+          if (!projectId || !title) {
+            results.push({
+              name: tool.name,
+              ok: false,
+              error: "missing projectId or title",
+            });
+            break;
+          }
+          const payload: PlatformTaskDraftPayload = {
+            kind: "task",
+            projectId,
+            title,
+            notes: clampStr(a.notes, MAX_STRING_FIELD),
+            dueAt: typeof a.dueAt === "number" ? a.dueAt : undefined,
+            ownerAvatarId: clampStr(a.ownerAvatarId, 100),
+          };
+          recordDraft({
+            kind: "task",
+            requestedByAvatarId: meta.avatarId,
+            sourceUserMessageId: meta.userMessageId,
+            rationale: clampStr(a.rationale, 1000),
+            payload,
+          });
+          results.push({ name: tool.name, ok: true });
+          break;
+        }
+        case "drafts.calendar_event": {
+          const a = tool.args as Record<string, unknown>;
+          const title = clampStr(a.title, 400);
+          const startAt = typeof a.startAt === "number" ? a.startAt : undefined;
+          if (!title || startAt === undefined) {
+            results.push({
+              name: tool.name,
+              ok: false,
+              error: "missing title or startAt",
+            });
+            break;
+          }
+          const attendeesRaw = a.attendees;
+          const attendees = Array.isArray(attendeesRaw)
+            ? attendeesRaw.filter((v): v is string => typeof v === "string")
+            : undefined;
+          const payload: PlatformCalendarDraftPayload = {
+            kind: "calendar_event",
+            title,
+            startAt,
+            endAt: typeof a.endAt === "number" ? a.endAt : undefined,
+            notes: clampStr(a.notes, MAX_STRING_FIELD),
+            attendees,
+          };
+          recordDraft({
+            kind: "calendar_event",
+            requestedByAvatarId: meta.avatarId,
+            sourceUserMessageId: meta.userMessageId,
+            rationale: clampStr(a.rationale, 1000),
+            payload,
+          });
+          results.push({ name: tool.name, ok: true });
+          break;
+        }
+        case "drafts.email_reply": {
+          const a = tool.args as Record<string, unknown>;
+          const body = clampStr(a.body, MAX_STRING_FIELD);
+          const toRaw = a.to;
+          const to = Array.isArray(toRaw)
+            ? toRaw.filter((v): v is string => typeof v === "string")
+            : [];
+          if (!body || to.length === 0) {
+            results.push({
+              name: tool.name,
+              ok: false,
+              error: "missing body or to",
+            });
+            break;
+          }
+          const ccRaw = a.cc;
+          const cc = Array.isArray(ccRaw)
+            ? ccRaw.filter((v): v is string => typeof v === "string")
+            : undefined;
+          const payload: PlatformEmailDraftPayload = {
+            kind: "email_reply",
+            inReplyToMessageId: clampStr(a.inReplyToMessageId, 200),
+            to,
+            cc,
+            subject: clampStr(a.subject, 400),
+            body,
+          };
+          recordDraft({
+            kind: "email_reply",
+            requestedByAvatarId: meta.avatarId,
+            sourceUserMessageId: meta.userMessageId,
+            rationale: clampStr(a.rationale, 1000),
+            payload,
           });
           results.push({ name: tool.name, ok: true });
           break;

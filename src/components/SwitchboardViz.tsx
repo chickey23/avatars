@@ -12,6 +12,7 @@ import {
 import type { WavesQueueEntry } from "../services/switchboardWavesQueue";
 import {
   SWITCHBOARD_WAVE_TRAVEL_MS,
+  isMonitorPromptEntry,
   isSystemCommandEntry,
   isToolErrorEntry,
   isUserEntry,
@@ -221,6 +222,35 @@ export function SwitchboardViz({
                     aria-hidden
                   >
                     {isWarn ? "!" : "◆"}
+                  </span>
+                </button>
+              </li>
+            );
+          }
+          if (isMonitorPromptEntry(entry)) {
+            const c = getAccentColor(entry.avatarId);
+            const tip = `${entry.label}: click to scroll to the message`;
+            return (
+              <li
+                key={entry.id}
+                className={`switchboard-viz-queue-item switchboard-viz-monitor-prompt${
+                  showTravel && isLast ? " switchboard-viz-queue-item--travel-in" : ""
+                }`}
+                role="listitem"
+                title={tip}
+              >
+                <button
+                  type="button"
+                  className="switchboard-viz-worldview-hit switchboard-viz-monitor-prompt-hit"
+                  onClick={() => onActivateUserMessage?.(entry.userMessageId)}
+                  aria-label={`Monitor prompt (${entry.label}); scroll to message`}
+                >
+                  <span
+                    className="switchboard-viz-worldview-icon switchboard-viz-monitor-prompt-icon"
+                    style={{ color: c, borderColor: c }}
+                    aria-hidden
+                  >
+                    ?
                   </span>
                 </button>
               </li>

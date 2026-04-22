@@ -1,15 +1,54 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  beforeAll,
+  afterAll,
+} from "vitest";
+import { __resetPlatformStoreForTests } from "./platform/store";
 import { ensureProjectTaskForAvatar } from "./projectAvatarLink";
 import * as store from "./worldMetadata/store";
 import * as lt from "./longTermTasks";
 
+const lsStore = new Map<string, string>();
+
 describe("ensureProjectTaskForAvatar", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
+  beforeAll(() => {
+    vi.stubGlobal(
+      "localStorage",
+      {
+        get length() {
+          return lsStore.size;
+        },
+        clear() {
+          lsStore.clear();
+        },
+        getItem(k: string) {
+          return lsStore.has(k) ? lsStore.get(k)! : null;
+        },
+        setItem(k: string, v: string) {
+          lsStore.set(k, v);
+        },
+        removeItem(k: string) {
+          lsStore.delete(k);
+        },
+        key() {
+          return null;
+        },
+      } as Storage
+    );
   });
 
-  afterEach(() => {
+  afterAll(() => {
     vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    lsStore.clear();
+    __resetPlatformStoreForTests();
+    vi.restoreAllMocks();
   });
 
   it("assigns a new task and dispatches when project exists", () => {
@@ -44,7 +83,11 @@ describe("ensureProjectTaskForAvatar", () => {
   });
 
   it("does not assign when an active task already exists", () => {
-    vi.stubGlobal("window", { dispatchEvent: vi.fn() } as unknown as Window);
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal(
+      "window",
+      { dispatchEvent } as unknown as Window & typeof globalThis
+    );
     vi.spyOn(store, "getWorldMetadata").mockReturnValue({
       schemaVersion: 2,
       people: {},
@@ -69,5 +112,6 @@ describe("ensureProjectTaskForAvatar", () => {
     ensureProjectTaskForAvatar("muse", "p1");
 
     expect(assignSpy).not.toHaveBeenCalled();
+    expect(dispatchEvent).toHaveBeenCalled();
   });
 });

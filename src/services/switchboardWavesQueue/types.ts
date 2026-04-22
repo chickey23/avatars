@@ -64,12 +64,27 @@ export type WavesSystemCommandEntry = WavesQueueEntryBase & {
   sourceEmailId?: string;
 };
 
+/**
+ * Monitor-authored synthetic post. Renders as a question-mark dot in the
+ * Waves column. `userMessageId` points to the synthetic ConversationMessage
+ * id so clicking can scroll the chat to it.
+ */
+export type WavesMonitorPromptEntry = WavesQueueEntryBase & {
+  kind: "monitor_prompt";
+  avatarId: string;
+  monitorTag: string;
+  /** Short label for a11y and tooltip, mirrors the chat bubble chip. */
+  label: string;
+  settled: true;
+};
+
 export type WavesQueueEntry =
   | WavesUserEntry
   | WavesWaveEntry
   | WavesWorldviewEntry
   | WavesToolErrorEntry
-  | WavesSystemCommandEntry;
+  | WavesSystemCommandEntry
+  | WavesMonitorPromptEntry;
 
 export function isUserEntry(e: WavesQueueEntry): e is WavesUserEntry {
   return e.kind === "user";
@@ -91,6 +106,12 @@ export function isSystemCommandEntry(
   e: WavesQueueEntry
 ): e is WavesSystemCommandEntry {
   return e.kind === "system_command";
+}
+
+export function isMonitorPromptEntry(
+  e: WavesQueueEntry
+): e is WavesMonitorPromptEntry {
+  return e.kind === "monitor_prompt";
 }
 
 export type WavesQueueDoc = {

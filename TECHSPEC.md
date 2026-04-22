@@ -2,7 +2,7 @@
 
 This document lists all components and implementation details necessary to rebuild the project from scratch.
 
-**Terminology:** See [docs/STYLEGUIDE.md](docs/STYLEGUIDE.md) for **Agent** vs **Avatar** vs tools (e.g. Well of Souls) in prose and comments.
+**Terminology:** See [docs/STYLEGUIDE.md](docs/STYLEGUIDE.md) for **Agent** vs **Avatar** vs tools (e.g. Well of Souls) in prose and comments. **Platform durable paths and Tauri cache commands:** [docs/PLATFORM_PERSISTENCE.md](docs/PLATFORM_PERSISTENCE.md).
 
 ---
 
@@ -35,7 +35,8 @@ Avatars/
 │   ├── index.css
 │   ├── vite-env.d.ts
 │   ├── components/
-│   │   └── SwitchboardViz.tsx   # Chat Visualizer (Waves) column
+│   │   ├── SwitchboardViz.tsx   # Chat Visualizer (Waves) column
+│   │   └── SourceCacheViz.tsx   # Storage viz (caches, Background contracts, log tail)
 │   ├── api/
 │   │   └── client.ts
 │   ├── context/
@@ -51,8 +52,11 @@ Avatars/
 │   │   └── useSpeechToText.ts
 │   ├── services/
 │   │   ├── avatarAgents.ts
+│   │   ├── avatarTags/         # systemTags helpers (system, tool_owner:*, monitor:*)
 │   │   ├── backgroundAgents.ts
+│   │   ├── platform/            # Durable app state (projects/tasks, drafts, source cache), scheduler, bus, routing helpers, background runners
 │   │   ├── longTermTasks.ts
+│   │   ├── monitors/           # Monitor registry, synthetic posts, built-in monitors (contracts, UPM, …)
 │   │   ├── offline.ts
 │   │   ├── ollama.ts
 │   │   ├── opinionMatrix.ts
@@ -60,7 +64,8 @@ Avatars/
 │   │   ├── switchboard.ts
 │   │   ├── pendingNotifications.ts  # Proactive pending queue; per-avatar scoring; release heuristics
 │   │   ├── switchboardWavesQueue/   # Chat Visualizer queue: persist, operations, types
-│   │   ├── sessionLog.ts           # Tauri session log helper
+│   │   ├── sessionLog.ts           # Tauri session log helper (appendSessionLog)
+│   │   ├── sessionLog/             # contractLog.ts — contract-scoped log categories (contract:*)
 │   │   ├── contextScoring/email.ts
 │   │   ├── contextScoring/calendar.ts
 │   │   ├── contextScoring/contacts.ts

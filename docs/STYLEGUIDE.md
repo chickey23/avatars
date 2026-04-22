@@ -16,6 +16,9 @@ This project overloads **agent** in several domains. Use the definitions below i
 | **Switchboard** | Coordination layer (`switchboard.ts`): relevance, cascade, `distributeAndRespond`. Often paired with “Switchboard Agent” in SPEC. | “The Switchboard selects responders.” |
 | **Project** | A **real-world container** the user (and Avatars) track in shared metadata: goals, notes, links to people/events; may own **many** tasks. In code, `ProjectMetadataRecord` / world metadata `projects`. | “Assign work to the Q2 launch **Project**.” |
 | **Task** | An **assignable unit** of work: `LongTermTask`, **`Avatar.assignedTasks`**, or UI “to-do” toward a project. **Project** and **task** are sometimes used loosely in conversation; in docs prefer **Project** for the container and **task** for the atomic item. | “This **task** belongs to the renovation **Project**.” |
+| **Connector** | Code under [`src/connectors/`](../src/connectors/) that talks to an external or mock **source** (Gmail, Calendar, etc.). | “The Gmail **connector** fetches message bodies via Tauri.” |
+| **Source** | Abstract data channel in caching and context scoring (email, calendar, contacts). | “**Source** cache holds ranked email ids for the turn.” |
+| **Source cache** | Persisted JSON snapshot of a **source** (see **Storage** / `SourceCacheViz`). | “**Source cache** is written by background runners.” |
 
 ---
 
@@ -72,7 +75,7 @@ Features can advance **in parallel** when workstreams touch different files or c
 
 - User-visible strings and `title` / `aria-label` attributes.
 - File-top comments in `src/services/*` that describe architecture.
-- `SPEC.md`, `PROGRESS.md`, `docs/IMPLEMENTATION_ROADMAP.md` (phased roadmap), `TECHSPEC.md`, `README.md`, and handoff docs.
+- `SPEC.md`, `PROGRESS.md`, `docs/IMPLEMENTATION_ROADMAP.md` (phased roadmap), `TECHSPEC.md`, `docs/PLATFORM_PERSISTENCE.md` (durable platform ids), `README.md`, and handoff docs.
 
 Code identifiers (`runAvatarAgent`, `BackgroundAgentTask`) stay as-is for stability; new public APIs should follow this vocabulary in JSDoc.
 
@@ -85,3 +88,20 @@ Comments in [`wellOfSoulsPrompt.ts`](../src/services/wellOfSoulsPrompt.ts), [`de
 ## 7. UI approval (layout and visual choices)
 
 Aligned with **SPEC.md** § Behavioral Instructions (layout). **Shipped** UI in the repo is treated as **collectively approved**. **New** work that changes layout structure, adds major surfaces, or departs from established patterns should involve the user. Iterative tweaks that stay consistent with existing patterns do not require a separate sign-off each time.
+
+---
+
+## 8. Session log category namespaces
+
+Two families appear in the in-app log:
+
+| Namespace | Form | Emitted by | Purpose |
+|-----------|------|------------|---------|
+| **Platform** | `platform_<event>` (prefix from `PLATFORM_LOG_CATEGORY` in `constants.ts`) | [`platformLog`](../src/services/platform/platformLog.ts) | Runners, store, scheduler, draft pipeline, cache I/O, etc. |
+| **Contract** | `contract:<name>__<event>` | [`contractLog`](../src/services/sessionLog/contractLog.ts) | Monitor contracts; **`<name>` must match** the string after `monitor:` in the claimant’s `systemTags` (e.g. `monitor:source_runner:email` → `source_runner:email`). The Storage visualizer uses this to join log lines to the Background contract table. |
+
+---
+
+## 9. Platform durable identifiers
+
+On-disk paths, Tauri `invoke` names, `localStorage` keys, the platform log prefix, and the default system avatar id for attribution are **listed in one place** in [`PLATFORM_PERSISTENCE.md`](./PLATFORM_PERSISTENCE.md) and in [`src/services/platform/constants.ts`](../src/services/platform/constants.ts). Prefer updating those when renaming persistence, rather than scattering ad hoc strings in call sites.

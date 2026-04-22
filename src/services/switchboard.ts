@@ -36,6 +36,7 @@ import {
   mergePopInIntoResponderIds,
 } from "./avatarRoster";
 import { appendSessionLog } from "./sessionLog";
+import { filterOutSystemAvatars } from "./platform";
 
 export {
   scoreAvatarForUserMessageContent,
@@ -64,7 +65,8 @@ export function pickRespondersForUserMessage(
   rosterScores?: Record<string, number>
 ): { responderIds: string[]; selection: SwitchboardSelection } {
   const contentLower = content.toLowerCase();
-  const scored = avatars.map((a) => {
+  const routable = filterOutSystemAvatars(avatars);
+  const scored = routable.map((a) => {
     const tier = getAddressTier(a, contentLower);
     return {
       id: a.id,
@@ -83,9 +85,9 @@ export function pickRespondersForUserMessage(
       selection: "tag_interest_match",
     };
   }
-  if (avatars.length > 0) {
+  if (routable.length > 0) {
     return {
-      responderIds: [avatars[0].id],
+      responderIds: [routable[0].id],
       selection: "default_primary",
     };
   }
@@ -107,7 +109,8 @@ async function trySemanticUserRouting(
 
   const contentLower = content.toLowerCase();
   const scored: { id: string; sim: number; tier: 0 | 1 | 2 }[] = [];
-  for (const a of avatars) {
+  const routable = filterOutSystemAvatars(avatars);
+  for (const a of routable) {
     const text = buildAvatarRoutingText(a, tasksByAvatar);
     const emb = await embedWithOllama(text);
     if (!emb.ok) return null;

@@ -27,10 +27,7 @@ import { resolveContextEntryBudgets } from "../utils/contextEntryBudget";
 import { distributeAndRespond } from "../services/switchboard";
 import { appendSessionLog } from "../services/sessionLog";
 import { appendTurn, buildCompactTurnRecord } from "../services/turnArchive";
-import {
-  gatherDataFromSources,
-  dataToRelevanceStringsWithoutEmail,
-} from "../connectors";
+import { dataToRelevanceStringsWithoutEmail } from "../connectors";
 import { fetchGmailMessageBody } from "../connectors/gmail";
 import {
   buildEmailFocusContextLines,
@@ -74,6 +71,12 @@ import {
   getSortedCoreAvatars,
   listPopInAvatarIdsForProjectFocus,
 } from "../services/avatarRoster";
+import {
+  platformFocusedProjectBlock,
+  filterOutSystemAvatars,
+  gatherDataFromCacheFirst,
+  isSystemAvatarId,
+} from "../services/platform";
 import type { WavesSystemCommandStatus } from "../services/switchboardWavesQueue";
 
 const STORAGE_KEY = "avatars_situation_context";
@@ -195,9 +198,10 @@ export function getInitialState(): AppStoreState {
   if (!hadRosterInit && situationContext.avatarRosterScoresInitialized) {
     persistContext(stripEphemeralFields(situationContext));
   }
-  const slotCount = resolvePrimarySlotCount(situationContext, catalog.length);
+  const routable = filterOutSystemAvatars(catalog);
+  const slotCount = resolvePrimarySlotCount(situationContext, routable.length);
   const active = getSortedCoreAvatars(
-    catalog,
+    routable,
     situationContext.avatarRosterPriorityScoreById,
     slotCount
   );
@@ -237,13 +241,14 @@ function routingAvatarsForSwitchboard(
   ctx: SituationContext,
   slotCount: number
 ): Avatar[] {
-  const core = getSortedCoreAvatars(catalog, ctx.avatarRosterPriorityScoreById, slotCount);
+  const routable = filterOutSystemAvatars(catalog);
+  const core = getSortedCoreAvatars(routable, ctx.avatarRosterPriorityScoreById, slotCount);
   const popIds = listPopInAvatarIdsForProjectFocus(ctx.userFocus?.project?.id);
   const seen = new Set(core.map((a) => a.id));
   const extra: Avatar[] = [];
   for (const id of popIds) {
     if (seen.has(id)) continue;
-    const a = catalog.find((c) => c.id === id);
+    const a = routable.find((c) => c.id === id);
     if (a) {
       seen.add(id);
       extra.push(a);
@@ -334,18 +339,24 @@ export async function processUserTurn(
 ): Promise<void> {
   const ctx = getContext();
   const catalog = getFullAvatarCatalog(ctx);
-  const slotCount = resolvePrimarySlotCount(ctx, catalog.length);
+  const routableCatalog = filterOutSystemAvatars(catalog);
+  const slotCount = resolvePrimarySlotCount(ctx, routableCatalog.length);
   const coreForProactive = getSortedCoreAvatars(
-    catalog,
+    routableCatalog,
     ctx.avatarRosterPriorityScoreById,
     slotCount
   );
   const routingAvatars = routingAvatarsForSwitchboard(catalog, ctx, slotCount);
   const budgets = resolveContextEntryBudgets(ctx.contextEntryDepth);
   const effectiveFocus = mergeSituationFocus(job.focus, ctx.userFocus);
-  const data = await gatherDataFromSources(budgets, {
+  const gatherStartedAt = performance.now();
+  const data = await gatherDataFromCacheFirst(budgets, {
     includeEmail: Boolean(effectiveFocus.email?.id),
     includeContacts: Boolean(effectiveFocus.contact?.id),
+  });
+  appendSessionLog("chat", "platform_gather_ms", {
+    level: "info",
+    detail: `${Math.round(performance.now() - gatherStartedAt)}ms email=${data.email.length} cal=${data.calendar.length} contacts=${data.contacts.length}`,
   });
   const ctxAfterProactive = mergeProactiveEvaluation(
     data,
@@ -358,11 +369,30 @@ export async function processUserTurn(
     ctxAfterProactive.pendingNotifications ?? [],
     job.releasedClusterIds
   );
-  const forcedResponderIds = job.primaryAvatarId
+  /**
+   * System avatars are excluded from default switchboard scoring
+   * but *may* appear in `forcedResponderIds` when the user explicitly
+   * selected them from the sidebar or routed a turn via primaryAvatarId.
+   * Only a fully-system-avatar force list triggers a log (so we notice if
+   * something routes a system avatar unexpectedly); mixed lists pass through.
+   */
+  const rawForced = job.primaryAvatarId
     ? [job.primaryAvatarId]
     : selectedAvatarIds.length > 0
       ? selectedAvatarIds
       : undefined;
+  if (
+    rawForced &&
+    rawForced.length > 0 &&
+    rawForced.every((id) => isSystemAvatarId(id))
+  ) {
+    appendSessionLog("chat", "platform_forced_explicit", {
+      level: "info",
+      detail: `explicit system-only forced responders: ${rawForced.join(",")}`,
+    });
+  }
+  const forcedResponderIds =
+    rawForced && rawForced.length > 0 ? rawForced : undefined;
   const focusStrings = focusToRelevanceStrings(effectiveFocus);
   const pre = runUserTurnPreprocessor({
     userMessageContent: job.content,
@@ -546,11 +576,13 @@ export async function processUserTurn(
   )
     ? [SOCIAL_SOLO_HEURISTIC_LINE]
     : [];
+  const platformProjectLines = platformFocusedProjectBlock(effectiveFocus);
   const relevantData = [
     ...wosLines,
     ...userProfileLines,
     ...focusStrings,
     ...projectDetailLines,
+    ...platformProjectLines,
     ...emailLines,
     ...emailBodyLines,
     ...calendarLines,

@@ -5,6 +5,11 @@ import type {
   WorldMetadataDoc,
 } from "./types";
 import { createEmptyWorldMetadataDoc } from "./types";
+import { isPlaceholderProjectTitle } from "./titleSanity";
+import {
+  normalizeProjectTitleForMatch,
+  slugifyProjectTitle,
+} from "../../data/projectSeedList";
 import {
   LocalStorageWorldMetadataBackend,
   migrateWorldMetadataDoc,
@@ -59,6 +64,13 @@ function mergeProjectsPatch(
     const prev = next[id];
     const title = (rec.title ?? prev?.title ?? "").trim();
     if (!title) continue;
+    /**
+     * Reject placeholder-only titles ("…", "...", "<title>", "TBD", etc.)
+     * that arrive when an LLM copies the tool-schema example verbatim. Only
+     * guard the *create* path: allow partial updates to existing real rows
+     * where `title` is absent because `prev.title` carries the real value.
+     */
+    if (!prev && isPlaceholderProjectTitle(title)) continue;
     next[id] = {
       ...prev,
       ...rec,
@@ -74,6 +86,16 @@ export function ensureWorldMetadataLoaded(): void {
   if (loaded) return;
   doc = readWorldMetadataFromLocalStorageSync();
   loaded = true;
+}
+
+/** Test-only: reset the in-memory doc to empty without touching persistence. */
+export function __resetWorldMetadataForTests(): void {
+  doc = createEmptyWorldMetadataDoc();
+  loaded = true;
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
 }
 
 export function getWorldMetadata(): WorldMetadataDoc {
@@ -132,6 +154,74 @@ export function patchUserProfile(
   };
   schedulePersistWorldMetadata();
   return doc;
+}
+
+/**
+ * Idempotent seeding: ensures every title in `titles` exists as a project.
+ * Existing rows (matched by case-insensitive normalized title) are left
+ * untouched. New rows are stored under deterministic ids (`seed_<slug>`)
+ * with numeric suffixes for collisions so repeated calls never duplicate.
+ *
+ * Returns the ids that were freshly inserted. Placeholder titles are
+ * skipped via `isPlaceholderProjectTitle` so a corrupted seed list cannot
+ * re-introduce ghost projects.
+ */
+export function seedProjectsIntoWorldMetadata(
+  titles: readonly string[]
+): string[] {
+  ensureWorldMetadataLoaded();
+  const now = Date.now();
+  const existingByNormTitle = new Map<string, string>();
+  for (const [id, rec] of Object.entries(doc.projects)) {
+    existingByNormTitle.set(normalizeProjectTitleForMatch(rec.title), id);
+  }
+  const usedIds = new Set(Object.keys(doc.projects));
+  const nextProjects: Record<string, ProjectMetadataRecord> = { ...doc.projects };
+  const inserted: string[] = [];
+  for (const raw of titles) {
+    const title = raw.trim();
+    if (!title) continue;
+    if (isPlaceholderProjectTitle(title)) continue;
+    const norm = normalizeProjectTitleForMatch(title);
+    if (existingByNormTitle.has(norm)) continue;
+    const base = slugifyProjectTitle(title) || "project";
+    let id = `seed_${base}`;
+    let suffix = 2;
+    while (usedIds.has(id)) {
+      id = `seed_${base}_${suffix++}`;
+    }
+    usedIds.add(id);
+    nextProjects[id] = { title, updatedAt: now };
+    existingByNormTitle.set(norm, id);
+    inserted.push(id);
+  }
+  if (inserted.length === 0) return inserted;
+  doc = { ...doc, projects: nextProjects };
+  schedulePersistWorldMetadata();
+  return inserted;
+}
+
+/**
+ * One-shot cleanup: scans the projects map and removes any row whose title
+ * is a placeholder (e.g. "…", "...", "<title>", "TBD"). Returns the ids that
+ * were dropped so callers can cascade-delete downstream state (platform store,
+ * per-project caches, etc.). Idempotent; callers may invoke on every startup.
+ */
+export function pruneWorldMetadataPlaceholderProjects(): string[] {
+  ensureWorldMetadataLoaded();
+  const dropped: string[] = [];
+  const next: Record<string, ProjectMetadataRecord> = {};
+  for (const [id, rec] of Object.entries(doc.projects)) {
+    if (isPlaceholderProjectTitle(rec.title)) {
+      dropped.push(id);
+      continue;
+    }
+    next[id] = rec;
+  }
+  if (dropped.length === 0) return dropped;
+  doc = { ...doc, projects: next };
+  schedulePersistWorldMetadata();
+  return dropped;
 }
 
 /** Replace the singleton user profile (e.g. reverting a bad tool patch). */

@@ -10,7 +10,8 @@ import {
 } from "react";
 import { AppProvider } from "./context/AppContext";
 import { useApp } from "./context/useApp";
-import { assignTask, getTasksForAvatar } from "./services/longTermTasks";
+import { getTasksForAvatar } from "./services/longTermTasks";
+import { ensureProjectTaskForAvatar } from "./services/projectAvatarLink";
 import { describeFocusChange } from "./services/focusWatcher";
 import {
   appendTopicSegment,
@@ -97,6 +98,7 @@ import {
   resolvePrimarySlotCount,
 } from "./store/primaryRoster";
 import { isDefaultAvatarId } from "./store/avatarCatalog";
+import { runSyntheticAction } from "./services/monitors";
 import {
   getAvatarPortraitSrc,
   readPortraitFileAsDataUrl,
@@ -361,6 +363,16 @@ function AppContent() {
   const [inputValue, setInputValue] = useState("");
   /** Selected world-metadata project id for “Assign task” (dropdown). */
   const [taskProjectId, setTaskProjectId] = useState("");
+  /**
+   * Transient status line for the Assign-task widget: surfaces a confirmation
+   * after a successful add and a diagnostic when the handler would otherwise
+   * silently return (no avatar selected, picked project vanished, placeholder
+   * title, etc.). Clears after ~4s so the widget doesn't accumulate chatter.
+   */
+  const [taskAssignStatus, setTaskAssignStatus] = useState<{
+    kind: "ok" | "warn";
+    text: string;
+  } | null>(null);
   const [avatarBuilderOpen, setAvatarBuilderOpen] = useState(false);
   const [avatarBuilderInitial, setAvatarBuilderInitial] =
     useState<AvatarBuilderInitial | null>(null);
@@ -1172,30 +1184,99 @@ function AppContent() {
       setProjectsRefresh((n) => n + 1);
       refreshTasks();
     };
+    /**
+     * `AppContext` emits this after startup hygiene (prune + seed) or any
+     * explicit rewrite of `world_metadata.projects` so the Assign-task memo
+     * drops stale ghost ids from its dropdown.
+     */
+    const onWorldMetadataChanged = () => setProjectsRefresh((n) => n + 1);
     window.addEventListener("avatars:assigned-task", onAssigned);
-    return () =>
+    window.addEventListener(
+      "avatars:world-metadata-changed",
+      onWorldMetadataChanged
+    );
+    return () => {
       window.removeEventListener("avatars:assigned-task", onAssigned);
+      window.removeEventListener(
+        "avatars:world-metadata-changed",
+        onWorldMetadataChanged
+      );
+    };
   }, [mergeAssignedTaskIdOntoAvatar, refreshTasks]);
 
   const handleAssignTask = useCallback(() => {
-    if (!firstSelectedId || !taskProjectId) return;
-    const proj = getWorldMetadata().projects[taskProjectId];
-    if (!proj?.title?.trim()) return;
-    const task = assignTask(
-      firstSelectedId,
-      proj.title.trim(),
-      proj.notes?.trim() || undefined,
-      taskProjectId
-    );
+    /**
+     * Prior implementation silently early-returned on every failure, which made
+     * a no-op feel like "the dropdown is broken". Each branch now surfaces an
+     * inline status line (and logs to console) so the reason is visible.
+     */
+    if (!firstSelectedId) {
+      setTaskAssignStatus({ kind: "warn", text: "Select a primary avatar first." });
+      return;
+    }
+    if (!taskProjectId) {
+      setTaskAssignStatus({ kind: "warn", text: "Pick a project from the dropdown." });
+      return;
+    }
+    /**
+     * Re-read straight from the store in case seeding/pruning or another tab
+     * mutated `world_metadata.projects` after `projectsList` was memoized.
+     */
+    const projects = getWorldMetadata().projects;
+    const proj = projects[taskProjectId];
+    if (!proj) {
+      console.warn("[assign-task] selected project id missing from store", {
+        taskProjectId,
+        knownIds: Object.keys(projects),
+      });
+      setTaskAssignStatus({
+        kind: "warn",
+        text: "That project is no longer in storage. Pick another.",
+      });
+      setTaskProjectId("");
+      setProjectsRefresh((n) => n + 1);
+      return;
+    }
+    const title = proj.title?.trim();
+    if (!title) {
+      console.warn("[assign-task] project has empty title", { taskProjectId, proj });
+      setTaskAssignStatus({
+        kind: "warn",
+        text: "That project has no title; edit it under Context → Projects.",
+      });
+      return;
+    }
+    const task = ensureProjectTaskForAvatar(firstSelectedId, taskProjectId);
+    if (!task) {
+      setTaskAssignStatus({
+        kind: "warn",
+        text: "Could not link that project (missing title or not in Context).",
+      });
+      return;
+    }
     mergeAssignedTaskIdOntoAvatar(firstSelectedId, task.id);
     setTaskProjectId("");
     refreshTasks();
+    const avatarName =
+      fullAvatarCatalog.find((a) => a.id === firstSelectedId)?.givenName ?? "avatar";
+    setTaskAssignStatus({
+      kind: "ok",
+      text: `Assigned “${title}” to ${avatarName}.`,
+    });
   }, [
     taskProjectId,
     firstSelectedId,
     refreshTasks,
     mergeAssignedTaskIdOntoAvatar,
+    fullAvatarCatalog,
   ]);
+
+  /** Auto-clear the Assign-task status message so it doesn't linger. */
+  useEffect(() => {
+    if (!taskAssignStatus) return;
+    const t = window.setTimeout(() => setTaskAssignStatus(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [taskAssignStatus]);
 
   const handleEndTopicSegment = useCallback(() => {
     const users = situationContext.conversationThread.filter(
@@ -1946,6 +2027,14 @@ function AppContent() {
                 Add
               </button>
             </div>
+            {taskAssignStatus && (
+              <p
+                className={`task-assign-status task-assign-status--${taskAssignStatus.kind}`}
+                role={taskAssignStatus.kind === "warn" ? "alert" : "status"}
+              >
+                {taskAssignStatus.text}
+              </p>
+            )}
             {tasks.length > 0 && (
               <ul className="task-list">
                 {tasks.map((t) => (
@@ -2259,6 +2348,14 @@ function AppContent() {
                                 {sourceLabel}
                               </span>
                             )}
+                            {msg.synthetic && msg.monitorTag && (
+                              <span
+                                className="message-monitor-chip"
+                                title={`System monitor: ${msg.monitorTag}`}
+                              >
+                                {msg.monitorTag}
+                              </span>
+                            )}
                           </span>
                           {sourceLabel && src === "ollama" && (
                             <span
@@ -2271,10 +2368,27 @@ function AppContent() {
                         <p
                           className={`message-content ${textStyle} ${avatarFontClass} ${
                             msg.role === "avatar" && src === "ollama" ? "message-content--ai-fx" : ""
-                          }`}
+                          } ${msg.synthetic ? "message-content--synthetic" : ""}`}
                         >
                           {msg.content}
                         </p>
+                        {msg.synthetic && msg.syntheticActions && msg.syntheticActions.length > 0 && (
+                          <div className="message-synthetic-actions">
+                            {msg.syntheticActions.map((a) => (
+                              <button
+                                key={a.id}
+                                type="button"
+                                className="message-synthetic-action-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void runSyntheticAction(msg, a);
+                                }}
+                              >
+                                {a.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {msg.role === "user" && msg.emailFocusArtifacts && (
                           <div className="message-email-focus-toolbar">
                             <span
@@ -2593,6 +2707,7 @@ function AppContent() {
                     lastUserEmailFocus={sourceCacheVizSnapshot.lastUserEmailFocus}
                     futureSources={sourceCacheVizSnapshot.futureSources}
                     onOpenWorldviewTab={openWorldviewTab}
+                    fullAvatarCatalog={fullAvatarCatalog}
                   />
                 </aside>
               </>

@@ -21,9 +21,12 @@ export {
   patchWorldMetadataProjects,
   patchUserProfile,
   replaceUserProfile,
+  pruneWorldMetadataPlaceholderProjects,
+  seedProjectsIntoWorldMetadata,
   schedulePersistWorldMetadata,
   getContactOverlayById,
 } from "./store";
+export { isPlaceholderProjectTitle } from "./titleSanity";
 export { projectMetadataDetailLines } from "./relevance";
 export {
   userProfileToRelevanceLines,

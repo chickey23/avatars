@@ -73,3 +73,66 @@ export function updateTaskStatus(
 export function getTasksForAvatar(avatarId: string): LongTermTask[] {
   return loadTasks().filter((t) => t.avatarId === avatarId && t.status === "active");
 }
+
+/**
+ * Active long-term tasks with a `projectId` imply that project is stewarded in
+ * the UI (Assign-task column) even when `ownerAvatarId` was never written in
+ * the platform store — used to keep the unassigned-projects monitor in sync.
+ */
+export function activeProjectIdsFromLongTermTasks(): Set<string> {
+  const ids = new Set<string>();
+  for (const t of loadTasks()) {
+    if (t.status === "active" && t.projectId) ids.add(t.projectId);
+  }
+  return ids;
+}
+
+/**
+ * When a project is assigned to avatar A, complete other avatars' active
+ * tasks for the same project so only one steward remains.
+ */
+export function completeActiveTasksForProjectExcept(
+  projectId: string,
+  keepAvatarId: string
+): void {
+  const tasks = loadTasks();
+  let changed = false;
+  const now = Date.now();
+  for (const t of tasks) {
+    if (
+      t.projectId === projectId &&
+      t.status === "active" &&
+      t.avatarId !== keepAvatarId
+    ) {
+      t.status = "completed";
+      t.updatedAt = now;
+      changed = true;
+    }
+  }
+  if (changed) saveTasks(tasks);
+}
+
+/**
+ * Collapse duplicate active tasks for the same (avatar, project) pair — keep
+ * the most recently updated row.
+ */
+export function dedupeActiveTasksForAvatarProject(
+  avatarId: string,
+  projectId: string
+): void {
+  const tasks = loadTasks();
+  const active = tasks.filter(
+    (t) =>
+      t.avatarId === avatarId &&
+      t.projectId === projectId &&
+      t.status === "active"
+  );
+  if (active.length <= 1) return;
+  active.sort((a, b) => b.updatedAt - a.updatedAt);
+  const now = Date.now();
+  for (const t of active.slice(1)) {
+    t.status = "completed";
+    t.updatedAt = now;
+  }
+  saveTasks(tasks);
+}

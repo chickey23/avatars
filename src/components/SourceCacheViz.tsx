@@ -7,12 +7,31 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
-import type { EmailFocusArtifacts, EmailRankingDiagnostics } from "../types";
+import type { Avatar, EmailFocusArtifacts, EmailRankingDiagnostics } from "../types";
 import { EMAIL_STRONG_MATCH_MIN_NORM } from "../services/contextScoring/email";
 import type { ParsedRankedEmailLine } from "../services/sourceCacheViz";
+import {
+  PLATFORM_LOG_CATEGORY,
+  subscribePlatformEvents,
+  type PlatformBusEvent,
+  type SourceCacheKind,
+} from "../services/platform";
+import {
+  getSessionLogSnapshot,
+  subscribeSessionLog,
+  type SessionLogEntry,
+} from "../services/sessionLog";
+import {
+  SOURCE_RUNNER_KINDS,
+  sourceRunnerMonitorName,
+  DUE_AND_SNOOZED_ITEMS_MONITOR_NAME,
+} from "../services/monitors";
+import { findAvatarsWithTag, monitorTag } from "../services/avatarTags";
+import { parseContractLogCategory } from "../services/sessionLog/contractLog";
 
 export type EmailInsightSample = {
   messageId: string;
@@ -48,6 +67,12 @@ export type SourceCacheVizProps = {
   lastUserEmailFocus?: EmailFocusArtifacts;
   futureSources: ReadonlyArray<{ id: string; label: string }>;
   onOpenWorldviewTab: () => void;
+  /**
+   * Full avatar catalog (defaults + user edits). Used by the Background panel
+   * to resolve which avatar holds each `monitor:*` contract via `systemTags`,
+   * so steward rows can show portrait + name for the current claimant.
+   */
+  fullAvatarCatalog: Avatar[];
 };
 
 type PanelSection =
@@ -56,7 +81,114 @@ type PanelSection =
   | "world"
   | "worldview"
   | "waves"
+  | "background"
   | "future";
+
+/** Background panel rows: one per contract that has a steward avatar. */
+type ContractRow = {
+  /** Monitor name, e.g. `source_runner:email`. */
+  contractName: string;
+  /** Display label for the row. */
+  label: string;
+  /** Steward avatar(s) currently tagged with this monitor. */
+  claimants: Avatar[];
+  /** Optional source-runner kind for heartbeat lookups. */
+  runnerKind?: SourceCacheKind;
+};
+
+const NEUTRAL_BACKGROUND_ACCENT = "#94a3b8";
+
+type PlatformRunnerSnapshot = Record<
+  SourceCacheKind,
+  { fetchedAt: number; durationMs: number; itemCount: number } | null
+>;
+
+const BACKGROUND_LOG_TAIL = 20;
+
+function useContractsState(): {
+  runners: PlatformRunnerSnapshot;
+  logTail: SessionLogEntry[];
+} {
+  const [runners, setRunners] = useState<PlatformRunnerSnapshot>({
+    email: null,
+    calendar: null,
+    contacts: null,
+  });
+  const [logTail, setLogTail] = useState<SessionLogEntry[]>([]);
+
+  useEffect(() => {
+    const sync = () => {
+      const all = getSessionLogSnapshot();
+      const tail: SessionLogEntry[] = [];
+      for (let i = all.length - 1; i >= 0 && tail.length < BACKGROUND_LOG_TAIL; i--) {
+        const e = all[i]!;
+        if (
+          e.category.startsWith("contract:") ||
+          e.category.startsWith(`${PLATFORM_LOG_CATEGORY}_`)
+        ) {
+          tail.push(e);
+        }
+      }
+      tail.reverse();
+      setLogTail(tail);
+    };
+    sync();
+    return subscribeSessionLog(sync);
+  }, []);
+
+  useEffect(() => {
+    return subscribePlatformEvents((evt: PlatformBusEvent) => {
+      if (evt.type === "runner_heartbeat") {
+        setRunners((prev) => ({
+          ...prev,
+          [evt.kind]: {
+            fetchedAt: evt.fetchedAt,
+            durationMs: evt.durationMs,
+            itemCount: evt.itemCount,
+          },
+        }));
+      }
+    });
+  }, []);
+
+  return { runners, logTail };
+}
+
+/**
+ * Resolve each background contract to its claimant avatar(s) by looking up
+ * `monitor:<name>` in the catalog's `systemTags`. Re-tagging an avatar in
+ * the editor will cause this to relabel without a reload.
+ */
+function buildContractRows(catalog: Avatar[]): ContractRow[] {
+  const rows: ContractRow[] = [];
+  for (const kind of SOURCE_RUNNER_KINDS) {
+    const name = sourceRunnerMonitorName(kind);
+    rows.push({
+      contractName: name,
+      label: kind,
+      runnerKind: kind,
+      claimants: findAvatarsWithTag(catalog, monitorTag(name)),
+    });
+  }
+  rows.push({
+    contractName: DUE_AND_SNOOZED_ITEMS_MONITOR_NAME,
+    label: "scheduler",
+    claimants: findAvatarsWithTag(
+      catalog,
+      monitorTag(DUE_AND_SNOOZED_ITEMS_MONITOR_NAME)
+    ),
+  });
+  return rows;
+}
+
+function ageLabel(fetchedAt: number, now: number): string {
+  const ageSec = Math.max(0, Math.round((now - fetchedAt) / 1000));
+  if (ageSec < 60) return `${ageSec}s ago`;
+  const mins = Math.floor(ageSec / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ago`;
+}
 
 function formatTs(ts: number): string {
   try {
@@ -82,11 +214,53 @@ export function SourceCacheViz({
   lastUserEmailFocus,
   futureSources,
   onOpenWorldviewTab,
+  fullAvatarCatalog,
 }: SourceCacheVizProps) {
   const panelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<PanelSection | null>(null);
   const [pinned, setPinned] = useState(false);
+  const { runners: backgroundRunners, logTail: backgroundLogTail } =
+    useContractsState();
+  const backgroundNow = useMemo(
+    () => Date.now(),
+    [backgroundLogTail, backgroundRunners]
+  );
+
+  const contractRows = useMemo(
+    () => buildContractRows(fullAvatarCatalog),
+    [fullAvatarCatalog]
+  );
+
+  /**
+   * Chip accent: prefer the most-recently-active steward's color (heuristic:
+   * the first claimant of any contract that has reported a heartbeat). Falls
+   * back to a neutral slate when nothing is bound yet.
+   */
+  const backgroundChipAccent = useMemo(() => {
+    for (const row of contractRows) {
+      const heartbeat = row.runnerKind ? backgroundRunners[row.runnerKind] : null;
+      const first = row.claimants[0];
+      if (heartbeat && first?.appearance?.accentColor) {
+        return first.appearance.accentColor;
+      }
+    }
+    const firstClaimed = contractRows.find((r) => r.claimants.length > 0);
+    return (
+      firstClaimed?.claimants[0]?.appearance?.accentColor ?? NEUTRAL_BACKGROUND_ACCENT
+    );
+  }, [contractRows, backgroundRunners]);
+
+  /** Build a per-contract claimant lookup so log rows can be tinted by owner. */
+  const logRowAccent = useCallback(
+    (category: string): string | null => {
+      const parsed = parseContractLogCategory(category);
+      if (!parsed) return null;
+      const row = contractRows.find((r) => r.contractName === parsed.contract);
+      return row?.claimants[0]?.appearance?.accentColor ?? null;
+    },
+    [contractRows]
+  );
 
   const close = useCallback(() => {
     setOpen(null);
@@ -242,6 +416,30 @@ export function SourceCacheViz({
           >
             <span className="source-cache-viz-chip-dot" aria-hidden />
             Waves
+          </button>
+        </li>
+        <li className="source-cache-viz-track-item">
+          <button
+            type="button"
+            className={`source-cache-viz-chip source-cache-viz-chip--background source-cache-viz-chip--platform${
+              open === "background" ? " is-open" : ""
+            }`}
+            aria-expanded={open === "background"}
+            aria-controls={panelId}
+            onMouseEnter={() => !pinned && openSection("background")}
+            onFocus={() => !pinned && openSection("background")}
+            onMouseLeave={() => !pinned && open === "background" && setOpen(null)}
+            onClick={() => togglePin("background")}
+            style={{
+              "--background-accent": backgroundChipAccent,
+              "--platform-accent": backgroundChipAccent,
+            } as React.CSSProperties}
+          >
+            <span
+              className="source-cache-viz-chip-dot source-cache-viz-chip-dot--background source-cache-viz-chip-dot--platform"
+              aria-hidden
+            />
+            Background
           </button>
         </li>
         <li className="source-cache-viz-track-item">
@@ -450,6 +648,160 @@ export function SourceCacheViz({
                     Persist key: <code className="source-cache-viz-code">{wavesStorageKey}</code>
                   </li>
                 </ul>
+              </section>
+            </div>
+          )}
+
+          {open === "background" && (
+            <div className="source-cache-viz-sections">
+              <section className="source-cache-viz-section">
+                <h4 className="source-cache-viz-section-title">
+                  Background runners
+                </h4>
+                <p className="source-cache-viz-hint">
+                  Each runner has a steward avatar via its{" "}
+                  <code className="source-cache-viz-code">monitor:*</code> tag.
+                  Re-tag any avatar in the editor to transfer ownership.
+                </p>
+                <ul className="source-cache-viz-bullets source-cache-viz-background-rows">
+                  {contractRows
+                    .filter((r) => r.runnerKind)
+                    .map((row) => {
+                      const r = row.runnerKind ? backgroundRunners[row.runnerKind] : null;
+                      const claimant = row.claimants[0];
+                      const accent =
+                        claimant?.appearance?.accentColor ?? NEUTRAL_BACKGROUND_ACCENT;
+                      return (
+                        <li
+                          key={row.contractName}
+                          className="source-cache-viz-background-row source-cache-viz-platform-runner"
+                          style={{
+                            "--steward-accent": accent,
+                          } as React.CSSProperties}
+                        >
+                          <span
+                            className="source-cache-viz-steward-dot"
+                            aria-hidden
+                            style={{ background: accent }}
+                          />
+                          <span className="source-cache-viz-steward-name">
+                            {claimant?.givenName ?? (
+                              <span className="source-cache-viz-warn-strong">
+                                unclaimed
+                              </span>
+                            )}
+                          </span>
+                          <span className="source-cache-viz-platform-kind source-cache-viz-muted">
+                            {row.label}
+                          </span>
+                          {r ? (
+                            <>
+                              <span className="source-cache-viz-platform-meta">
+                                n={r.itemCount}
+                              </span>
+                              <span className="source-cache-viz-platform-meta">
+                                {r.durationMs}ms
+                              </span>
+                              <span className="source-cache-viz-platform-meta source-cache-viz-muted">
+                                {ageLabel(r.fetchedAt, backgroundNow)}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="source-cache-viz-muted">
+                              no heartbeat yet
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                </ul>
+              </section>
+
+              <section className="source-cache-viz-section">
+                <h4 className="source-cache-viz-section-title">Timekeeper</h4>
+                {(() => {
+                  const sched = contractRows.find(
+                    (r) => r.contractName === DUE_AND_SNOOZED_ITEMS_MONITOR_NAME
+                  );
+                  const claimant = sched?.claimants[0];
+                  const accent =
+                    claimant?.appearance?.accentColor ?? NEUTRAL_BACKGROUND_ACCENT;
+                  return (
+                    <ul className="source-cache-viz-bullets source-cache-viz-background-rows">
+                      <li
+                        className="source-cache-viz-background-row source-cache-viz-platform-runner"
+                        style={{ "--steward-accent": accent } as React.CSSProperties}
+                      >
+                        <span
+                          className="source-cache-viz-steward-dot"
+                          aria-hidden
+                          style={{ background: accent }}
+                        />
+                        <span className="source-cache-viz-steward-name">
+                          {claimant?.givenName ?? (
+                            <span className="source-cache-viz-warn-strong">
+                              unclaimed
+                            </span>
+                          )}
+                        </span>
+                        <span className="source-cache-viz-platform-kind source-cache-viz-muted">
+                          due &amp; snoozed items
+                        </span>
+                      </li>
+                    </ul>
+                  );
+                })()}
+              </section>
+
+              <section className="source-cache-viz-section">
+                <h4 className="source-cache-viz-section-title">
+                  Recent background activity
+                </h4>
+                {backgroundLogTail.length === 0 ? (
+                  <p className="source-cache-viz-empty">No background events yet.</p>
+                ) : (
+                  <ul className="source-cache-viz-bullets source-cache-viz-bullets--dense source-cache-viz-platform-log source-cache-viz-background-log">
+                    {backgroundLogTail.map((e, i) => {
+                      const accent = logRowAccent(e.category);
+                      const parsed = parseContractLogCategory(e.category);
+                      const display = parsed
+                        ? `${parsed.contract} · ${parsed.event}`
+                        : e.category.startsWith(`${PLATFORM_LOG_CATEGORY}_`)
+                          ? e.category.slice(PLATFORM_LOG_CATEGORY.length + 1)
+                          : e.category;
+                      return (
+                        <li
+                          key={`${e.ts}-${i}`}
+                          className={`source-cache-viz-platform-log-row source-cache-viz-background-log-row source-cache-viz-platform-log-row--${e.level}`}
+                          style={
+                            accent
+                              ? ({ "--steward-accent": accent } as React.CSSProperties)
+                              : undefined
+                          }
+                        >
+                          {accent && (
+                            <span
+                              className="source-cache-viz-steward-dot source-cache-viz-steward-dot--small"
+                              aria-hidden
+                              style={{ background: accent }}
+                            />
+                          )}
+                          <span className="source-cache-viz-platform-log-cat">
+                            {display}
+                          </span>
+                          <span className="source-cache-viz-platform-log-msg">
+                            {e.message}
+                          </span>
+                          {e.detail && (
+                            <span className="source-cache-viz-platform-log-detail source-cache-viz-muted">
+                              {e.detail}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </section>
             </div>
           )}

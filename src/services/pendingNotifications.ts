@@ -224,6 +224,31 @@ function capPending(list: PendingNotification[]): PendingNotification[] {
   return sorted.slice(0, MAX_PENDING_NOTIFICATIONS);
 }
 
+/**
+ * Merge externally-produced notifications (e.g. platform scheduler fires) into
+ * a `SituationContext`. De-dupes by id; caps to `MAX_PENDING_NOTIFICATIONS`.
+ * Preserves all existing pending entries so routine proactive eval is
+ * unaffected.
+ */
+export function addPendingNotifications(
+  ctx: SituationContext,
+  additions: PendingNotification[]
+): SituationContext {
+  if (additions.length === 0) return ctx;
+  const existing = ctx.pendingNotifications ?? [];
+  const seen = new Set(existing.map((n) => n.id));
+  const merged: PendingNotification[] = [...existing];
+  for (const n of additions) {
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    merged.push(n);
+  }
+  return {
+    ...ctx,
+    pendingNotifications: capPending(merged),
+  };
+}
+
 export function mergeProactiveEvaluation(
   data: AggregatedData,
   ctx: SituationContext,

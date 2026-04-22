@@ -2,6 +2,7 @@ export type {
   WavesQueueDoc,
   WavesQueueEntry,
   WavesQueueEntryBase,
+  WavesMonitorPromptEntry,
   WavesSystemCommandEntry,
   WavesSystemCommandStatus,
   WavesToolErrorEntry,
@@ -10,6 +11,7 @@ export type {
   WavesWorldviewEntry,
 } from "./types";
 export {
+  isMonitorPromptEntry,
   isSystemCommandEntry,
   isToolErrorEntry,
   isUserEntry,
@@ -21,6 +23,7 @@ export {
   createEmptyWavesQueueDoc,
 } from "./types";
 export {
+  appendMonitorPromptEntry,
   appendSystemCommandEntry,
   appendToolResolutionErrorEntry,
   appendUserEntry,

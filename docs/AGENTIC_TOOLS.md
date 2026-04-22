@@ -17,6 +17,13 @@ Both forms are merged and de-duplicated (`dedupeWorldviewToolCalls`) before exec
 | `gmail.fetch_message_body` | `AVATARS_TOOL name=gmail.fetch_message_body messageId=<id>` | Same as JSON tool; allowlist still applies. |
 | `world_metadata.patch_projects` | JSON only (in v1) | |
 | `world_metadata.patch_people` | JSON only (in v1) | |
+| `drafts.tasks` | JSON only (in v1) | Canonical id for task drafts; recorded via [`execute.ts`](../src/services/worldviewTools/execute.ts). |
+| `drafts.calendar_event` | JSON only (in v1) | Canonical id for calendar-event drafts. |
+| `drafts.email_reply` | JSON only (in v1) | Canonical id for email-reply drafts. |
+
+Durable draft records are stored by [`../src/services/platform/drafts.ts`](../src/services/platform/drafts.ts) (see [`../src/services/platform/`](../src/services/platform/)).
+
+Execution is implemented in [`execute.ts`](../src/services/worldviewTools/execute.ts). Permission groups: draft tools are gated by **`tool_owner:drafts`** on [`Avatar.systemTags`](../src/types/index.ts) (see `TOOL_GROUPS` in `registry.ts`).
 
 ## Permissions
 
