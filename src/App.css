@@ -3372,6 +3372,36 @@ button.env-tag.session-log-open-btn {
   flex-direction: column;
 }
 
+/* Audio-synchronized subtle pulse (see audioVisualBus + audioVisualPulseContext) */
+@keyframes audio-visual-cue-glow {
+  from {
+    box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.08);
+  }
+  to {
+    box-shadow:
+      inset 0 0 0 1px rgba(125, 211, 252, 0.35),
+      0 0 14px rgba(125, 211, 252, 0.12);
+  }
+}
+
+.audio-visual-cue-active {
+  animation: audio-visual-cue-glow 420ms ease-out 1;
+}
+
+.chat-main.audio-visual-cue-active--fallback {
+  animation: audio-visual-cue-glow 420ms ease-out 1;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audio-visual-cue-active,
+  .chat-main.audio-visual-cue-active--fallback {
+    animation: none;
+    outline: 1px solid rgba(125, 211, 252, 0.35);
+    outline-offset: -1px;
+  }
+}
+
 .chat-viz-resize-handle {
   flex-shrink: 0;
   width: 6px;

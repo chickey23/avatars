@@ -2,6 +2,8 @@
 
 **Non-normative.** Authoritative values are defined in [`../src/services/platform/constants.ts`](../src/services/platform/constants.ts) and the Tauri module [`../src-tauri/src/platform_cache.rs`](../src-tauri/src/platform_cache.rs).
 
+**See also:** [CODEBASE_GUIDELINES.md](CODEBASE_GUIDELINES.md) (platform services barrel, Tauri sidecar patterns).
+
 ## On disk (Tauri desktop)
 
 Base path: `%LOCALAPPDATA%\avatars\data\platform\`

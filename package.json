@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
+    "gen:audio": "node scripts/gen-audio-cues.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

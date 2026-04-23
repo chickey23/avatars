@@ -78,6 +78,13 @@ import {
 } from "../services/monitors";
 import { subscribePlatformStore } from "../services/platform";
 import { installDefaultMonitors } from "../services/monitors/bootstrap";
+import {
+  mountPlatformAudioBridge,
+  resumeAudioContext,
+  syncSoundscape,
+  enqueueVoiceSnippet,
+} from "../services/audio";
+import { AUDIO_SNIPPET_IDS, voiceProfileIdForAvatar } from "../services/audio/cueRegistry";
 
 export type { SendMessageOptions } from "./app-context";
 
@@ -209,6 +216,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
     return () => setSyntheticPostSink(null);
   }, [schedulePersistWaves]);
+
+  useEffect(() => {
+    const off = mountPlatformAudioBridge({
+      getAvatarById: (id) => fullCatalogRef.current.find((a) => a.id === id),
+    });
+    return off;
+  }, []);
+
+  useEffect(() => {
+    const onFirstPointer = () => {
+      void resumeAudioContext().then((ok) => {
+        if (ok) syncSoundscape();
+      });
+    };
+    document.addEventListener("pointerdown", onFirstPointer, {
+      passive: true,
+      once: true,
+    });
+  }, []);
 
   /**
    * Install the built-in monitor set once. Monitors claim work via
@@ -454,6 +480,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   });
                 },
                 onWaveChatComplete: ({ userMessageId: uid, depth }) => {
+                  const pick =
+                    job.primaryAvatarId ?? selectedAvatarIdsRef.current[0] ?? null;
+                  const roster = getFullAvatarCatalog(situationContextRef.current);
+                  const avatarForCue = pick
+                    ? roster.find((a) => a.id === pick)
+                    : undefined;
+                  enqueueVoiceSnippet(
+                    AUDIO_SNIPPET_IDS.waveSettled,
+                    voiceProfileIdForAvatar(avatarForCue),
+                    {
+                      anchor: "switchboard",
+                      avatarId: pick ?? undefined,
+                      cueId: AUDIO_SNIPPET_IDS.waveSettled,
+                    }
+                  );
                   setWavesQueue((prev) => {
                     const next = markWaveSettledForUserDepth(prev, uid, depth);
                     schedulePersistWaves(next);

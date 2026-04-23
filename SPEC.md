@@ -4,6 +4,8 @@
 
 - **SPEC.md** (this file): Work product — canonical project specification. Version-controlled in repo.
 - **docs/STYLEGUIDE.md**: Terminology and writing — when to say **Agent** vs **Avatar** vs tools; parallel development notes; **UI approval** (layout). Does not override this spec; aligns UI and docs with it.
+- **docs/CODEBASE_GUIDELINES.md**: Repo conventions — platform layer, Tauri allowlist, `AppProvider` vs view context, import style, front-end file layout (`src/app/` shell), tests. Non-normative; does not override this spec.
+- **docs/DEVELOPMENT_CYCLE.md**: Human and dev **iteration loop** (plan through reflection), how verification relates to the test plan, and pointers to project `.cursor` skills/rules. Non-normative; does not override this spec.
 - **.cursor/plans/**: Planning artifact — AI operational planning, phases, todos. Separate from spec.
 
 ---

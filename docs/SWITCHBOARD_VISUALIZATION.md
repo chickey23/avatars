@@ -18,11 +18,11 @@ The **Waves** column (optional toolbar checkbox) is a **persistent queue log** a
 
 Each **wave** row is **`settled: false`** when created from `onTraceProgress`. **Pending blink** (on the responder dots) stops for that row when **`onWaveChatComplete`** runs in [`distributeAndRespond()`](../src/services/switchboard.ts)—i.e. after **all** avatars for that **cascade depth** have finished and their messages are on the thread, **before** the next routing wave. [`markWaveSettledForUserDepth()`](../src/services/switchboardWavesQueue/operations.ts) matches by **`userMessageId`** and trace **`depth`**.
 
-When the turn ends (or on error cleanup), [`markWavesSettledForUser()`](../src/services/switchboardWavesQueue/operations.ts) in **`finally`** in [`AppContext.tsx`](../src/context/AppContext.tsx) sets any remaining wave rows for that user message to settled (safety net).
+When the turn ends (or on error cleanup), [`markWavesSettledForUser()`](../src/services/switchboardWavesQueue/operations.ts) in **`finally`** in [`AppProvider.tsx`](../src/context/AppProvider.tsx) sets any remaining wave rows for that user message to settled (safety net).
 
 ## Mapping to code
 
-- **Queue model**: [`src/services/switchboardWavesQueue/`](../src/services/switchboardWavesQueue/) — append on user send and `onTraceProgress`; per-wave settle via `onWaveChatComplete` → `markWaveSettledForUserDepth`; turn-level cleanup in `finally`; reset on `clearChat` in [`AppContext.tsx`](../src/context/AppContext.tsx).
+- **Queue model**: [`src/services/switchboardWavesQueue/`](../src/services/switchboardWavesQueue/) — append on user send and `onTraceProgress`; per-wave settle via `onWaveChatComplete` → `markWaveSettledForUserDepth`; turn-level cleanup in `finally`; reset on `clearChat` in [`AppProvider.tsx`](../src/context/AppProvider.tsx).
 - **Switchboard**: [`distributeAndRespond()`](../src/services/switchboard.ts) — `onTraceProgress`, **`onWaveChatComplete`**, `onAvatarComplete`.
 - **UI**: [`SwitchboardViz.tsx`](../src/components/SwitchboardViz.tsx).
 - **Chat**: Hover shows a **one-line** routing/source line on each message; click (outside nested controls) **scrolls** the message into view and **expands** the Ollama / rules prompt panel when present ([`App.tsx`](../src/App.tsx)).

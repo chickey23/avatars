@@ -1,0 +1,39 @@
+---
+description: >-
+  Invariants for Tauri platform_cache, TypeScript services/platform, and
+  services/audio (bridge, director, cues, throttle). Use when editing those
+  paths, adding on-disk files, new Tauri commands, or platform-to-audio
+  integration.
+globs:
+  - "src/services/audio/**"
+  - "src/services/platform/**"
+  - "src-tauri/src/platform_cache.rs"
+  - "src-tauri/src/lib.rs"
+alwaysApply: false
+---
+
+# Avatars: audio, platform, and Tauri bridge
+
+Authoritative product behavior: [SPEC.md](SPEC.md). This rule captures **non-negotiables** for high-blast-radius code; full paths and command names: [docs/PLATFORM_PERSISTENCE.md](docs/PLATFORM_PERSISTENCE.md) and [docs/CODEBASE_GUIDELINES.md](docs/CODEBASE_GUIDELINES.md).
+
+## Platform disk and Tauri
+
+- Durable file I/O uses the **`platform_cache`** Tauri module only. **Do not** reintroduce legacy codenames or a parallel “second cache” module. See “Legacy naming” and “Tauri disk I/O” in [docs/CODEBASE_GUIDELINES.md](docs/CODEBASE_GUIDELINES.md).
+- **New file under the platform data directory:** add the **exact filename** to `ALLOWED_FILENAMES` in [src-tauri/src/platform_cache.rs](src-tauri/src/platform_cache.rs) **and** align **logical names / storage keys** in [src/services/platform/constants.ts](src/services/platform/constants.ts) and every TS read/write path for that data.
+- Readers must not observe **partial JSON**. The Rust side uses atomic write (`.tmp` + rename); do not replace that with a direct write or “simpler” path unless you preserve the same safety.
+- New **Tauri command:** register it in [src-tauri/src/lib.rs](src-tauri/src/lib.rs) in `tauri::generate_handler![...]` (see existing `platform_cache_read`, `platform_cache_write`, `platform_cache_dir_display`).
+
+## TypeScript `services/platform`
+
+- For **narrow** needs (e.g. only the bus), import the **submodule** (e.g. `./bus`) instead of the [platform barrel](src/services/platform/index.ts) when the barrel would risk **circular imports** or hide ownership. See [docs/CODEBASE_GUIDELINES.md](docs/CODEBASE_GUIDELINES.md) “`services/platform` barrel.”
+- Desktop persistence goes through **Tauri**, not a generic HTTP client for the same data. “Web HTTP API (future)” in guidelines applies; do not stub REST for platform disk.
+
+## Audio and platform bridge
+
+- [src/services/audio/platformAudioBridge.ts](src/services/audio/platformAudioBridge.ts) maps **platform bus** (and related cues) to the **audio director** with throttles. New **platform-driven** sound should follow the same path: **subscribe** to the bus (or the established cue path) and call [audioDirector](src/services/audio/audioDirector.ts) entry points (`playCueSynthetic`, `enqueueVoiceSnippet`, etc.) as appropriate—not scattered `new Audio()` / ad-hoc playback outside the stack.
+- **Cue URLs and asset layout:** keep resolution in [src/services/audio/cueRegistry.ts](src/services/audio/cueRegistry.ts); where files live: [public/audio/README.md](public/audio/README.md).
+- High-frequency events: use or extend [src/services/audio/eventThrottle.ts](src/services/audio/eventThrottle.ts) (throttle / coalesce) so sound and work do not **thrash**; align with SPEC’s intent that ingestion and side paths stay non-blocking.
+
+## Escalation
+
+- Product-visible behavior changes are **spec-first** ([SPEC.md](SPEC.md)); propose spec updates and user approval before implementing deviations.

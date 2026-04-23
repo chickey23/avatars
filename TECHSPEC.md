@@ -12,7 +12,7 @@ This document lists all components and implementation details necessary to rebui
 |-------|------------|---------|
 | Desktop runtime | Tauri | 2.x |
 | Frontend framework | React | ^18.3.1 |
-| Build tool | Vite | ^5.4.10 |
+| Build tool | Vite | ^8.0.8 |
 | Language (frontend) | TypeScript | ~5.6.2 |
 | Language (backend) | Rust | 2021 edition |
 | Package manager | npm | — |
@@ -30,17 +30,23 @@ Avatars/
 ├── vite.config.ts
 ├── src/
 │   ├── main.tsx            # React entry; registers background agents, renders App
-│   ├── App.tsx             # Main UI component
+│   ├── App.tsx             # Root view; AppContent + app wiring
 │   ├── App.css
 │   ├── index.css
 │   ├── vite-env.d.ts
+│   ├── app/                # App shell: regions, view model, chrome constants
+│   │   ├── AppContent.tsx
+│   │   ├── useAppContentModel.ts
+│   │   ├── appContentViewContext.tsx
+│   │   ├── appChromeConstants.ts
+│   │   ├── AppHeader.tsx, PrimaryAvatarSidebar.tsx, ChatMainPanel.tsx, ContextPanel.tsx, AppOverlays.tsx
+│   │   └── …
 │   ├── components/
 │   │   ├── SwitchboardViz.tsx   # Chat Visualizer (Waves) column
 │   │   └── SourceCacheViz.tsx   # Storage viz (caches, Background contracts, log tail)
-│   ├── api/
-│   │   └── client.ts
 │   ├── context/
-│   │   └── AppContext.tsx
+│   │   ├── AppProvider.tsx      # useApp() provider; startup hygiene, waves/clearChat hooks
+│   │   └── useApp.ts
 │   ├── connectors/
 │   │   ├── index.ts        # gatherDataFromSources, dataToRelevanceStrings
 │   │   ├── gmail.ts        # Gmail connector (Tauri invoke)
@@ -111,9 +117,10 @@ Avatars/
 - `@tauri-apps/api` ^2.0.0
 - `@types/react` ^18.3.12
 - `@types/react-dom` ^18.3.1
-- `@vitejs/plugin-react` ^4.3.3
+- `@vitejs/plugin-react` ^6.0.1
 - `typescript` ~5.6.2
-- `vite` ^5.4.10
+- `vite` ^8.0.8
+- `vitest` ^4.1.4
 
 ### 3.2 Cargo (src-tauri/Cargo.toml)
 
@@ -318,12 +325,12 @@ npm run tauri build
 ### 12.2 TypeScript
 
 - Target ES2020
-- Path alias `@/*` → `src/*`
+- Imports use project-relative paths (no `@/*` alias)
 - Strict mode, noUnusedLocals, noUnusedParameters
 
 ### 12.3 Data Flow
 
-1. User sends message → user line is appended in **`AppContext`** and the send is **enqueued**; a drain loop runs **`processUserTurn`** in `appStore` **one turn at a time** (serialized queue).
+1. User sends message → user line is appended via **`useApp()`** (from [`AppProvider`](src/context/AppProvider.tsx)) and the send is **enqueued**; a drain loop runs **`processUserTurn`** in `appStore` **one turn at a time** (serialized queue).
 2. **`processUserTurn`** sets ephemeral **`replyToUserMessageId`** for this turn, builds context with **`gatherDataFromSources()`** (connectors), merges focus and optional Well of Souls into **`relevantData`**, then calls **`distributeAndRespond()`**. **User-turn context scoring** (email, calendar, contacts) runs inside this path via `scoreAndFormat*` helpers in `src/services/contextScoring/`—see `docs/CONTEXT_SCORING.md`. A future **preprocessor** stage may narrow candidates before scoring (see `docs/WORLD_MODEL_AND_PREPROCESSOR.md`).
 3. **`distributeAndRespond()`** selects Avatar(s), runs `runAvatarAgent`; returns `{ responses, trace }` (Switchboard trace per wave). **`onProgress` / `onAvatarComplete`** callbacks update React state so avatar messages appear **incrementally** after each responder. **`onTraceProgress`** feeds the live trace; **`onWaveChatComplete({ depth })`** fires after each wave’s responders finish (before the next cascade evaluation)—used by the **Waves** UI to settle per-row blink state.
 4. Avatar agent uses Ollama if available, else personality rules; final state: responses merged into the conversation thread; **`appendTurn`** / persist; `SituationContext` saved to `localStorage` (`avatars_situation_context`).

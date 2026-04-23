@@ -118,6 +118,11 @@ export interface AvatarAppearance {
   chatSkinId?: string;
   /** Optional bundled or default portrait URL (user override lives on SituationContext). */
   portraitUrl?: string;
+  /**
+   * Piper / bundled audio voice profile id (paths like public/audio/cues/{snippet}/{id}.opus).
+   * Omit to use the default profile ("default").
+   */
+  voiceProfileId?: string;
 }
 
 /** Optional fixed text merged into prompts or UI. */
