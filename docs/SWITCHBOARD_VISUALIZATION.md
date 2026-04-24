@@ -39,7 +39,7 @@ Optional audio cues are **not implemented**; if added later, keep them secondary
 
 ## Storage visualizer (right column)
 
-A **second** optional column sits **to the right of the chat transcript** (toolbar checkbox **Storage viz**). It does **not** duplicate routing waves; it surfaces **local caches**, **scoring diagnostics**, and **audit snippets**.
+A **second** optional column sits **to the right of the chat transcript** (toolbar checkbox **Storage viz**). It does **not** duplicate routing waves; it surfaces **local caches**, **scoring diagnostics**, and **audit snippets**. **Internet / web search** is intentionally **not** in this column; use **Context → Internet** to run search and pin lines into `relevantData` (see [TARGETED_SEARCH.md](./TARGETED_SEARCH.md)).
 
 ### UI
 

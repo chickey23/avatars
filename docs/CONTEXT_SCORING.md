@@ -17,6 +17,8 @@ Connectors (email, calendar, contacts, …) can supply more information than bel
 3. **Explicit user intent** — Focus selections in the UI (email, calendar, contact) map to **large deterministic bonuses** so chosen items surface first when they appear in the connector snapshot.
 4. **Expandability** — New data sources should follow the same pattern: **fetch → score vs situation → format lines → merge into `relevantData`** (or a dedicated proactive path). Mechanics may evolve (better retrieval, embeddings, shared metadata); the **seams** stay: connectors, scoring layer, Situation Context, avatar agents.
 
+**User-pinned web lines** (`userInternetContextLines` on `SituationContext`) are **not** connector-scored: the user selects search hits in **Context → Internet**, and those formatted strings are appended to `relevantData` each turn verbatim (see [TARGETED_SEARCH.md](./TARGETED_SEARCH.md)).
+
 ---
 
 ## Glossary

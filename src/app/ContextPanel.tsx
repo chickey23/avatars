@@ -1,11 +1,78 @@
+import { useCallback, useState } from "react";
 import { appendSessionLog } from "../services/sessionLog";
 import { peekEmailInsight } from "../services/emailInsights";
 import { applyWorldviewAuditRevert } from "../services/worldviewAudit";
 import { WellOfSouls } from "../components/WellOfSouls";
 import { useAppContentView } from "./appContentViewContext";
+import {
+  formatInternetContextLine,
+  internetContextLineDisplayTitle,
+  mergePinnedInternetLines,
+} from "../services/internetContextLines";
+import {
+  runTargetedSearch,
+  TAURI_ONLY_NOTICE,
+} from "../services/targetedSearch";
 
 export function ContextPanel() {
   const m = useAppContentView();
+  const [internetQuery, setInternetQuery] = useState("");
+  const [internetLoading, setInternetLoading] = useState(false);
+  const [internetResp, setInternetResp] = useState<Awaited<
+    ReturnType<typeof runTargetedSearch>
+  > | null>(null);
+  const [internetPickUrls, setInternetPickUrls] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  const runInternetSearch = useCallback(async () => {
+    setInternetLoading(true);
+    setInternetPickUrls(new Set());
+    try {
+      const r = await runTargetedSearch(
+        internetQuery,
+        m.contextEntryBudgets.internetSearchMaxResults
+      );
+      setInternetResp(r);
+    } catch (e) {
+      setInternetResp({
+        hits: [],
+        providersTried: [],
+        notices: [`targeted_search_invoke_error:${String(e)}`],
+      });
+    } finally {
+      setInternetLoading(false);
+    }
+  }, [internetQuery, m.contextEntryBudgets.internetSearchMaxResults]);
+
+  const toggleInternetPick = useCallback((url: string) => {
+    setInternetPickUrls((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
+  }, []);
+
+  const addInternetSelectionToContext = useCallback(() => {
+    if (!internetResp?.hits.length) return;
+    const picked = internetResp.hits.filter((h) =>
+      internetPickUrls.has(h.url.trim())
+    );
+    if (picked.length === 0) return;
+    const lines = picked.map(formatInternetContextLine);
+    const merged = mergePinnedInternetLines(
+      m.situationContext.userInternetContextLines,
+      lines
+    );
+    m.patchSituationContext({ userInternetContextLines: merged });
+  }, [
+    internetPickUrls,
+    internetResp,
+    m.patchSituationContext,
+    m.situationContext.userInternetContextLines,
+  ]);
+
   return (
       <aside className="context-panel">
         <h2>Context</h2>
@@ -62,15 +129,19 @@ export function ContextPanel() {
         {(m.focus.email ||
           m.focus.calendar ||
           m.focus.contact ||
-          m.focus.project) && (
+          m.focus.project ||
+          (m.situationContext.userInternetContextLines?.length ?? 0) > 0) && (
           <div className="context-focus">
             <div className="focus-header">
               <h3>Focus</h3>
               <button
                 type="button"
                 className="focus-clear-btn"
-                onClick={() => m.setFocus({})}
-                title="Clear all focus"
+                onClick={() => {
+                  m.setFocus({});
+                  m.patchSituationContext({ userInternetContextLines: [] });
+                }}
+                title="Clear focus and pinned web context"
               >
                 Clear
               </button>
@@ -128,6 +199,27 @@ export function ContextPanel() {
                   </button>
                 </li>
               )}
+              {(m.situationContext.userInternetContextLines ?? []).map(
+                (webLine, idx) => (
+                  <li key={`web-${idx}`} className="focus-item">
+                    <span className="focus-label">Internet:</span>{" "}
+                    <button
+                      type="button"
+                      className="focus-title"
+                      onClick={() =>
+                        m.patchSituationContext({
+                          userInternetContextLines: (
+                            m.situationContext.userInternetContextLines ?? []
+                          ).filter((_, i) => i !== idx),
+                        })
+                      }
+                      title="Remove this pinned page from context"
+                    >
+                      {internetContextLineDisplayTitle(webLine)}
+                    </button>
+                  </li>
+                )
+              )}
             </ul>
           </div>
         )}
@@ -153,6 +245,14 @@ export function ContextPanel() {
             onClick={() => m.setContextTab("contacts")}
           >
             Contacts
+          </button>
+          <button
+            type="button"
+            className={`context-tab ${m.contextTab === "internet" ? "active" : ""}`}
+            onClick={() => m.setContextTab("internet")}
+            title="Web/wiki search; pin results into chat context"
+          >
+            Internet
           </button>
           <button
             type="button"
@@ -239,6 +339,112 @@ export function ContextPanel() {
                   })}
                 </ul>
               )}
+            </div>
+          )}
+          {m.contextTab === "internet" && (
+            <div className="context-email">
+              <p className="context-projects-hint">
+                Search wikis → Wikipedia → Tavily (if configured) → Google CSE. Use{" "}
+                <strong>Context depth</strong> below to cap how many hits each run
+                requests. Select results, then <strong>Add selected to context</strong>{" "}
+                (lines are merged into relevant context on the next user turn; pinned
+                pages appear under <strong>Focus</strong> above.)
+              </p>
+              <div className="context-internet-search-row">
+                <input
+                  type="search"
+                  className="context-projects-title-input"
+                  placeholder="Search query…"
+                  value={internetQuery}
+                  onChange={(e) => setInternetQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void runInternetSearch();
+                  }}
+                  aria-label="Internet search query"
+                />
+                <button
+                  type="button"
+                  className="context-projects-add-btn"
+                  disabled={internetLoading || !internetQuery.trim()}
+                  onClick={() => void runInternetSearch()}
+                >
+                  {internetLoading ? "…" : "Run"}
+                </button>
+              </div>
+              {internetResp?.notices.includes(TAURI_ONLY_NOTICE) && (
+                <p className="context-error">
+                  Targeted search runs in the Tauri desktop app only (not the browser
+                  dev server).
+                </p>
+              )}
+              {internetResp && internetResp.providersTried.length > 0 && (
+                <p className="context-projects-hint">
+                  Providers tried: {internetResp.providersTried.join(", ")}
+                </p>
+              )}
+              {internetResp && internetResp.notices.length > 0 && (
+                <ul className="context-internet-notices">
+                  {internetResp.notices.map((n, idx) => (
+                    <li key={`${idx}-${n}`}>{n}</li>
+                  ))}
+                </ul>
+              )}
+              {internetResp && internetResp.hits.length > 0 && (
+                <ul className="email-list context-internet-hit-list">
+                  {internetResp.hits.map((h) => {
+                    const u = h.url.trim();
+                    const snip = h.snippet?.trim() ?? "";
+                    const snipShort =
+                      snip.length > 160 ? `${snip.slice(0, 160)}…` : snip;
+                    return (
+                      <li
+                        key={u}
+                        className={`email-item ${internetPickUrls.has(u) ? "focused" : ""}`}
+                      >
+                        <label className="email-item-btn internet-hit-pick-label">
+                          <input
+                            type="checkbox"
+                            checked={internetPickUrls.has(u)}
+                            onChange={() => toggleInternetPick(u)}
+                            aria-label={`Select ${h.title || u}`}
+                          />
+                          <span className="internet-hit-stack">
+                            <div className="email-item-head">
+                              <span className="email-from">[{h.source}]</span>
+                            </div>
+                            <a
+                              href={u}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="email-subject context-internet-hit-link"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {h.title || u}
+                            </a>
+                            {snipShort ? (
+                              <span className="email-snippet">{snipShort}</span>
+                            ) : null}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <div className="context-internet-actions">
+                <button
+                  type="button"
+                  className="context-projects-add-btn"
+                  disabled={
+                    !internetResp ||
+                    internetResp.hits.length === 0 ||
+                    internetPickUrls.size === 0
+                  }
+                  onClick={addInternetSelectionToContext}
+                >
+                  Add selected to context
+                </button>
+              </div>
             </div>
           )}
           {m.contextTab === "calendar" && (
@@ -491,7 +697,7 @@ export function ContextPanel() {
             </div>
           )}
           {m.contextTab === "contacts" && (
-            <div className="context-m.contacts">
+            <div className="context-contacts">
               {!m.gmailConnected ? (
                 <p className="context-empty">Connect Gmail to see m.contacts.</p>
               ) : m.contactsError ? (
@@ -539,7 +745,8 @@ export function ContextPanel() {
           const depthKey =
             m.contextTab === "email" ||
             m.contextTab === "calendar" ||
-            m.contextTab === "contacts"
+            m.contextTab === "contacts" ||
+            m.contextTab === "internet"
               ? m.contextTab
               : null;
           if (!depthKey) return null;
@@ -550,7 +757,9 @@ export function ContextPanel() {
               ? `${m.contextEntryBudgets.emailTopK} emails`
               : depthKey === "calendar"
                 ? `${m.contextEntryBudgets.calendarTopK} events`
-                : `${m.contextEntryBudgets.contactsTopK} m.contacts`;
+                : depthKey === "contacts"
+                  ? `${m.contextEntryBudgets.contactsTopK} contacts`
+                  : `Up to ${m.contextEntryBudgets.internetSearchMaxResults} web hits per run`;
           return (
             <div className="context-entry-depth">
               <div className="context-entry-depth-row">

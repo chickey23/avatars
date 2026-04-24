@@ -449,6 +449,7 @@ export function useAppContentModel() {
     | "email"
     | "calendar"
     | "contacts"
+    | "internet"
     | "user"
     | "worldview"
     | "well"

@@ -18,6 +18,8 @@ Base path: `%LOCALAPPDATA%\avatars\data\platform\`
 | Targeted search config (API keys, wiki list, caps) | `targeted_search_config.json` |
 | Targeted search usage (per-provider daily counts) | `targeted_search_usage.json` |
 
+Those JSON files back **multi-provider web/wiki search** invoked from the **Context → Internet** tab (see [TARGETED_SEARCH.md](./TARGETED_SEARCH.md)). The **Storage visualizer** column does not configure or run search; it remains for local cache and diagnostics only.
+
 Atomic read/write is exposed as Tauri commands `platform_cache_read`, `platform_cache_write`, and `platform_cache_dir_display` (see `lib.rs`).
 
 ## Browser / tests (localStorage)

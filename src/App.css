@@ -1733,6 +1733,54 @@ button.env-tag.session-log-open-btn {
   color: rgba(226, 232, 240, 0.95);
 }
 
+.context-internet-search-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: stretch;
+  margin-bottom: 0.75rem;
+}
+
+.context-internet-search-row .context-projects-title-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.context-internet-notices {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.68rem;
+  opacity: 0.85;
+}
+
+.context-internet-hit-list {
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.internet-hit-stack {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.context-internet-hit-link {
+  color: #7dd3fc;
+  text-decoration: none;
+}
+
+.context-internet-hit-link:hover {
+  text-decoration: underline;
+}
+
+.context-internet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
 .context-entry-depth {
   flex-shrink: 0;
   margin-top: 0.5rem;
@@ -2092,6 +2140,12 @@ button.env-tag.session-log-open-btn {
 
 .email-item-btn:hover {
   background: rgba(255, 255, 255, 0.05);
+}
+
+label.email-item-btn.internet-hit-pick-label {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.4rem;
 }
 
 .email-item-head {
@@ -3847,90 +3901,9 @@ button.env-tag.session-log-open-btn {
   text-align: center;
 }
 
-.source-cache-viz-search-banner {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.4rem;
-  font-size: 0.58rem;
-  line-height: 1.35;
-  margin-bottom: 0.35rem;
-  padding: 0.35rem 0.4rem;
-  border-radius: 6px;
-  border: 1px solid rgba(251, 191, 36, 0.45);
-  background: rgba(120, 53, 15, 0.35);
-  color: rgba(254, 243, 199, 0.95);
-}
-
-.source-cache-viz-search-banner-dismiss {
-  flex-shrink: 0;
-  font: inherit;
-  font-size: 0.55rem;
-  padding: 0.12rem 0.35rem;
-  border-radius: 4px;
-  border: 1px solid rgba(251, 191, 36, 0.35);
-  background: rgba(0, 0, 0, 0.2);
-  color: inherit;
-  cursor: pointer;
-}
-
-.source-cache-viz-search-banner-dismiss:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.source-cache-viz-targeted-search-row {
-  display: flex;
-  gap: 0.35rem;
-  margin-top: 0.35rem;
-  align-items: stretch;
-}
-
-.source-cache-viz-targeted-search-input {
-  flex: 1;
-  min-width: 0;
-  font: inherit;
-  font-size: 0.62rem;
-  padding: 0.25rem 0.35rem;
-  border-radius: 4px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(0, 0, 0, 0.25);
-  color: rgba(248, 250, 252, 0.95);
-}
-
-.source-cache-viz-targeted-search-btn {
-  flex-shrink: 0;
-  font: inherit;
-  font-size: 0.62rem;
-  padding: 0.25rem 0.45rem;
-  border-radius: 4px;
-  border: 1px solid rgba(45, 212, 191, 0.45);
-  background: rgba(15, 118, 110, 0.35);
-  color: rgba(240, 253, 250, 0.95);
-  cursor: pointer;
-}
-
-.source-cache-viz-targeted-search-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 .source-cache-viz-code {
   font-size: 0.58rem;
   word-break: break-all;
-}
-
-.source-cache-viz-link {
-  color: #7dd3fc;
-  text-decoration: none;
-}
-
-.source-cache-viz-link:hover {
-  text-decoration: underline;
-}
-
-.source-cache-viz-targeted-snippet {
-  color: rgba(226, 232, 240, 0.75);
-  font-size: 0.58rem;
 }
 
 .source-cache-viz-tracks {
@@ -3995,9 +3968,6 @@ button.env-tag.session-log-open-btn {
 }
 .source-cache-viz-chip--waves .source-cache-viz-chip-dot {
   background: #fb923c;
-}
-.source-cache-viz-chip--targeted-search .source-cache-viz-chip-dot {
-  background: #2dd4bf;
 }
 .source-cache-viz-chip--future .source-cache-viz-chip-dot {
   background: rgba(148, 163, 184, 0.4);
@@ -4179,11 +4149,6 @@ button.env-tag.session-log-open-btn {
 
 .source-cache-viz-muted {
   opacity: 0.72;
-}
-
-.source-cache-viz-code {
-  font-size: 0.55rem;
-  word-break: break-all;
 }
 
 .source-cache-viz-audit-tools {

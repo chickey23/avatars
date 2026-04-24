@@ -311,6 +311,8 @@ export type ContextEntryDepth = {
   calendar?: number;
   contacts?: number;
   projects?: number;
+  /** 0–1: caps how many web search hits are requested per run from the Context → Internet tab. */
+  internet?: number;
 };
 
 /** One inbox row after context scoring (ephemeral diagnostics for Storage viz). */
@@ -340,6 +342,11 @@ export interface SituationContext {
   cuesAndTriggers: string[];
   /** Data from connectors (email, calendar, etc.) for relevance */
   relevantData?: string[];
+  /**
+   * User-pinned lines from Context → Internet (web/wiki search). Merged into
+   * `relevantData` each turn; not connector-scored. Persisted.
+   */
+  userInternetContextLines?: string[];
   /** Last Well of Souls generator output; optional merge into `relevantData` when `useWellOfSoulsInChat` is true. */
   wellOfSoulsRules?: string;
   /** When true, `sendMessage` prepends `wellOfSoulsRules` into relevance for the avatar pipeline. */

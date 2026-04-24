@@ -39,11 +39,11 @@ Avatars/
 │   │   ├── useAppContentModel.ts
 │   │   ├── appContentViewContext.tsx
 │   │   ├── appChromeConstants.ts
-│   │   ├── AppHeader.tsx, PrimaryAvatarSidebar.tsx, ChatMainPanel.tsx, ContextPanel.tsx, AppOverlays.tsx
+│   │   ├── AppHeader.tsx, PrimaryAvatarSidebar.tsx, ChatMainPanel.tsx, ContextPanel.tsx (Internet tab: search → pinned context), AppOverlays.tsx
 │   │   └── …
 │   ├── components/
 │   │   ├── SwitchboardViz.tsx   # Chat Visualizer (Waves) column
-│   │   └── SourceCacheViz.tsx   # Storage viz (caches, Background contracts, log tail)
+│   │   └── SourceCacheViz.tsx   # Storage viz (caches, diagnostics, Background contracts, log tail — not web search UI)
 │   ├── context/
 │   │   ├── AppProvider.tsx      # useApp() provider; startup hygiene, waves/clearChat hooks
 │   │   └── useApp.ts

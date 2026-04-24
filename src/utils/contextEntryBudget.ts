@@ -17,6 +17,11 @@ export type ContextEntryBudgets = {
   contactsTopK: number;
   /** Extra project one-liners beyond focused-project detail (0 at t=0). */
   projectExtraTopK: number;
+  /**
+   * Max hits requested per targeted search run (Context → Internet tab).
+   * Tauri `targeted_search_query` clamps to 20.
+   */
+  internetSearchMaxResults: number;
 };
 
 /** Matches pre-slider behavior when all depth keys are omitted. */
@@ -29,6 +34,7 @@ export const LEGACY_CONTEXT_ENTRY_BUDGETS: ContextEntryBudgets = {
   contactsFetchLimit: 50,
   contactsTopK: 5,
   projectExtraTopK: 0,
+  internetSearchMaxResults: 1,
 };
 
 function clamp01(t: number): number {
@@ -91,6 +97,14 @@ export function resolveContextEntryBudgets(
   if (depth.projects !== undefined && !Number.isNaN(depth.projects)) {
     const t = clamp01(depth.projects);
     out.projectExtraTopK = Math.min(20, Math.round(t * 20));
+  }
+
+  if (depth.internet !== undefined && !Number.isNaN(depth.internet)) {
+    const t = clamp01(depth.internet);
+    out.internetSearchMaxResults = Math.min(
+      20,
+      growFromLegacy(1, 12, t)
+    );
   }
 
   return out;

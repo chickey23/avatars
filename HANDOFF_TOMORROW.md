@@ -66,6 +66,7 @@
 - [ ] **Send while pending:** Queue more user messages while replies stream; order and anchors stay sane.
 - [ ] **Waves:** Toggle column; dots rise; earlier wave stops blinking when that wave’s replies appear; later cascade wave can still blink until its replies show.
 - [ ] **Storage viz:** Toggle **Storage viz**; resize handle between transcript and column; hover/click chips — **Inbox** shows top-K lines and **Scored, not in prompt** when fetch batch is larger than top-K; **Gmail** shows insight relevance counts; **Open Worldview tab** switches context tab.
+- [ ] **Context → Internet (optional):** With Tauri desktop, open **Internet** tab; adjust **Context depth**; run a query; add selected hits; confirm pinned count; send a user turn and confirm prompt / avatars see `Internet context` lines (see [docs/TARGETED_SEARCH.md](docs/TARGETED_SEARCH.md)).
 - [ ] **Context scoring (optional):** With Gmail data loaded, email / calendar / contacts ranked lines appear in the relevant-data path where applicable.
 - [ ] **Session log:** New entries and (in Tauri) files under `%LOCALAPPDATA%\…\avatars\session_logs\` (or equivalent).
 - [ ] **Verify script:** `npm run verify` — `npm install` when lock changes, `vitest`, `verify ok` in console; `.local/verify.log` append.

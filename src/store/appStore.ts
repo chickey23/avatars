@@ -592,6 +592,7 @@ export async function processUserTurn(
     ...contactLines,
     ...socialSoloHint,
     ...dataToRelevanceStringsWithoutEmail(data),
+    ...(ctxAfterProactive.userInternetContextLines ?? []),
   ];
 
   let working: SituationContext = {

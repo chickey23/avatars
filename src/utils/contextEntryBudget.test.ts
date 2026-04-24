@@ -41,6 +41,20 @@ describe("resolveContextEntryBudgets", () => {
     expect(b.projectExtraTopK).toBe(
       LEGACY_CONTEXT_ENTRY_BUDGETS.projectExtraTopK
     );
+    expect(b.internetSearchMaxResults).toBe(
+      LEGACY_CONTEXT_ENTRY_BUDGETS.internetSearchMaxResults
+    );
+  });
+
+  it("internet depth t=0 keeps 1 result cap", () => {
+    const b = resolveContextEntryBudgets({ internet: 0 });
+    expect(b.internetSearchMaxResults).toBe(1);
+  });
+
+  it("internet depth t=1 raises cap up to 20", () => {
+    const b = resolveContextEntryBudgets({ internet: 1 });
+    expect(b.internetSearchMaxResults).toBeGreaterThan(1);
+    expect(b.internetSearchMaxResults).toBeLessThanOrEqual(20);
   });
 
   it("emailTopK never exceeds emailFetchLimit", () => {
