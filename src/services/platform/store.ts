@@ -292,7 +292,8 @@ function appendHistory(
 export type UpsertProjectInput = {
   id?: string;
   title: string;
-  summary?: string;
+  /** Pass null to clear an existing summary while preserving other lifecycle fields. */
+  summary?: string | null;
   status?: PlatformProjectStatus;
   ownerAvatarId?: string;
   dueAt?: number;
@@ -339,10 +340,12 @@ export function upsertProject(input: UpsertProjectInput): PlatformProjectRecord 
     );
   }
   const title = incomingTitle || existing?.title || "Untitled";
+  const summary =
+    input.summary === null ? undefined : input.summary ?? existing?.summary;
   const record: PlatformProjectRecord = {
     id,
     title,
-    summary: input.summary ?? existing?.summary,
+    summary,
     status: input.status ?? existing?.status ?? "active",
     authorUserId: "user",
     ownerAvatarId: owner ?? existing?.ownerAvatarId,
@@ -563,27 +566,46 @@ export function migrateProjectsFromWorldMetadata(
 }
 
 /**
- * Additive sync: import any `worldProjects` entries whose ids are not yet in
- * the platform store, without touching the one-shot migration stamp. Unlike
+ * Startup sync: import missing `worldProjects` entries and refresh authored
+ * title / summary fields on existing platform rows, without touching lifecycle
+ * fields (`status`, steward, due/snooze, task history). Unlike
  * `migrateProjectsFromWorldMetadata` this runs on every startup so seed
- * updates (new entries appended to `PROJECT_SEED_LIST`) land in the platform
- * store too. Existing rows are left untouched; placeholder titles are
- * skipped so ghost entries cannot sneak in via the seed path.
+ * updates and world-metadata edits land in the platform store too.
  */
 export function syncWorldMetadataProjectsAdditive(
   worldProjects: Record<string, WorldProjectLike>
-): { added: number } {
+): { added: number; updated: number } {
   if (!loaded) ensurePlatformStoreLoadedSync();
   const nowTs = now();
   let added = 0;
+  let updated = 0;
   const nextProjects: Record<string, PlatformProjectRecord> = { ...doc.projects };
   for (const [wid, wp] of Object.entries(worldProjects)) {
-    if (nextProjects[wid]) continue;
     if (isPlaceholderProjectTitle(wp.title)) continue;
+    const summary = wp.summary?.trim() || undefined;
+    const existing = nextProjects[wid];
+    if (existing) {
+      const title = wp.title.trim();
+      if (existing.title === title && existing.summary === summary) continue;
+      nextProjects[wid] = {
+        ...existing,
+        title,
+        summary,
+        updatedAt: nowTs,
+        history: appendHistory(existing.history, {
+          ts: nowTs,
+          actor: PLATFORM_ATTRIBUTION_AVATAR_ID,
+          kind: "updated",
+          detail: "synced title/summary from world_metadata",
+        }),
+      };
+      updated++;
+      continue;
+    }
     nextProjects[wid] = {
       id: wid,
-      title: wp.title,
-      summary: wp.summary,
+      title: wp.title.trim(),
+      summary,
       status: "active",
       authorUserId: "user",
       createdAt: wp.updatedAt ?? nowTs,
@@ -599,14 +621,14 @@ export function syncWorldMetadataProjectsAdditive(
     };
     added++;
   }
-  if (added === 0) return { added: 0 };
+  if (added === 0 && updated === 0) return { added: 0, updated: 0 };
   doc = { ...doc, projects: nextProjects };
   platformLog(
     "store_write",
-    `additive sync imported ${added} project(s) from world_metadata`,
+    `world sync imported ${added} and updated ${updated} project(s) from world_metadata`,
     { level: "info" }
   );
   schedulePersist();
   notify();
-  return { added };
+  return { added, updated };
 }

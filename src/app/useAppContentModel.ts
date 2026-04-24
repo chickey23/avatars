@@ -70,9 +70,9 @@ import { parseRankedEmailLinesFromRelevantData } from "../services/sourceCacheVi
 import { usePrefersReducedMotion } from "../hooks/usePrefersReducedMotion";
 import {
   getWorldMetadata,
-  patchWorldMetadataProjects,
   patchUserProfile,
 } from "../services/worldMetadata";
+import { patchWorldMetadataProjectsForExecution } from "../services/projectSync";
 import { loadWorldviewAudit } from "../services/worldviewAudit";
 import {
   applyScoreDeltaWithCap,
@@ -100,8 +100,12 @@ import {
   SOURCE_CACHE_VIZ_STORAGE_KEY,
   SOURCE_CACHE_VIZ_WIDTH_STORAGE_KEY,
   SWITCHBOARD_VIZ_STORAGE_KEY,
-  USER_CHROME_DEFAULT,
+  USER_CHROME_BY_SKIN_STORAGE_KEY,
   USER_CHROME_STORAGE_KEY,
+  isValidUserChromeColor,
+  readUserChromeColorBySkin,
+  resolveUserChromeColorForSkin,
+  serializeUserChromeColorBySkin,
 } from "./appChromeConstants";
 export function useAppContentModel() {
   const {
@@ -219,24 +223,6 @@ export function useAppContentModel() {
       /* ignore */
     }
   }, [sourceCacheVizWidthPx]);
-
-  const [userChromeColor, setUserChromeColor] = useState(() => {
-    try {
-      const v = localStorage.getItem(USER_CHROME_STORAGE_KEY);
-      if (v && /^#[0-9A-Fa-f]{6}$/.test(v)) return v;
-    } catch {
-      /* ignore */
-    }
-    return USER_CHROME_DEFAULT;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(USER_CHROME_STORAGE_KEY, userChromeColor);
-    } catch {
-      /* ignore */
-    }
-  }, [userChromeColor]);
 
   const [vizDebug, setVizDebug] = useState(false);
   useEffect(() => {
@@ -667,6 +653,24 @@ export function useAppContentModel() {
     }
     return "default";
   });
+  const [userChromeColorBySkin, setUserChromeColorBySkin] = useState(() => {
+    try {
+      return readUserChromeColorBySkin(localStorage);
+    } catch {
+      return {};
+    }
+  });
+  const userChromeColor = resolveUserChromeColorForSkin(
+    userChromeColorBySkin,
+    chatSkin
+  );
+  const setUserChromeColor = useCallback(
+    (color: string) => {
+      if (!isValidUserChromeColor(color)) return;
+      setUserChromeColorBySkin((prev) => ({ ...prev, [chatSkin]: color }));
+    },
+    [chatSkin]
+  );
   const [expandedPromptId, setExpandedPromptId] = useState<string | null>(null);
   const portraitFileInputRef = useRef<HTMLInputElement>(null);
   const portraitPickAvatarIdRef = useRef<string | null>(null);
@@ -847,7 +851,7 @@ export function useAppContentModel() {
   const handleAddWorldProject = useCallback(() => {
     const title = newProjectTitle.trim();
     if (!title) return;
-    patchWorldMetadataProjects({
+    patchWorldMetadataProjectsForExecution({
       [crypto.randomUUID()]: {
         title,
         summary: newProjectSummary.trim() || undefined,
@@ -862,7 +866,7 @@ export function useAppContentModel() {
   }, [newProjectTitle, newProjectSummary, newProjectNotes]);
 
   const handleRemoveWorldProject = useCallback((id: string) => {
-    patchWorldMetadataProjects({ [id]: null });
+    patchWorldMetadataProjectsForExecution({ [id]: null });
     setFocus((f) =>
       f.project?.id === id ? { ...f, project: undefined } : f
     );
@@ -1086,6 +1090,18 @@ export function useAppContentModel() {
       /* ignore */
     }
   }, [chatSkin]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        USER_CHROME_BY_SKIN_STORAGE_KEY,
+        serializeUserChromeColorBySkin(userChromeColorBySkin)
+      );
+      localStorage.setItem(USER_CHROME_STORAGE_KEY, userChromeColor);
+    } catch {
+      /* ignore */
+    }
+  }, [userChromeColor, userChromeColorBySkin]);
 
   useEffect(() => {
     if (contextTab === "email" && gmailConnected) {

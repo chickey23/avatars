@@ -1,12 +1,12 @@
 import type { Avatar } from "../../types";
 import {
   patchWorldMetadata,
-  patchWorldMetadataProjects,
   patchUserProfile,
   getWorldMetadata,
 } from "../worldMetadata/store";
 import type { PersonMetadataRecord, ProjectMetadataRecord } from "../worldMetadata/types";
 import { ensureProjectTaskForAvatar } from "../projectAvatarLink";
+import { patchWorldMetadataProjectsForExecution } from "../projectSync";
 import { managedProjectIdsForAvatar } from "../avatarRoster/popIn";
 import { appendWorldviewAuditRecord } from "../worldviewAudit";
 import { formatWorldviewToolArgsForAudit } from "../worldviewAuditArgsPreview";
@@ -99,7 +99,7 @@ export function executeWorldviewTools(
             }
             patchToApply = filtered;
           }
-          patchWorldMetadataProjects(patchToApply);
+          patchWorldMetadataProjectsForExecution(patchToApply, meta.avatarId);
           results.push({ name: tool.name, ok: true });
           for (const key of Object.keys(patchToApply)) {
             if (patchToApply[key] === null) continue;

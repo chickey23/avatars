@@ -43,7 +43,7 @@ export function ensureProjectTaskForAvatar(
   upsertProject({
     id: projectId,
     title,
-    summary: proj.summary?.trim() || undefined,
+    summary: proj.summary?.trim() || null,
     ownerAvatarId: avatarId,
     actor: "user",
   });

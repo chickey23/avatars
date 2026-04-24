@@ -1,9 +1,9 @@
 import type { WorldviewAuditRecord } from "./worldviewAudit";
 import {
   patchWorldMetadata,
-  patchWorldMetadataProjects,
   replaceUserProfile,
 } from "./worldMetadata/store";
+import { patchWorldMetadataProjectsForExecution } from "./projectSync";
 import type { WorldviewToolCall } from "./worldviewTools/parse";
 
 function structuralRevert(tool: WorldviewToolCall): void {
@@ -13,7 +13,7 @@ function structuralRevert(tool: WorldviewToolCall): void {
       if (!patch || typeof patch !== "object") return;
       const del: Record<string, null> = {};
       for (const k of Object.keys(patch)) del[k] = null;
-      patchWorldMetadataProjects(del);
+      patchWorldMetadataProjectsForExecution(del);
       break;
     }
     case "world_metadata.patch_people": {

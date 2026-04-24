@@ -6,6 +6,7 @@ import {
   ensurePlatformStoreLoadedSync,
   getPlatformStore,
   migrateProjectsFromWorldMetadata,
+  syncWorldMetadataProjectsAdditive,
   upsertProject,
   upsertTask,
 } from "./store";
@@ -117,5 +118,33 @@ describe("platform store", () => {
 
     const second = migrateProjectsFromWorldMetadata(world);
     expect(second.imported).toBe(0);
+  });
+
+  it("startup sync refreshes world-authored fields while preserving lifecycle", () => {
+    upsertProject({
+      id: "proj_a",
+      title: "Old",
+      summary: "old summary",
+      status: "paused",
+      ownerAvatarId: "muse",
+      dueAt: 99,
+      actor: "user",
+    });
+
+    const result = syncWorldMetadataProjectsAdditive({
+      proj_a: { title: "New", updatedAt: 100 },
+      proj_b: { title: "Added", summary: "new row", updatedAt: 200 },
+    });
+
+    expect(result).toEqual({ added: 1, updated: 1 });
+    const synced = getPlatformStore().projects.proj_a!;
+    expect(synced).toMatchObject({
+      title: "New",
+      status: "paused",
+      ownerAvatarId: "muse",
+      dueAt: 99,
+    });
+    expect(synced.summary).toBeUndefined();
+    expect(getPlatformStore().projects.proj_b?.summary).toBe("new row");
   });
 });

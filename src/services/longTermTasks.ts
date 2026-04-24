@@ -113,6 +113,53 @@ export function completeActiveTasksForProjectExcept(
 }
 
 /**
+ * Project deletion keeps old task rows as history, but marks any unresolved
+ * assignments complete so routing and avatar task prompts stop treating them
+ * as active work.
+ */
+export function completeTasksForProject(projectId: string): void {
+  const tasks = loadTasks();
+  let changed = false;
+  const now = Date.now();
+  for (const t of tasks) {
+    if (t.projectId === projectId && t.status !== "completed") {
+      t.status = "completed";
+      t.updatedAt = now;
+      changed = true;
+    }
+  }
+  if (changed) saveTasks(tasks);
+}
+
+export function syncUnresolvedTasksForProject(
+  projectId: string,
+  title: string,
+  description?: string
+): void {
+  const tasks = loadTasks();
+  let changed = false;
+  const now = Date.now();
+  const nextDescription = description ?? undefined;
+  for (const t of tasks) {
+    if (t.projectId !== projectId || t.status === "completed") continue;
+    let taskChanged = false;
+    if (t.title !== title) {
+      t.title = title;
+      taskChanged = true;
+    }
+    if (t.description !== nextDescription) {
+      t.description = nextDescription;
+      taskChanged = true;
+    }
+    if (taskChanged) {
+      t.updatedAt = now;
+      changed = true;
+    }
+  }
+  if (changed) saveTasks(tasks);
+}
+
+/**
  * Collapse duplicate active tasks for the same (avatar, project) pair — keep
  * the most recently updated row.
  */

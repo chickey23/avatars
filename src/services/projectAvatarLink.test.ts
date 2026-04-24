@@ -7,7 +7,7 @@ import {
   beforeAll,
   afterAll,
 } from "vitest";
-import { __resetPlatformStoreForTests } from "./platform/store";
+import { __resetPlatformStoreForTests, getPlatformStore } from "./platform/store";
 import { ensureProjectTaskForAvatar } from "./projectAvatarLink";
 import * as store from "./worldMetadata/store";
 import * as lt from "./longTermTasks";
@@ -113,5 +113,36 @@ describe("ensureProjectTaskForAvatar", () => {
 
     expect(assignSpy).not.toHaveBeenCalled();
     expect(dispatchEvent).toHaveBeenCalled();
+  });
+
+  it("updates existing project tasks and platform stewardship on reassignment", () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal(
+      "window",
+      { dispatchEvent } as unknown as Window & typeof globalThis
+    );
+    store.patchWorldMetadataProjects({
+      p1: { title: "Alpha", summary: "First", updatedAt: 1 },
+    });
+    const first = ensureProjectTaskForAvatar("muse", "p1")!;
+
+    store.patchWorldMetadataProjects({
+      p1: {
+        title: "Beta",
+        summary: undefined,
+        notes: "New notes",
+        updatedAt: 2,
+      },
+    });
+    const second = ensureProjectTaskForAvatar("muse", "p1")!;
+
+    expect(second.id).toBe(first.id);
+    expect(second.title).toBe("Beta");
+    expect(second.description).toBe("New notes");
+    expect(getPlatformStore().projects.p1).toMatchObject({
+      title: "Beta",
+      ownerAvatarId: "muse",
+    });
+    expect(getPlatformStore().projects.p1?.summary).toBeUndefined();
   });
 });

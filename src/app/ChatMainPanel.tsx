@@ -80,8 +80,8 @@ export function ChatMainPanel() {
                     className="chat-user-chrome-swatch"
                     value={m.userChromeColor}
                     onChange={(e) => m.setUserChromeColor(e.target.value)}
-                    aria-label="Color for your messages and Chat Visualizer user marker"
-                    title="Color for your messages and Chat Visualizer user marker"
+                    aria-label="Color for your messages in this chat window style"
+                    title="Color for your messages in this chat window style"
                   />
                 </label>
                 <label className="chat-view-mode-label chat-tool-workshop-label">
