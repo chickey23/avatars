@@ -1,6 +1,23 @@
 import type { WorldviewToolResolutionFailure } from "../../types";
 import type { ToolTelemetrySource } from "./types";
+import type { TurnToolIntent } from "../turnToolIntent";
 import { appendToolTelemetryEvent } from "./store";
+
+function toolMatchesIntent(
+  intent: TurnToolIntent,
+  toolName: string
+): boolean {
+  if (intent === "creation") return toolName === "avatars.workshop.open_draft";
+  if (intent === "email_fetch") return toolName === "gmail.fetch_message_body";
+  if (intent === "fact_save") {
+    return (
+      toolName === "world_metadata.patch_projects" ||
+      toolName === "world_metadata.patch_people" ||
+      toolName === "user_profile.patch"
+    );
+  }
+  return true;
+}
 
 function sourceForToolName(name: string): ToolTelemetrySource {
   if (name === "gmail.fetch_message_body") return "gmail_fetch";
@@ -26,6 +43,7 @@ export function recordToolTelemetryForOllamaTurn(args: {
   hadMergedToolCalls: boolean;
   isExecutor: boolean;
   switchboardRoutingMode?: string;
+  turnIntent?: TurnToolIntent;
 }): void {
   const {
     avatarId,
@@ -36,6 +54,7 @@ export function recordToolTelemetryForOllamaTurn(args: {
     hadMergedToolCalls,
     isExecutor,
     switchboardRoutingMode,
+    turnIntent,
   } = args;
 
   const ctxHint = {
@@ -45,6 +64,10 @@ export function recordToolTelemetryForOllamaTurn(args: {
 
   for (const s of successes) {
     const preview = s.resultPreview?.trim();
+    const correctToolForIntent =
+      turnIntent !== undefined && turnIntent !== "none"
+        ? toolMatchesIntent(turnIntent, s.toolId)
+        : undefined;
     appendToolTelemetryEvent({
       toolId: s.toolId,
       avatarId,
@@ -52,6 +75,8 @@ export function recordToolTelemetryForOllamaTurn(args: {
       source: sourceForToolName(s.toolId),
       ok: true,
       resultPreview: preview || undefined,
+      turnIntent,
+      correctToolForIntent,
       ...ctxHint,
     });
   }

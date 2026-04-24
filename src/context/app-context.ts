@@ -3,6 +3,7 @@ import type {
   SituationContext,
   SituationFocus,
   Avatar,
+  AvatarCreationWorkshopIntent,
   ConversationMessage,
 } from "../types";
 import type { SwitchboardTraceStep } from "../types";
@@ -39,6 +40,13 @@ export interface AppContextValue {
   liveSwitchboardTrace: SwitchboardTraceStep[];
   /** Persistent Switchboard Waves queue (session log UI); survives reload; cleared on clear chat. */
   wavesQueue: WavesQueueEntry[];
+  /**
+   * Register handler for `avatars.workshop.open_draft` post-turn UI (Workshops → Creation).
+   * Called from AppContent; invoked from processUserTurn when an avatar reply includes `postTurnUi`.
+   */
+  registerAvatarCreationWorkshopIntentHandler: (
+    fn: ((intent: AvatarCreationWorkshopIntent) => void) | null
+  ) => void;
 }
 
 export const AppContext = createContext<AppContextValue | null>(null);

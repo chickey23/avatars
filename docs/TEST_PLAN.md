@@ -10,7 +10,7 @@ npm run verify
 
 Or: `npm run test -- --run` if you only need Vitest. The verify script also covers install/lock consistency per [scripts/verify.ps1](../scripts/verify.ps1).
 
-**What it covers:** unit tests under `src/**/*.test.ts` (context scoring, pending notifications, waves queue, worldview parse diagnostics, `projectAvatarLink`, switchboard helpers, etc.).
+**What it covers:** unit tests under `src/**/*.test.ts` (context scoring, pending notifications, waves queue, worldview parse diagnostics, **golden `avatars_tools_v1` fixtures** under `src/services/worldviewTools/__fixtures__/modelReplies/`, tool prompt layout, mocked `runAvatarAgent` tool integration, `projectAvatarLink`, switchboard helpers, etc.).
 
 ## 2. Core UI / routing (no Gmail required)
 

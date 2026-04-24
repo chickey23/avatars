@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Avatars Companion",
+  "version": "0.1.0",
+  "identifier": "com.avatars.app.viewer",
+  "build": {
+    "beforeDevCommand": "npm run dev:viewer",
+    "devUrl": "http://localhost:5174/viewer.html",
+    "beforeBuildCommand": "npm run build:viewer",
+    "frontendDist": "../dist-viewer"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Companion App",
+        "width": 900,
+        "height": 640,
+        "minWidth": 480,
+        "minHeight": 360
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "longDescription": "",
+    "shortDescription": "Read-only browser for Avatars platform JSON caches",
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
+    },
+    "resources": [],
+    "externalBin": [],
+    "copyright": "",
+    "category": "Productivity"
+  }
+}

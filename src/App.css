@@ -2980,6 +2980,33 @@ label.email-item-btn.internet-hit-pick-label {
   margin: 0 0 0.75rem;
 }
 
+.avatar-builder-internet-refs {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.avatar-builder-internet-refs-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1rem;
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.avatar-builder-internet-ref-pre {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.avatar-creation-workshop .tool-workshop-section {
+  margin-top: 1rem;
+}
+
 .avatar-builder-label {
   display: flex;
   flex-direction: column;
@@ -3700,6 +3727,18 @@ label.email-item-btn.internet-hit-pick-label {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.switchboard-viz-cmd-applied-worldview-hit {
+  padding: 0.1rem 0.2rem;
+}
+
+.switchboard-viz-cmd-applied-worldview-icons {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
 }
 
 .switchboard-viz-worldview-icon {

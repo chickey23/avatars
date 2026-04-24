@@ -44,4 +44,23 @@ describe("recordToolTelemetryForOllamaTurn", () => {
       resultPreview: undefined,
     });
   });
+
+  it("records correctToolForIntent when turnIntent is set", () => {
+    recordToolTelemetryForOllamaTurn({
+      avatarId: "blessed_exchequer",
+      successes: [
+        { toolId: "avatars.workshop.open_draft", resultPreview: "creation workshop" },
+      ],
+      failures: undefined,
+      parseHints: undefined,
+      hadMergedToolCalls: true,
+      isExecutor: false,
+      turnIntent: "creation",
+    });
+    expect(appendSpy.mock.calls[0]![0]).toMatchObject({
+      ok: true,
+      turnIntent: "creation",
+      correctToolForIntent: true,
+    });
+  });
 });

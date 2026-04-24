@@ -3,6 +3,8 @@ export type {
   ToolTelemetryEvent,
   ToolTelemetryAggregateRow,
   ToolTelemetrySource,
+  ToolIntentCorrectnessSummary,
+  ToolIntentCorrectnessByAvatarRow,
 } from "./types";
 export { TOOL_TELEMETRY_SCHEMA_VERSION } from "./types";
 export {
@@ -12,6 +14,8 @@ export {
 export {
   appendToolTelemetryEvent,
   computeToolTelemetryAggregates,
+  computeToolIntentCorrectness,
+  computeToolIntentCorrectnessByAvatar,
   createEmptyTelemetryDoc,
   loadToolTelemetryFromStorage,
   migrateTelemetryDoc,

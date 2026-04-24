@@ -13,6 +13,7 @@ export const AGENTIC_TOOL_IDS = [
   "drafts.tasks",
   "drafts.calendar_event",
   "drafts.email_reply",
+  "avatars.workshop.open_draft",
 ] as const;
 
 export type AgenticToolId = (typeof AGENTIC_TOOL_IDS)[number];
@@ -32,6 +33,7 @@ export const TOOL_GROUPS: Record<string, ReadonlySet<string>> = {
     "drafts.calendar_event",
     "drafts.email_reply",
   ]),
+  avatar_creation: new Set(["avatars.workshop.open_draft"]),
 };
 
 /** All tool ids in the `drafts` group. */
@@ -65,6 +67,8 @@ export function avatarMayUseAgenticTool(avatar: Avatar, toolName: string): boole
     return hasSystemTag(avatar, toolOwnerTag(group));
   }
   const allowed = avatar.allowedAgenticToolIds;
+  /** Explicit empty list: no JSON agentic tools (group-owned tools still require their tag above). */
+  if (allowed && allowed.length === 0) return false;
   if (!allowed || allowed.length === 0) return true;
   return allowed.includes(toolName);
 }

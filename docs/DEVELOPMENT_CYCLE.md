@@ -22,6 +22,7 @@ When a lot of code changes in the editor but the app is only opened occasionally
 | Need | Where |
 |------|--------|
 | What to run before release or after large changes (detailed matrix) | [TEST_PLAN.md](TEST_PLAN.md) |
+| Structured Ollama tools, permissions, Tool Workshop | [AGENTIC_TOOLS.md](AGENTIC_TOOLS.md), [TOOL_WORKSHOP.md](TOOL_WORKSHOP.md) |
 | Status, shipped items, “what’s next” | [PROGRESS.md](../PROGRESS.md) |
 | Session snapshot, verification checklist, next-session TL;DR | [HANDOFF_TOMORROW.md](../HANDOFF_TOMORROW.md) |
 | Phased product roadmap (A–G) | [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) |

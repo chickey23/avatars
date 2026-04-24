@@ -6,6 +6,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   type CSSProperties,
 } from "react";
@@ -21,6 +22,7 @@ import {
   isUserEntry,
   isWorldviewEntry,
 } from "../services/switchboardWavesQueue";
+import { buildSwitchboardVizRows } from "../services/switchboardVizModel";
 
 const WAVES_TOOL_LABEL_MAX = 28;
 const WAVES_ARGS_CAPTION_CHARS = 76;
@@ -105,19 +107,23 @@ export function SwitchboardViz({
 }: SwitchboardVizProps) {
   const scrollRef = useRef<HTMLUListElement>(null);
   const travelS = `${travelMs}ms`;
+  const rows = useMemo(
+    () => (entries.length === 0 ? [] : buildSwitchboardVizRows(entries)),
+    [entries]
+  );
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || entries.length === 0) return;
+    if (!el || rows.length === 0) return;
     const { clientHeight, scrollHeight } = el;
     if (scrollHeight > clientHeight * 0.33) {
       el.scrollTop = el.scrollHeight - el.clientHeight;
     }
-  }, [entries.length]);
+  }, [rows.length]);
 
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || entries.length === 0) return;
+    if (!el || rows.length === 0) return;
     const ro = new ResizeObserver(() => {
       const { clientHeight, scrollHeight } = el;
       if (scrollHeight > clientHeight * 0.33) {
@@ -126,7 +132,7 @@ export function SwitchboardViz({
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [entries.length]);
+  }, [rows.length]);
 
   if (entries.length === 0) {
     return (
@@ -155,7 +161,7 @@ export function SwitchboardViz({
     <div
       className="switchboard-viz"
       role="list"
-      aria-label={`Chat Visualizer queue: ${entries.length} entries`}
+      aria-label={`Chat Visualizer queue: ${rows.length} items`}
     >
       <div className="switchboard-viz-track">
         <div className="switchboard-viz-spine" aria-hidden />
@@ -163,8 +169,60 @@ export function SwitchboardViz({
           ref={scrollRef}
           className="switchboard-viz-waves switchboard-viz-waves--scroll"
         >
-        {entries.map((entry, index) => {
-          const isLast = index === entries.length - 1;
+        {rows.map((row, index) => {
+          const isLast = index === rows.length - 1;
+          if (row.kind === "applied_plus_worldview") {
+            const { system, worldview } = row;
+            const c = getAccentColor(worldview.avatarId);
+            const isWarn = worldview.parseStatus === "warn";
+            const wActionHint =
+              worldview.actions?.map((a) => `${a.tool}: ${a.summary}`).join(" · ") ?? "";
+            const wTip = isWarn
+              ? `Worldview parse issue: ${worldview.parseDetail ?? worldview.toolSummary}`
+              : wActionHint
+                ? `${worldview.toolSummary} — ${wActionHint.slice(0, 420)}`
+                : `Worldview: ${worldview.toolSummary}`;
+            const sTip = `System command applied${
+              system.detail ? `: ${system.detail}` : ""
+            }`;
+            const tip = `${sTip} · ${wTip}`;
+            return (
+              <li
+                key={`${system.id}-${worldview.id}`}
+                className={`switchboard-viz-queue-item switchboard-viz-worldview switchboard-viz-worldview--cmd switchboard-viz-worldview--cmd-applied${isWarn ? " switchboard-viz-worldview--warn" : ""}${
+                  showTravel && isLast ? " switchboard-viz-queue-item--travel-in" : ""
+                }`}
+                role="listitem"
+                title={tip}
+              >
+                <button
+                  type="button"
+                  className="switchboard-viz-worldview-hit switchboard-viz-cmd-applied-worldview-hit"
+                  onClick={() => onActivateUserMessage?.(system.userMessageId)}
+                  aria-label={`${sTip}. ${wTip} Scroll to turn.`}
+                >
+                  <span
+                    className="switchboard-viz-cmd-applied-worldview-icons"
+                    aria-hidden
+                  >
+                    <span
+                      className="switchboard-viz-worldview-icon"
+                      style={{ color: c }}
+                    >
+                      +
+                    </span>
+                    <span
+                      className="switchboard-viz-worldview-icon"
+                      style={{ color: c }}
+                    >
+                      {isWarn ? "!" : "◆"}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          }
+          const entry = row.entry;
           if (isUserEntry(entry)) {
             const raw = getUserMessagePreview?.(entry.userMessageId)
               ?.replace(/\s+/g, " ")

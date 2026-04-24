@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/avatars-platform-storage",
+    "src-tauri",
+    "viewer-tauri",
+]

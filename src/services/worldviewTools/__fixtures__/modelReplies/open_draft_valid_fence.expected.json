@@ -1,0 +1,5 @@
+{
+  "kind": "positive",
+  "expectEnvelopeToolNames": ["avatars.workshop.open_draft"],
+  "intentTargetTool": "avatars.workshop.open_draft"
+}

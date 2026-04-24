@@ -1,9 +1,5 @@
 import type { ToolTelemetryEvent } from "../toolTelemetry/types";
-import type {
-  UnmetNeedItem,
-  UnmetNeedRemediation,
-  UnmetNeedStatus,
-} from "./types";
+import type { UnmetNeedItem, UnmetNeedRemediation } from "./types";
 import { loadUnmetNeedsDoc, saveUnmetNeedsDoc } from "./persist";
 
 function guessRemediation(event: ToolTelemetryEvent): UnmetNeedRemediation {

@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:viewer": "vite --config vite.config.viewer.ts",
     "build": "tsc -b && vite build",
+    "build:viewer": "vite build --config vite.config.viewer.ts && node scripts/finish-viewer-dist.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
     "gen:audio": "node scripts/gen-audio-cues.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev:viewer": "cd viewer-tauri && tauri dev",
+    "tauri:build:viewer": "cd viewer-tauri && tauri build"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -19,6 +23,7 @@
   "devDependencies": {
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.1",

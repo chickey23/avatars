@@ -1,0 +1,1 @@
+{"viewer-main-capability":{"identifier":"viewer-main-capability","description":"Read-only viewer window — no shell plugin","local":true,"windows":["main"],"permissions":["core:path:default","core:event:default","core:window:default","core:app:default","core:resources:default","core:webview:default","core:window:allow-set-title"]}}

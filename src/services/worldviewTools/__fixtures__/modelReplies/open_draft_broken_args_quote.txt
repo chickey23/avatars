@@ -1,0 +1,13 @@
+A seeker of new avatars has arrived.
+
+**json**
+{
+"schema": "avatars_tools_v1",
+"tools": [
+{
+"name": "avatars.workshop.open_draft",
+args": {
+"wikiQuery": "Seven of Nine",
+"seedText": ""}}
+]
+}

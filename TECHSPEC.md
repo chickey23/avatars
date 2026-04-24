@@ -57,7 +57,10 @@ Avatars/
 │   ├── hooks/
 │   │   └── useSpeechToText.ts
 │   ├── services/
-│   │   ├── avatarAgents.ts
+│   │   ├── avatarAgents.ts     # runAvatarAgent; Ollama prompt (Guidelines vs Tool protocol); tool repair pass
+│   │   ├── turnToolIntent.ts   # user message → creation | fact_save | email_fetch | none (tools / telemetry)
+│   │   ├── modelTranscript.ts # scrub thread for model (bad tool imitation)
+│   │   ├── agenticTools/       # registry.ts (tool ids, permissions); toolProtocol.ts (per-profile tool text); lexicalParse.ts
 │   │   ├── avatarTags/         # systemTags helpers (system, tool_owner:*, monitor:*)
 │   │   ├── backgroundAgents.ts
 │   │   ├── platform/            # Durable app state (projects/tasks, drafts, source cache), scheduler, bus, routing helpers, background runners
@@ -84,6 +87,9 @@ Avatars/
 │   │   └── index.ts
 │   └── utils/
 │       └── openLink.ts
+├── Cargo.toml              # Workspace: main app, viewer, shared platform storage crate
+├── crates/
+│   └── avatars-platform-storage/  # ALLOWED_FILENAMES + platform_data_dir (shared by both apps)
 ├── src-tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -96,10 +102,16 @@ Avatars/
 │       ├── ollama.rs       # ollama_reachable, ollama_generate (HTTP to 127.0.0.1:11434)
 │       ├── session_log.rs  # On-disk session logs; rotation
 │       └── shell.rs        # open_external, get_user_paths
+├── viewer-tauri/           # Read-only Avatars Viewer (second Tauri app; com.avatars.app.viewer)
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   └── capabilities/
 └── scripts/
     ├── signature.ps1
     ├── signature.bat
-    └── signature-config.json
+    ├── signature-config.json
+    ├── ensure-viewer-dist-placeholder.ps1
+    └── finish-viewer-dist.mjs
 ```
 
 ---
@@ -122,12 +134,14 @@ Avatars/
 - `vite` ^8.0.8
 - `vitest` ^4.1.4
 
-### 3.2 Cargo (src-tauri/Cargo.toml)
+### 3.2 Cargo (workspace + src-tauri/Cargo.toml)
+
+Rust uses a **repo-root workspace** ([`Cargo.toml`](Cargo.toml)): packages `avatars` ([`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)), `avatars-viewer` ([`viewer-tauri/Cargo.toml`](viewer-tauri/Cargo.toml)), and `avatars-platform-storage` ([`crates/avatars-platform-storage`](crates/avatars-platform-storage)). A single [`Cargo.lock`](Cargo.lock) lives at the repo root.
 
 **Build:**
 - `tauri-build` 2
 
-**Runtime:**
+**Runtime (main app `avatars`):**
 - `tauri` 2
 - `tauri-plugin-shell` 2
 - `serde` 1 (derive)
@@ -141,6 +155,11 @@ Avatars/
 - `open` 5
 - `chrono` 0.4
 - `urlencoding` 2
+- `dirs` 5
+- `avatars-platform-storage` (path crate)
+- `zip` 2 (deflate)
+
+**Runtime (viewer `avatars-viewer`):** `tauri` 2, `avatars-platform-storage` only (no shell plugin).
 
 **Features:**
 - `custom-protocol` (default) — enables `tauri/custom-protocol`
@@ -290,6 +309,10 @@ npm run build
 # Build Tauri app
 npm run tauri build
 
+# Read-only Avatars Viewer (second Tauri app; Vite on 5174)
+npm run tauri:dev:viewer
+npm run tauri:build:viewer
+
 # Run signature script
 ./scripts/signature.ps1   # or signature.bat
 ```
@@ -307,7 +330,7 @@ npm run tauri build
 ## 11. Excluded from Git (.gitignore)
 
 - `node_modules/`
-- `dist/`, `target/`
+- `dist/`, `dist-viewer/`, `target/`
 - `data/` (credentials, tokens)
 - `.env`, `.env.local`, `.env.*.local`
 - IDE/OS files

@@ -198,7 +198,7 @@ describe("switchboardWavesQueue operations", () => {
     }
   });
 
-  it("appendSystemCommandEntry counts lifecycle status buckets", () => {
+  it("appendSystemCommandEntry upserts in-flight system command in one row", () => {
     let e: WavesQueueEntry[] = appendUserEntry([], "u1");
     e = appendSystemCommandEntry(e, {
       userMessageId: "u1",
@@ -220,14 +220,19 @@ describe("switchboardWavesQueue operations", () => {
       wave: 0,
       worldview: 0,
       toolError: 0,
-      systemCommand: 3,
+      systemCommand: 1,
       monitorPrompt: 0,
       cmdNoTools: 0,
-      cmdQueued: 1,
-      cmdValidated: 1,
+      cmdQueued: 0,
+      cmdValidated: 0,
       cmdApplied: 0,
       cmdFailed: 1,
     });
+    const row = e.find((x) => x.kind === "system_command");
+    expect(row?.kind).toBe("system_command");
+    if (row?.kind === "system_command") {
+      expect(row.status).toBe("failed");
+    }
   });
 
   it("appendUserEntry drops prior no_tools system-command markers", () => {

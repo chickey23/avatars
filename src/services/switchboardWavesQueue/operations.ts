@@ -8,7 +8,7 @@ import type {
   WavesWaveEntry,
   WavesWorldviewEntry,
 } from "./types";
-import { isWaveEntry } from "./types";
+import { isSystemCommandEntry, isWaveEntry } from "./types";
 import type { WorldviewActivityAction } from "../../types";
 
 /** How many wave rows we already have for this user message (matches trace index for that turn). */
@@ -137,6 +137,44 @@ export function appendMonitorPromptEntry(
   return [...entries, row];
 }
 
+/** In-place lifecycle: same (user, avatar) row updates Q→V→+; new `queued` after a terminal status appends a new row (cascade). */
+const SYSTEM_CMD_REPLACE_FROM: Record<
+  WavesSystemCommandStatus,
+  WavesSystemCommandStatus[] | undefined
+> = {
+  queued: undefined,
+  no_tools: undefined,
+  validated: ["queued"],
+  applied: ["validated"],
+  failed: ["queued", "validated", "applied"],
+};
+
+function findLastSystemCommandIndex(
+  entries: WavesQueueEntry[],
+  userMessageId: string,
+  avatarId: string
+): number {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (
+      e &&
+      isSystemCommandEntry(e) &&
+      e.userMessageId === userMessageId &&
+      e.avatarId === avatarId
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function canReplaceSystemCommand(
+  from: WavesSystemCommandStatus,
+  to: WavesSystemCommandStatus
+): boolean {
+  return SYSTEM_CMD_REPLACE_FROM[to]?.includes(from) ?? false;
+}
+
 export function appendSystemCommandEntry(
   entries: WavesQueueEntry[],
   args: {
@@ -147,18 +185,71 @@ export function appendSystemCommandEntry(
     sourceEmailId?: string;
   }
 ): WavesQueueEntry[] {
+  if (args.status === "queued" || args.status === "no_tools") {
+    const row: WavesSystemCommandEntry = {
+      kind: "system_command",
+      id: crypto.randomUUID(),
+      userMessageId: args.userMessageId,
+      createdAt: Date.now(),
+      avatarId: args.avatarId,
+      status: args.status,
+      detail: args.detail,
+      settled: true,
+      sourceEmailId: args.sourceEmailId,
+    };
+    return [...entries, row];
+  }
+
+  const idx = findLastSystemCommandIndex(
+    entries,
+    args.userMessageId,
+    args.avatarId
+  );
+  if (idx < 0) {
+    const row: WavesSystemCommandEntry = {
+      kind: "system_command",
+      id: crypto.randomUUID(),
+      userMessageId: args.userMessageId,
+      createdAt: Date.now(),
+      avatarId: args.avatarId,
+      status: args.status,
+      detail: args.detail,
+      settled: true,
+      sourceEmailId: args.sourceEmailId,
+    };
+    return [...entries, row];
+  }
+
+  const existing = entries[idx] as WavesSystemCommandEntry;
+  if (!canReplaceSystemCommand(existing.status, args.status)) {
+    const row: WavesSystemCommandEntry = {
+      kind: "system_command",
+      id: crypto.randomUUID(),
+      userMessageId: args.userMessageId,
+      createdAt: Date.now(),
+      avatarId: args.avatarId,
+      status: args.status,
+      detail: args.detail,
+      settled: true,
+      sourceEmailId: args.sourceEmailId,
+    };
+    return [...entries, row];
+  }
+
+  const next = entries.slice();
   const row: WavesSystemCommandEntry = {
     kind: "system_command",
-    id: crypto.randomUUID(),
+    id: existing.id,
     userMessageId: args.userMessageId,
-    createdAt: Date.now(),
+    createdAt: existing.createdAt,
     avatarId: args.avatarId,
     status: args.status,
     detail: args.detail,
     settled: true,
     sourceEmailId: args.sourceEmailId,
   };
-  return [...entries, row];
+  next[idx] = row;
+  return next;
 }
 
 /** Append one row per new trace step (tail after prevLen). */

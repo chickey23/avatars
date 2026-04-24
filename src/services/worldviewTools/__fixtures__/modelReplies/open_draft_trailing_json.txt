@@ -1,0 +1,3 @@
+Opening the workshop for you.
+
+{"schema":"avatars_tools_v1","tools":[{"name":"avatars.workshop.open_draft","args":{"wikiQuery":"Tom Paris","seedText":""}}]}

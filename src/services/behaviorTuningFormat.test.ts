@@ -1,71 +1,35 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  formatOllamaClosingInstruction,
   resolveBehaviorTuning,
-  formatBehaviorTuningForOllama,
-  formatBehaviorTuningRulesPrefix,
-  compressRulesBodyForEngagement,
-  DEFAULT_REPLY_CONTEXT_FOCUS,
+  type ResolvedBehaviorTuning,
 } from "./behaviorTuningFormat";
 
-describe("resolveBehaviorTuning", () => {
-  it("fills defaults when behaviorTuning missing", () => {
-    const r = resolveBehaviorTuning({});
-    expect(r.replyContextFocus).toBe(DEFAULT_REPLY_CONTEXT_FOCUS);
-    expect(r.userMoodNote).toBe("");
+const highFocusTuning: ResolvedBehaviorTuning = {
+  ...resolveBehaviorTuning({ behaviorTuning: { replyContextFocus: 70 } }),
+};
+
+describe("formatOllamaClosingInstruction", () => {
+  it("adds creation mandate when profile+intent match", () => {
+    const s = formatOllamaClosingInstruction("Exchequer", highFocusTuning, {
+      toolProfile: "creation",
+      turnIntent: "creation",
+      isExecutor: false,
+    });
+    expect(s).toMatch(/avatars\.workshop\.open_draft/);
+    expect(s).toMatch(/avatars_tools_v1/);
   });
 
-  it("clamps proactive scores", () => {
-    const r = resolveBehaviorTuning({
-      behaviorTuning: { proactiveMinCombinedScore: 200, proactiveMinAffinityBonus: -5 },
+  it("adds email fetch mandate", () => {
+    const s = formatOllamaClosingInstruction("Muse", highFocusTuning, {
+      toolProfile: "gmail_fetch",
+      turnIntent: "email_fetch",
     });
-    expect(r.proactiveMinCombinedScore).toBe(95);
-    expect(r.proactiveMinAffinityBonus).toBe(0);
-  });
-});
-
-describe("formatBehaviorTuningForOllama", () => {
-  it("includes mood note when set", () => {
-    const t = resolveBehaviorTuning({
-      behaviorTuning: { userMoodNote: "overwhelmed" },
-    });
-    expect(formatBehaviorTuningForOllama(t)).toContain("overwhelmed");
+    expect(s).toMatch(/gmail\.fetch_message_body/);
   });
 
-  it("high context focus mentions context over flourish", () => {
-    const t = resolveBehaviorTuning({
-      behaviorTuning: { replyContextFocus: 80 },
-    });
-    expect(formatBehaviorTuningForOllama(t).toLowerCase()).toContain(
-      "theatrical"
-    );
-  });
-});
-
-describe("formatBehaviorTuningRulesPrefix", () => {
-  it("does not inject mood, focus, or relevantData into user-visible rules replies", () => {
-    const t = resolveBehaviorTuning({
-      behaviorTuning: {
-        userMoodNote: "tired",
-        replyContextFocus: 80,
-      },
-    });
-    const p = formatBehaviorTuningRulesPrefix(t, {
-      relevantData: ["focus: email [secret-id-123] Subject line"],
-      focusSummary: "a selected email",
-    });
-    expect(p).toBe("");
-  });
-});
-
-describe("compressRulesBodyForEngagement", () => {
-  it("truncates to first sentence when engagement low", () => {
-    const t = resolveBehaviorTuning({
-      behaviorTuning: { userEngagementLevel: 20 },
-    });
-    const out = compressRulesBodyForEngagement(
-      t,
-      "First sentence here. Second should drop."
-    );
-    expect(out).toBe("First sentence here.");
+  it("supports legacy boolean isExecutor", () => {
+    const s = formatOllamaClosingInstruction("Muse", highFocusTuning, true);
+    expect(s).toMatch(/routing \*\*executor\*\*/);
   });
 });

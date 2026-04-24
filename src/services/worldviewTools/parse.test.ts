@@ -76,4 +76,33 @@ describe("splitWorldviewToolsFromReply", () => {
     expect(visible).toBe("");
     expect(envelope?.tools?.[0]?.name).toBe("user_profile.patch");
   });
+
+  it("lifts flat { schema, name, args } envelope", () => {
+    const raw = `{"schema":"${WORLDVIEW_TOOLS_SCHEMA}","name":"avatars.workshop.open_draft","args":{"wikiQuery":"Q","seedText":""}}`;
+    const { envelope } = splitWorldviewToolsFromReply(raw);
+    expect(envelope?.tools?.[0]?.name).toBe("avatars.workshop.open_draft");
+    expect(
+      (envelope?.tools?.[0]?.args as { wikiQuery?: string }).wikiQuery
+    ).toBe("Q");
+  });
+
+  it("repairs **json** header and missing quote before args", () => {
+    const raw = `Hi
+
+**json**
+{"schema":"${WORLDVIEW_TOOLS_SCHEMA}","tools":[{"name":"avatars.workshop.open_draft",args":{"wikiQuery":"Z","seedText":""}}]}
+`;
+    const { envelope } = splitWorldviewToolsFromReply(raw);
+    expect(envelope?.tools?.[0]?.name).toBe("avatars.workshop.open_draft");
+  });
+
+  it("parses when the model uses curly double quotes as JSON delimiters", () => {
+    const inner = `{\u201cschema\u201d:\u201c${WORLDVIEW_TOOLS_SCHEMA}\u201d,\u201ctools\u201d:[{\u201cname\u201d:\u201cavatars.workshop.open_draft\u201d,\u201cargs\u201d:{\u201cwikiQuery\u201d:\u201cCurly\u201d,\u201cseedText\u201d:\u201c\u201d}}]}`;
+    const raw = `Ok.\n\n\`\`\`json\n${inner}\n\`\`\``;
+    const { envelope } = splitWorldviewToolsFromReply(raw);
+    expect(envelope?.tools?.[0]?.name).toBe("avatars.workshop.open_draft");
+    expect(
+      (envelope?.tools?.[0]?.args as { wikiQuery?: string }).wikiQuery
+    ).toBe("Curly");
+  });
 });

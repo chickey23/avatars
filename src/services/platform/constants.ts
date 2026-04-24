@@ -4,6 +4,7 @@
  * Durable string contract (Tauri on-disk tree, `invoke` command names, session-log
  * namespace, localStorage keys) is **defined here**; see
  * [docs/PLATFORM_PERSISTENCE.md](../../../docs/PLATFORM_PERSISTENCE.md) for a summary table.
+ * Rust allowlist: [crates/avatars-platform-storage/src/lib.rs](../../../crates/avatars-platform-storage/src/lib.rs).
  */
 
 /**

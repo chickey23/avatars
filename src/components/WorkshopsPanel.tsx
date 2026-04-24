@@ -6,8 +6,12 @@ import { ToolWorkshopPanel } from "./ToolWorkshopPanel";
 import { UnmetNeedsPanel } from "./UnmetNeedsPanel";
 import { SourceWorkshopPanel } from "./SourceWorkshopPanel";
 import { ProjectWorkshopPanel } from "./ProjectWorkshopPanel";
+import { AvatarCreationWorkshopPanel } from "./AvatarCreationWorkshopPanel";
+import type { SituationContext } from "../types";
+import type { PersonalityTraitId } from "../theme/designTokens";
+import type { AvatarBuilderInitial } from "./AvatarBuilderModal";
 
-export type WorkshopTabId = "tool" | "unmet" | "source" | "projects";
+export type WorkshopTabId = "tool" | "unmet" | "source" | "projects" | "creation";
 
 export type WorkshopsPanelProps = {
   workshopTab: WorkshopTabId;
@@ -16,6 +20,19 @@ export type WorkshopsPanelProps = {
   onRefreshOllama: () => void;
   messages: ConversationMessage[];
   projectsList: [string, ProjectMetadataRecord][];
+  situationContext: SituationContext;
+  patchSituationContext: (patch: Partial<SituationContext>) => void;
+  internetSearchMaxResults: number;
+  onWellOfSoulsAfterGenerate: (payload: {
+    seed: string;
+    traitIds: PersonalityTraitId[];
+    ruleBlockIds: string[];
+    generatedText: string;
+  }) => void;
+  onOpenAvatarBuilderFromInternet: (payload: {
+    initial: AvatarBuilderInitial;
+  }) => void;
+  creationWorkshopPrefill: { seedText?: string; wikiQuery?: string } | null;
 };
 
 export function WorkshopsPanel({
@@ -25,6 +42,12 @@ export function WorkshopsPanel({
   onRefreshOllama,
   messages,
   projectsList,
+  situationContext,
+  patchSituationContext,
+  internetSearchMaxResults,
+  onWellOfSoulsAfterGenerate,
+  onOpenAvatarBuilderFromInternet,
+  creationWorkshopPrefill,
 }: WorkshopsPanelProps) {
   const [hubTick, setHubTick] = useState(0);
   const bumpHub = useCallback(() => setHubTick((n) => n + 1), []);
@@ -46,6 +69,7 @@ export function WorkshopsPanel({
             ["unmet", "Unmet Needs"],
             ["source", "Source"],
             ["projects", "Projects"],
+            ["creation", "Creation"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -79,6 +103,16 @@ export function WorkshopsPanel({
         <SourceWorkshopPanel tick={hubTick} onChanged={bumpHub} />
       )}
       {workshopTab === "projects" && <ProjectWorkshopPanel />}
+      {workshopTab === "creation" && (
+        <AvatarCreationWorkshopPanel
+          situationContext={situationContext}
+          patchSituationContext={patchSituationContext}
+          internetSearchMaxResults={internetSearchMaxResults}
+          onWellOfSoulsAfterGenerate={onWellOfSoulsAfterGenerate}
+          onOpenAvatarBuilderFromInternet={onOpenAvatarBuilderFromInternet}
+          creationWorkshopPrefill={creationWorkshopPrefill}
+        />
+      )}
     </div>
   );
 }

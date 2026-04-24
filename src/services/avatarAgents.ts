@@ -7,6 +7,7 @@ import type {
   Avatar,
   AvatarAgentResult,
   OllamaPromptDebug,
+  PostTurnAvatarUi,
   SituationContext,
   WorldviewActivityAction,
   WorldviewToolResolutionFailure,
@@ -25,6 +26,8 @@ import {
   compressRulesBodyForEngagement,
   type ResolvedBehaviorTuning,
 } from "./behaviorTuningFormat";
+import { detectTurnToolIntent, type TurnToolIntent } from "./turnToolIntent";
+import { scrubTranscriptForModel } from "./modelTranscript";
 import {
   splitWorldviewToolsFromReply,
   type WorldviewToolCall,
@@ -54,37 +57,32 @@ import {
 } from "./agenticTools";
 import { renderWorkshopGuidanceForPrompt } from "./toolWorkshop";
 import { recordToolTelemetryForOllamaTurn } from "./toolTelemetry";
+import { avatarMayUseAgenticTool } from "./agenticTools/registry";
+import {
+  renderToolProtocol,
+  resolveToolProfile,
+  usesExplicitAllowlistGeneralHint,
+  type ToolProfileId,
+} from "./agenticTools/toolProtocol";
 
 /** Machine token: reply with exactly this (alone) when you have nothing to add (single-wave mode). */
 export const AVATARS_NO_COMMENT = "AVATARS_NO_COMMENT";
 
-const WORLDVIEW_TOOL_INSTRUCTIONS = `Optional — structured tools: add exactly **one** markdown \`\`\`json code block at the **very end** of your reply (after conversational text). Do **not** write tool lines in prose (no "user profile.patch:" or "world_metadata.patch_projects { … }" as plain text). Use **exact** tool names below inside the JSON only.
-
-Schema (required): "avatars_tools_v1" with a "tools" array.
-\`\`\`json
-{"schema":"avatars_tools_v1","tools":[{"name":"world_metadata.patch_projects","args":{"patch":{"proj_new_1":{"title":"<project title>","notes":"<optional notes>","summary":"<optional summary>"}}}}]}
-\`\`\`
-The \`<...>\` strings in the example above are **placeholders**; replace them with real values. Never submit literal "...", "<title>", "TBD", ellipsis characters, or similar placeholder text as a title — rows with those titles are rejected.
-
-Exact tool names (use underscores; no spaces):
-- world_metadata.patch_projects (args.patch: project id -> partial fields: title, notes, summary, etc.). For a **new** project use a fresh opaque id (e.g. proj_ plus random letters/digits); **title is required** on create. For updates, reuse ids from "World metadata — project [id]" lines in Relevant context.
-- world_metadata.patch_people (args.patch: contact id -> partial person fields; use ids from contact lines or focus)
-- user_profile.patch (not "user profile") (args.patch: displayName, pronouns, notes) — stable facts about the user
-- gmail.fetch_message_body (args.messageId: Gmail message id exactly as in "email [id …]" lines or focus). Use when snippets or prefetched bodies are not enough to answer.
-
-When the user shares durable facts (preferences, relationships, ongoing work, projects), include the tools block when a patch or fetch applies; omit the block if nothing should be saved or fetched.
-Omit the code block if no tools apply.
-
-**Lexical tools** (optional; may use instead of or together with the JSON block). One instruction per line (no markdown fences):
-- \`AVATARS_MEM: <text>\` — durable note about the user (merged into saved profile notes).
-- \`AVATARS_TOOL name=gmail.fetch_message_body messageId=<gmail id>\` — fetch full body when snippets are insufficient.`;
+export {
+  worldviewToolInstructionsForAvatar,
+} from "./agenticTools/toolProtocol";
 
 function buildWorldviewToolsPrompt(
   isExecutor: boolean,
-  managedProjectIds: string[]
+  managedProjectIds: string[],
+  instructionsBody: string,
+  profile: ToolProfileId
 ): string {
+  if (profile === "none") {
+    return instructionsBody;
+  }
   if (isExecutor) {
-    return `${WORLDVIEW_TOOL_INSTRUCTIONS}
+    return `${instructionsBody}
 
 **Routing executor:** when the user asks to add a **new** tracked project, you **must** persist it with world_metadata.patch_projects using a fresh opaque id and a required title in this turn when appropriate.`;
   }
@@ -92,9 +90,54 @@ function buildWorldviewToolsPrompt(
     managedProjectIds.length > 0
       ? ` You may patch **existing** projects only for these ids: ${managedProjectIds.join(", ")}.`
       : "";
-  return `${WORLDVIEW_TOOL_INSTRUCTIONS}
+  return `${instructionsBody}
 
 **Participant:** do not create brand-new world_metadata.patch_projects ids.${managed} New tracked projects are created by the routing executor for this wave.`;
+}
+
+function expectedToolNameForRepair(
+  intent: TurnToolIntent,
+  avatar: Avatar
+): string | null {
+  if (
+    intent === "creation" &&
+    avatarMayUseAgenticTool(avatar, "avatars.workshop.open_draft")
+  ) {
+    return "avatars.workshop.open_draft";
+  }
+  if (
+    intent === "email_fetch" &&
+    avatarMayUseAgenticTool(avatar, "gmail.fetch_message_body")
+  ) {
+    return "gmail.fetch_message_body";
+  }
+  if (intent === "fact_save") {
+    const a = avatar.allowedAgenticToolIds;
+    if (a?.includes("world_metadata.patch_projects")) {
+      return "world_metadata.patch_projects";
+    }
+    if (a?.includes("user_profile.patch")) return "user_profile.patch";
+    if (a?.includes("world_metadata.patch_people")) {
+      return "world_metadata.patch_people";
+    }
+    if (!a || a.length === 0) return "world_metadata.patch_projects";
+  }
+  return null;
+}
+
+/**
+ * Routing may mark an avatar as "executor" for structural tools, but the Ollama
+ * prompt must not demand `world_metadata.patch_projects` when this avatar is
+ * not permitted to call it (e.g. Blessed Exchequer — creation workshop only).
+ */
+export function effectiveProjectExecutorForPrompt(
+  isExecutorRouting: boolean,
+  avatar: Avatar
+): boolean {
+  return (
+    isExecutorRouting &&
+    avatarMayUseAgenticTool(avatar, "world_metadata.patch_projects")
+  );
 }
 
 const SINGLE_WAVE_REPLY_INSTRUCTION = `
@@ -162,9 +205,60 @@ function summarizeExecutedPatchTool(t: WorldviewToolCall): string {
       const ids = patch ? Object.keys(patch).slice(0, 4).join(", ") : "";
       return clampActSummary(`${n} contact(s)${ids ? `: ${ids}` : ""}`);
     }
+    case "avatars.workshop.open_draft": {
+      const a = t.args as Record<string, unknown>;
+      const parts: string[] = [];
+      if (typeof a.wikiQuery === "string" && a.wikiQuery.trim()) {
+        const q = a.wikiQuery.trim();
+        parts.push(`wiki: ${q.length > 72 ? `${q.slice(0, 71)}…` : q}`);
+      }
+      if (typeof a.seedText === "string" && a.seedText.trim()) {
+        parts.push("seed");
+      }
+      return clampActSummary(
+        parts.length > 0 ? `creation workshop (${parts.join("; ")})` : t.name
+      );
+    }
     default:
       return clampActSummary(t.name);
   }
+}
+
+function mergePostTurnUi(
+  a: PostTurnAvatarUi | undefined,
+  b: PostTurnAvatarUi | undefined
+): PostTurnAvatarUi | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    navigateAvatarCreationWorkshop:
+      b.navigateAvatarCreationWorkshop ?? a.navigateAvatarCreationWorkshop,
+  };
+}
+
+function postTurnUiFromOpenDraftTools(
+  tools: WorldviewToolCall[],
+  results: { name: string; ok: boolean; error?: string }[]
+): PostTurnAvatarUi | undefined {
+  let last: PostTurnAvatarUi | undefined;
+  for (let i = 0; i < tools.length && i < results.length; i++) {
+    const t = tools[i]!;
+    const r = results[i]!;
+    if (!r.ok || t.name !== "avatars.workshop.open_draft") continue;
+    const a = t.args as Record<string, unknown>;
+    const seedText =
+      typeof a.seedText === "string" ? a.seedText.trim().slice(0, 2000) : "";
+    const wikiQuery =
+      typeof a.wikiQuery === "string" ? a.wikiQuery.trim().slice(0, 500) : "";
+    if (!seedText && !wikiQuery) continue;
+    last = {
+      navigateAvatarCreationWorkshop: {
+        ...(seedText ? { seedText } : {}),
+        ...(wikiQuery ? { wikiQuery } : {}),
+      },
+    };
+  }
+  return last;
 }
 
 function summarizeFetchToolLine(messageId: string, ok: boolean, err?: string): string {
@@ -330,31 +424,44 @@ export async function runAvatarAgent(
     const isExec =
       Boolean(ctx.executorAvatarIdForTurn) &&
       ctx.executorAvatarIdForTurn === avatar.id;
-    const toolsBase = buildWorldviewToolsPrompt(
-      isExec,
-      managedProjectIdsForAvatar(avatar.id)
-    );
+    const toolsPromptExecutor = effectiveProjectExecutorForPrompt(isExec, avatar);
+    const turnIntent = detectTurnToolIntent(userContent);
+    const toolProfile = resolveToolProfile(avatar, turnIntent);
+    const protocolBody = renderToolProtocol(toolProfile, avatar);
+    const allowListHint = usesExplicitAllowlistGeneralHint(avatar)
+      ? `\n\n**Allowed structured tools for you:** ${avatar.allowedAgenticToolIds!.join(", ")}. In the JSON \`tools\` array, use only these tool names (or omit the JSON block). Do not invent other tool APIs (e.g. wikipedia.search).`
+      : "";
     const workshopBlock = renderWorkshopGuidanceForPrompt();
-    const toolsInstr = workshopBlock
-      ? `${toolsBase}\n\n${workshopBlock}`
-      : toolsBase;
-    const rulesWithTools = rulesText?.trim()
-      ? `${rulesText.trim()}\n\n${toolsInstr}`
-      : toolsInstr;
+    let toolsBase = buildWorldviewToolsPrompt(
+      toolsPromptExecutor,
+      managedProjectIdsForAvatar(avatar.id),
+      `${protocolBody}${allowListHint}`,
+      toolProfile
+    );
+    if (workshopBlock) {
+      toolsBase = `${toolsBase}\n\n${workshopBlock}`;
+    }
+    const chatRulesOnly = rulesText?.trim() ?? "";
+    const recentForPrompt = scrubTranscriptForModel(
+      recent.map((m) => ({ role: m.role, content: m.content }))
+    );
     const fullPrompt = buildOllamaPrompt(
       avatar,
       userContent,
-      recent,
+      recentForPrompt,
       tasks,
       ctx.activeTask,
       ctx.relevantData,
-      rulesWithTools,
+      chatRulesOnly,
+      toolsBase,
       pendingBlock,
       tuning,
       {
         switchboardRoutingMode: ctx.switchboardRoutingMode,
         responseRequirement: lastUser?.responseRequirement,
-        isExecutor: isExec,
+        isExecutor: toolsPromptExecutor,
+        toolProfile,
+        turnIntent,
       }
     );
     const debug: OllamaPromptDebug = {
@@ -365,6 +472,9 @@ export async function runAvatarAgent(
       activeTask: ctx.activeTask,
       relevantData: ctx.relevantData ? [...ctx.relevantData] : [],
       recentTranscript: recent.map((m) => `${m.role}: ${m.content}`).join("\n"),
+      recentTranscriptScrubbed: recentForPrompt
+        .map((m) => `${m.role}: ${m.content}`)
+        .join("\n"),
       fullPrompt,
       ruleBlockIds,
       pendingNotificationsBlock: pendingBlock || undefined,
@@ -377,9 +487,47 @@ export async function runAvatarAgent(
         detail: `prompt ${fullPrompt.length} chars; relevantData lines ${ctx.relevantData?.length ?? 0}`,
       }
     );
-    const gen = await generateWithOllama({ prompt: fullPrompt });
+    let gen = await generateWithOllama({ prompt: fullPrompt });
     if (gen.ok) {
-      const lexicalMalformed = scanLexicalMalformedTriggers(gen.text);
+      const activityActions: WorldviewActivityAction[] = [];
+      const activityNames = new Set<string>();
+
+      let rawText = gen.text;
+      let split = splitWorldviewToolsFromReply(rawText);
+      let mergedTools = mergeJsonAndLexicalTools(rawText, split.envelope?.tools);
+      let parseDiagnosis = diagnoseWorldviewToolReply(rawText, split.envelope);
+      if (mergedTools.length > 0) {
+        parseDiagnosis = { hints: [], reason: null };
+      }
+
+      const expectedRepairTool = expectedToolNameForRepair(turnIntent, avatar);
+      const needsRepair =
+        mergedTools.length === 0 &&
+        parseDiagnosis.hints.length > 0 &&
+        turnIntent !== "none" &&
+        expectedRepairTool != null &&
+        toolProfile !== "none";
+
+      if (needsRepair) {
+        const repairPrompt = `${fullPrompt}\n\n---\n**Repair:** Your previous output did not parse as a valid \`avatars_tools_v1\` JSON block. Reply with **only** one markdown \`\`\`json code block (no other text) containing a valid envelope for tool name \`${expectedRepairTool}\` with appropriate \`args\` for the user's message.\n\nPrevious output (excerpt):\n${rawText.slice(0, 400)}`;
+        appendSessionLog("chat", "ollama_tool_parse_repair", {
+          level: "info",
+          detail: `${avatar.id} intent=${turnIntent} tool=${expectedRepairTool}`,
+        });
+        const genRepair = await generateWithOllama({ prompt: repairPrompt });
+        if (genRepair.ok) {
+          gen = genRepair;
+          rawText = genRepair.text;
+          split = splitWorldviewToolsFromReply(rawText);
+          mergedTools = mergeJsonAndLexicalTools(rawText, split.envelope?.tools);
+          parseDiagnosis = diagnoseWorldviewToolReply(rawText, split.envelope);
+          if (mergedTools.length > 0) {
+            parseDiagnosis = { hints: [], reason: null };
+          }
+        }
+      }
+
+      const lexicalMalformed = scanLexicalMalformedTriggers(rawText);
       const resolutionFailures: WorldviewToolResolutionFailure[] =
         lexicalMalformed.map((issue) => ({
           tool: "lexical",
@@ -387,19 +535,13 @@ export async function runAvatarAgent(
           argsPreview:
             issue.length > 280 ? `${issue.slice(0, 279)}…` : issue,
         }));
-      const activityActions: WorldviewActivityAction[] = [];
-      const activityNames = new Set<string>();
 
-      const { visible, envelope } = splitWorldviewToolsFromReply(gen.text);
+      const { visible, envelope } = split;
       let worldviewToolSummary: AvatarAgentResult["worldviewToolSummary"];
       let worldviewActivity: AvatarAgentResult["worldviewActivity"] | undefined;
       let finalVisible = visible;
-      let rawModelReply = gen.text;
-      const mergedTools = mergeJsonAndLexicalTools(gen.text, envelope?.tools);
-      let parseDiagnosis = diagnoseWorldviewToolReply(gen.text, envelope);
-      if (mergedTools.length > 0) {
-        parseDiagnosis = { hints: [], reason: null };
-      }
+      let rawModelReply = rawText;
+      let postTurnUi: PostTurnAvatarUi | undefined;
       if (parseDiagnosis.hints.length) {
         appendSessionLog("chat", "worldview_tools_parse_mismatch", {
           level: "warn",
@@ -450,6 +592,10 @@ export async function runAvatarAgent(
           combinedPatchResults.push(...r1);
           revertiblePatchCalls.push(
             ...zipOkRevertiblePatchTools(patchTools, r1)
+          );
+          postTurnUi = mergePostTurnUi(
+            postTurnUi,
+            postTurnUiFromOpenDraftTools(patchTools, r1)
           );
         }
 
@@ -560,6 +706,10 @@ export async function runAvatarAgent(
                   revertiblePatchCalls.push(
                     ...zipOkRevertiblePatchTools(p2, r2)
                   );
+                  postTurnUi = mergePostTurnUi(
+                    postTurnUi,
+                    postTurnUiFromOpenDraftTools(p2, r2)
+                  );
                 }
               }
             }
@@ -659,8 +809,9 @@ export async function runAvatarAgent(
         parseHints:
           parseDiagnosis.hints.length > 0 ? parseDiagnosis.hints : undefined,
         hadMergedToolCalls: mergedFinal.length > 0,
-        isExecutor: isExec,
+        isExecutor: toolsPromptExecutor,
         switchboardRoutingMode: ctx.switchboardRoutingMode,
+        turnIntent,
       });
 
       return {
@@ -673,6 +824,7 @@ export async function runAvatarAgent(
         toolResolutionFailures,
         worldviewParseDiagnosis,
         suppressUserMessage,
+        postTurnUi,
       };
     }
     appendSessionLog(
@@ -722,20 +874,24 @@ function shortFocusSummary(relevant?: string[]): string | undefined {
   return parts.join(", ");
 }
 
-function buildOllamaPrompt(
+/** Exported for prompt layout / integration tests. */
+export function buildOllamaPrompt(
   avatar: Avatar,
   userInput: string,
   recent: { role: string; content: string }[],
   tasks: { title: string }[],
   activeTask: string | undefined,
   relevantData: string[] | undefined,
-  rulesText: string,
+  chatRulesText: string,
+  toolProtocolText: string,
   pendingBlock: string | undefined,
   tuning: ResolvedBehaviorTuning,
   routingExtras?: {
     switchboardRoutingMode?: "cascade" | "single_wave";
     responseRequirement?: "open" | "satisfied";
     isExecutor?: boolean;
+    toolProfile?: ToolProfileId;
+    turnIntent?: TurnToolIntent;
   }
 ): string {
   const context = recent.map((m) => `${m.role}: ${m.content}`).join("\n");
@@ -744,16 +900,19 @@ function buildOllamaPrompt(
   const preamble = avatar.textBlocks?.preamble
     ? `${avatar.textBlocks.preamble}\n\n`
     : "";
-  const rulesBlock = rulesText
-    ? `\nGuidelines (library rules):\n${rulesText}\n`
+  const rulesBlock = chatRulesText
+    ? `\nGuidelines (library rules):\n${chatRulesText}\n`
+    : "";
+  const toolBlock = toolProtocolText
+    ? `\nTool protocol (machine contract — never narrate APIs in prose):\n${toolProtocolText}\n`
     : "";
   const pend = pendingBlock ? `\n${pendingBlock}\n` : "";
   const tuningBlock = `\n${formatBehaviorTuningForOllama(tuning)}\n`;
-  const closing = formatOllamaClosingInstruction(
-    avatar.givenName,
-    tuning,
-    routingExtras?.isExecutor
-  );
+  const closing = formatOllamaClosingInstruction(avatar.givenName, tuning, {
+    isExecutor: routingExtras?.isExecutor,
+    toolProfile: routingExtras?.toolProfile,
+    turnIntent: routingExtras?.turnIntent,
+  });
   let responseRequirementNote = "";
   if (routingExtras?.responseRequirement === "satisfied") {
     responseRequirementNote =
@@ -765,7 +924,7 @@ function buildOllamaPrompt(
       : "";
   return `${preamble}You are ${avatar.givenName}. Personality: ${avatar.personality}. Interests: ${avatar.interests.join(", ")}.
 Current assigned tasks: ${taskStr}. Active task: ${activeTask ?? "none"}.
-${rulesBlock}${dataBlock ? `\n${dataBlock}\n` : ""}${pend}${tuningBlock}${responseRequirementNote}${singleWave}
+${rulesBlock}${dataBlock ? `\n${dataBlock}\n` : ""}${pend}${tuningBlock}${responseRequirementNote}${singleWave}${toolBlock}
 Recent conversation:
 ${context}
 

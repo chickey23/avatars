@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
 import type { OllamaPresence } from "../services/ollama";
 import {
+  computeToolIntentCorrectness,
+  computeToolIntentCorrectnessByAvatar,
   computeToolTelemetryAggregates,
   isPermissionErrorCode,
   loadToolTelemetryFromStorage,
@@ -63,6 +65,14 @@ export function ToolWorkshopPanel({
   const workshop = useMemo(() => loadToolWorkshopDoc(), [tick]);
   const aggregates = useMemo(
     () => computeToolTelemetryAggregates(telemetry.events),
+    [telemetry.events]
+  );
+  const intentCorrectness = useMemo(
+    () => computeToolIntentCorrectness(telemetry.events),
+    [telemetry.events]
+  );
+  const intentByAvatar = useMemo(
+    () => computeToolIntentCorrectnessByAvatar(telemetry.events),
     [telemetry.events]
   );
   const eventsDisplay = useMemo(
@@ -185,6 +195,46 @@ export function ToolWorkshopPanel({
       {tab === "overview" && (
         <section className="tool-workshop-section">
           <h3>Aggregates</h3>
+          {intentCorrectness.total > 0 ? (
+            <p className="tool-workshop-hint" role="status">
+              Intent match (successful tool vs detected user intent):{" "}
+              {intentCorrectness.correct}/{intentCorrectness.total} (
+              {Math.round((100 * intentCorrectness.correct) / intentCorrectness.total)}%)
+            </p>
+          ) : (
+            <p className="tool-workshop-hint">
+              No intent-labeled successes yet (turns with a detected intent and a successful tool).
+            </p>
+          )}
+          {intentByAvatar.length > 0 ? (
+            <div className="tool-workshop-intent-by-avatar">
+              <h4 className="tool-workshop-subheading">Intent match by avatar</h4>
+              <table className="tool-workshop-table tool-workshop-table--compact">
+                <thead>
+                  <tr>
+                    <th>Avatar</th>
+                    <th>Matched</th>
+                    <th>Total</th>
+                    <th>%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {intentByAvatar.map((row) => (
+                    <tr key={row.avatarId}>
+                      <td>{row.avatarId}</td>
+                      <td>{row.correct}</td>
+                      <td>{row.total}</td>
+                      <td>
+                        {row.total > 0
+                          ? Math.round((100 * row.correct) / row.total)
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
           <p className="tool-workshop-hint">
             Permission-related error codes are listed first.
           </p>

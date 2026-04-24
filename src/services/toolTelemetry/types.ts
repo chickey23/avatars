@@ -3,7 +3,8 @@ export type ToolTelemetrySource =
   | "patch"
   | "gmail_fetch"
   | "lexical"
-  | "parse";
+  | "parse"
+  | "intent";
 
 export type ToolTelemetryEvent = {
   id: string;
@@ -34,6 +35,19 @@ export type ToolTelemetryAggregateRow = {
   lastFailureAt?: number;
   /** Latest non-empty resultPreview or argsPreview in this bucket (by event time). */
   lastResultPreview?: string;
+};
+
+/** Rollup of intent-matched successes (derived from events with correctToolForIntent set). */
+export type ToolIntentCorrectnessSummary = {
+  correct: number;
+  total: number;
+};
+
+/** Per-avatar intent rollup (same events as {@link ToolIntentCorrectnessSummary}). */
+export type ToolIntentCorrectnessByAvatarRow = {
+  avatarId: string;
+  correct: number;
+  total: number;
 };
 
 export const TOOL_TELEMETRY_SCHEMA_VERSION = 1 as const;

@@ -162,6 +162,16 @@ export function ChatMainPanel() {
                   onRefreshOllama={m.refreshOllama}
                   messages={m.messages}
                   projectsList={m.projectsList}
+                  situationContext={m.situationContext}
+                  patchSituationContext={m.patchSituationContext}
+                  internetSearchMaxResults={
+                    m.contextEntryBudgets.internetSearchMaxResults
+                  }
+                  onWellOfSoulsAfterGenerate={m.handleWellOfSoulsAfterGenerate}
+                  onOpenAvatarBuilderFromInternet={
+                    m.handleOpenAvatarBuilderFromInternet
+                  }
+                  creationWorkshopPrefill={m.creationWorkshopPrefill}
                 />
               </div>
             ) : (

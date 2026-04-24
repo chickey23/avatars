@@ -8,6 +8,7 @@ import {
 } from "../services/avatarPortrait";
 import { PERSONALITY_TRAITS, type PersonalityTraitId } from "../theme/designTokens";
 import { AI_RULE_BLOCKS, AI_RULE_SETS } from "../data/aiRulesLibrary";
+import type { AvatarBuilderInternetSectionRefs } from "../services/avatarCreationWorkshopSectionSearch";
 
 export type AvatarBuilderInitial =
   | {
@@ -16,6 +17,12 @@ export type AvatarBuilderInitial =
       traitIds: PersonalityTraitId[];
       supplementalRules: string;
       ruleBlockIds: string[];
+      /** Pinned-style lines from a single discovery run (legacy). */
+      internetReferenceLines?: string[];
+      /** Per–avatar-builder section hits from workshop “Use selected in new avatar”. */
+      internetReferencesBySection?: AvatarBuilderInternetSectionRefs[];
+      /** Provider notices from the search run that produced the references. */
+      wikiSearchNotices?: string[];
     }
   | { kind: "edit"; avatar: Avatar };
 
@@ -67,6 +74,25 @@ const SIGNATURE_COLOR_PRESETS = [
 ] as const;
 
 const DEFAULT_SIGNATURE_COLOR = SIGNATURE_COLOR_PRESETS[0];
+
+function seedHasInternetRefs(
+  initial: Extract<AvatarBuilderInitial, { kind: "seed" }>
+): boolean {
+  if ((initial.internetReferenceLines?.length ?? 0) > 0) return true;
+  return (
+    initial.internetReferencesBySection?.some((s) => s.lines.length > 0) ??
+    false
+  );
+}
+
+function seedShowInternetBlock(
+  initial: Extract<AvatarBuilderInitial, { kind: "seed" }>
+): boolean {
+  return (
+    seedHasInternetRefs(initial) ||
+    (initial.wikiSearchNotices?.length ?? 0) > 0
+  );
+}
 
 function normalizeHex6(s: string | undefined): string | null {
   if (!s) return null;
@@ -131,7 +157,12 @@ export function AvatarBuilderModal({
     if (initial.kind === "seed") {
       setGivenName("");
       setAppellation("");
-      setPersonality(initial.seed.trim() || "");
+      setPersonality(
+        initial.seed.trim() ||
+          (seedShowInternetBlock(initial)
+            ? "Review internet references below; edit to describe this avatar."
+            : "")
+      );
       setTagsStr("");
       setInterestsStr("");
       setTraits(new Set(initial.traitIds));
@@ -370,6 +401,44 @@ export function AvatarBuilderModal({
             ? "Update this avatar. Changes apply to routing and prompts."
             : "Create a custom avatar. Choose AI rule blocks for prompts; supplemental rules add your Well of Souls output (or your own lines)."}
         </p>
+        {initial?.kind === "seed" && seedShowInternetBlock(initial) && (
+            <div className="avatar-builder-internet-refs" role="region" aria-label="Internet references">
+              <h3 className="avatar-builder-signature-hint">Internet references</h3>
+              {initial.wikiSearchNotices && initial.wikiSearchNotices.length > 0 ? (
+                <ul className="context-internet-notices">
+                  {initial.wikiSearchNotices.map((n, idx) => (
+                    <li key={`ref-notice-${idx}-${n}`}>{n}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {initial.internetReferencesBySection &&
+              initial.internetReferencesBySection.some((s) => s.lines.length > 0)
+                ? initial.internetReferencesBySection.map((sec) =>
+                    sec.lines.length === 0 ? null : (
+                      <div key={sec.id} className="avatar-builder-internet-refs-section">
+                        <h4 className="avatar-builder-signature-hint">{sec.label}</h4>
+                        <ul className="avatar-builder-internet-refs-list">
+                          {sec.lines.map((line, idx) => (
+                            <li key={`${sec.id}-${idx}`}>
+                              <pre className="avatar-builder-internet-ref-pre">{line}</pre>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )
+                  )
+                : initial.internetReferenceLines &&
+                  initial.internetReferenceLines.length > 0 ? (
+                  <ul className="avatar-builder-internet-refs-list">
+                    {initial.internetReferenceLines.map((line, idx) => (
+                      <li key={idx}>
+                        <pre className="avatar-builder-internet-ref-pre">{line}</pre>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+            </div>
+          )}
         <label className="avatar-builder-label">
           Given name *
           <input

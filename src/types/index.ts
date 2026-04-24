@@ -46,6 +46,17 @@ export type WorldviewToolResolutionFailure = {
   argsPreview?: string;
 };
 
+/** Payload from `avatars.workshop.open_draft` → UI opens Workshops → Creation. */
+export type AvatarCreationWorkshopIntent = {
+  seedText?: string;
+  wikiQuery?: string;
+};
+
+/** Ephemeral UI actions after a successful Ollama turn (not persisted on SituationContext). */
+export type PostTurnAvatarUi = {
+  navigateAvatarCreationWorkshop?: AvatarCreationWorkshopIntent;
+};
+
 /** Result from runAvatarAgent (chat pipeline). */
 export interface AvatarAgentResult {
   content: string;
@@ -78,6 +89,8 @@ export interface AvatarAgentResult {
   suppressUserMessage?: boolean;
   /** Set when Ollama was skipped due to low routing score vs `preflightOllamaMinScore`. */
   preflightSkip?: { score: number; threshold: number };
+  /** Workshop / modals: applied via `ProcessUserTurnUiHooks`, not written to persisted context. */
+  postTurnUi?: PostTurnAvatarUi;
 }
 
 /** Debug payload shown in the expandable prompt panel (Ollama path). */
@@ -89,6 +102,8 @@ export interface OllamaPromptDebug {
   activeTask?: string;
   relevantData: string[];
   recentTranscript: string;
+  /** Transcript slice scrubbed of bad tool imitation (matches what the model saw). */
+  recentTranscriptScrubbed?: string;
   fullPrompt: string;
   /** Rule block ids merged into the prompt from the AI rules library */
   ruleBlockIds?: string[];

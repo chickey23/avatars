@@ -1,0 +1,5 @@
+Certainly.
+
+```json
+{"schema":"avatars_tools_v1","tools":[{"name":"avatars.workshop.open_draft","args":{"wikiQuery":"Cyborg","seedText":""}}]}
+```

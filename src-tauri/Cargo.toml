@@ -29,6 +29,7 @@ chrono = "0.4"
 urlencoding = "2"
 dirs = "5"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+avatars-platform-storage = { path = "../crates/avatars-platform-storage" }
 
 [features]
 default = ["custom-protocol"]

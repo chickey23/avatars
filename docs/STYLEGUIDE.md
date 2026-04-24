@@ -105,7 +105,7 @@ Two families appear in the in-app log:
 
 **Term:** **Context** panel — connector tabs (email, calendar, contacts), user profile, WV log, WoS; **not** the primary place for the shared **projects** list anymore (use Workshops → Projects).
 
-**Term:** **Tool Workshop** — the **Tool** sub-tab under Workshops: tool-call telemetry (including optional **`resultPreview`** on successes), optional Ollama **refiner** proposals, and user-approved **addenda** merged into avatar tool instructions after static copy. See [TOOL_WORKSHOP.md](./TOOL_WORKSHOP.md).
+**Term:** **Tool Workshop** — the **Tool** sub-tab under Workshops: tool-call telemetry (including optional **`resultPreview`** and intent-quality fields on successes), optional Ollama **refiner** proposals, and user-approved **addenda** appended **inside the Tool protocol** section after the static profile block. See [TOOL_WORKSHOP.md](./TOOL_WORKSHOP.md).
 
 **Term:** **Unmet Needs** — persisted queue of capability gaps; **Source handoff** — markdown copied for out-of-app connector work. See [UNMET_NEEDS.md](./UNMET_NEEDS.md), [SOURCE_WORKSHOP.md](./SOURCE_WORKSHOP.md).
 

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSwitchboardVizRows,
+  normalizeConsecutiveSystemCommands,
   selectDisplayTrace,
   wavesTopToBottom,
 } from "./switchboardVizModel";
+import type { WavesQueueEntry } from "./switchboardWavesQueue";
 import type { CompactTurnRecord, ConversationMessage } from "../types";
 
 const uid = (role: "user" | "avatar", id?: string): ConversationMessage => ({
@@ -125,5 +128,104 @@ describe("wavesTopToBottom", () => {
       selection: "cascade" as const,
     };
     expect(wavesTopToBottom([a, b])).toEqual([b, a]);
+  });
+});
+
+describe("normalizeConsecutiveSystemCommands", () => {
+  it("merges legacy Q then V then + to one entry", () => {
+    const entries: WavesQueueEntry[] = [
+      {
+        kind: "user",
+        id: "u0",
+        userMessageId: "um",
+        createdAt: 1,
+      },
+      {
+        kind: "system_command",
+        id: "a",
+        userMessageId: "um",
+        createdAt: 1,
+        avatarId: "muse",
+        status: "queued",
+        settled: true,
+      },
+      {
+        kind: "system_command",
+        id: "b",
+        userMessageId: "um",
+        createdAt: 2,
+        avatarId: "muse",
+        status: "validated",
+        settled: true,
+      },
+      {
+        kind: "system_command",
+        id: "c",
+        userMessageId: "um",
+        createdAt: 3,
+        avatarId: "muse",
+        status: "applied",
+        settled: true,
+      },
+    ];
+    const n = normalizeConsecutiveSystemCommands(entries);
+    expect(n.filter((e) => e.kind === "system_command")).toHaveLength(1);
+    expect(
+      n.find((e) => e.kind === "system_command" && e.status === "applied")
+    ).toBeTruthy();
+  });
+
+  it("does not merge applied with a new queued (cascade)", () => {
+    const entries: WavesQueueEntry[] = [
+      {
+        kind: "system_command",
+        id: "a",
+        userMessageId: "um",
+        createdAt: 1,
+        avatarId: "muse",
+        status: "applied",
+        settled: true,
+      },
+      {
+        kind: "system_command",
+        id: "b",
+        userMessageId: "um",
+        createdAt: 2,
+        avatarId: "muse",
+        status: "queued",
+        settled: true,
+      },
+    ];
+    const n = normalizeConsecutiveSystemCommands(entries);
+    expect(n.filter((e) => e.kind === "system_command")).toHaveLength(2);
+  });
+});
+
+describe("buildSwitchboardVizRows", () => {
+  it("merges applied with following worldview for same user and avatar", () => {
+    const entries: WavesQueueEntry[] = [
+      {
+        kind: "system_command",
+        id: "s",
+        userMessageId: "um",
+        createdAt: 1,
+        avatarId: "muse",
+        status: "applied",
+        settled: true,
+      },
+      {
+        kind: "worldview",
+        id: "w",
+        userMessageId: "um",
+        createdAt: 2,
+        avatarId: "muse",
+        toolSummary: "x",
+        settled: true,
+        parseStatus: "ok",
+      },
+    ];
+    const rows = buildSwitchboardVizRows(entries);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.kind).toBe("applied_plus_worldview");
   });
 });

@@ -44,9 +44,30 @@ function normalizeProjectPatchArgs(
   return { patch };
 }
 
-function normalizeEnvelope(parsed: Record<string, unknown>): WorldviewToolsEnvelope | null {
+/** Some models emit `{ schema, name, args }` instead of `{ schema, tools: [...] }`. */
+function maybeLiftFlatToolShape(
+  parsed: Record<string, unknown>
+): Record<string, unknown> | null {
   if (parsed.schema !== WORLDVIEW_TOOLS_SCHEMA) return null;
-  const tools = parsed.tools;
+  if (Array.isArray(parsed.tools)) return null;
+  const name = typeof parsed.name === "string" ? parsed.name.trim() : "";
+  if (!name) return null;
+  const rawArgs = parsed.args;
+  const args =
+    rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)
+      ? (rawArgs as Record<string, unknown>)
+      : {};
+  return {
+    schema: WORLDVIEW_TOOLS_SCHEMA,
+    tools: [{ name, args }],
+  };
+}
+
+function normalizeEnvelope(parsed: Record<string, unknown>): WorldviewToolsEnvelope | null {
+  const lifted = maybeLiftFlatToolShape(parsed);
+  const p = lifted ?? parsed;
+  if (p.schema !== WORLDVIEW_TOOLS_SCHEMA) return null;
+  const tools = p.tools;
   if (!Array.isArray(tools)) return null;
   const normalized: WorldviewToolCall[] = [];
   for (const t of tools) {
@@ -98,8 +119,22 @@ function onlyWhitespaceBeforeFirstBrace(s: string): boolean {
   return t.slice(0, i).trim() === "";
 }
 
+/**
+ * Normalize common model slips before JSON.parse (smart quotes handled separately).
+ */
+export function preprocessToolReplyText(raw: string): string {
+  let t = raw.replace(/\r\n/g, "\n");
+  /** `**json**` section headers → markdown fence start */
+  t = t.replace(/\n\*\*json\*\*\s*\n/gi, "\n```json\n");
+  /** Missing opening quote before `args":` */
+  t = t.replace(/([,{]\s*)args"\s*:/g, '$1"args":');
+  t = t.replace(/,\s*args"\s*:/g, ',"args":');
+  t = t.replace(/^\s*args"\s*:/gm, '"args":');
+  return t;
+}
+
 function tryParseEnvelopeJson(text: string): WorldviewToolsEnvelope | null {
-  const t0 = text.trim();
+  const t0 = preprocessToolReplyText(text.trim());
   const t1 = loosenJsonQuotes(t0);
   const candidates: string[] = [];
   const push = (c: string | undefined) => {
@@ -210,14 +245,15 @@ export function splitWorldviewToolsFromReply(raw: string): {
   visible: string;
   envelope: WorldviewToolsEnvelope | null;
 } {
+  const rawNormalized = preprocessToolReplyText(raw);
   let envelope: WorldviewToolsEnvelope | null = null;
   const fences: Array<{ full: string; inner: string }> = [];
   let m: RegExpExecArray | null;
   const re = new RegExp(FENCE.source, FENCE.flags);
-  while ((m = re.exec(raw)) !== null) {
+  while ((m = re.exec(rawNormalized)) !== null) {
     fences.push({ full: m[0], inner: m[1]?.trim() ?? "" });
   }
-  let stripped = raw;
+  let stripped = rawNormalized;
   /** Prefer last ``` fence: models often emit an earlier invalid `json` block, then tools at the end. */
   for (const { full, inner } of [...fences].reverse()) {
     const parsed = tryParseEnvelopeJson(inner);
@@ -228,16 +264,16 @@ export function splitWorldviewToolsFromReply(raw: string): {
   }
 
   if (!envelope) {
-    const whole = tryParseEnvelopeJson(raw.trim());
+    const whole = tryParseEnvelopeJson(rawNormalized.trim());
     if (whole) {
       return { visible: sanitizeAvatarVisibleReply(""), envelope: whole };
     }
-    const tail = extractTrailingJsonBlob(raw);
+    const tail = extractTrailingJsonBlob(rawNormalized);
     if (tail) {
       const parsed = tryParseEnvelopeJson(tail.json);
       if (parsed) {
         envelope = parsed;
-        stripped = raw.slice(0, tail.start).trimEnd();
+        stripped = rawNormalized.slice(0, tail.start).trimEnd();
       }
     }
   }
@@ -245,5 +281,5 @@ export function splitWorldviewToolsFromReply(raw: string): {
   if (envelope) {
     return { visible: sanitizeAvatarVisibleReply(stripped), envelope };
   }
-  return { visible: sanitizeAvatarVisibleReply(raw), envelope: null };
+  return { visible: sanitizeAvatarVisibleReply(rawNormalized), envelope: null };
 }

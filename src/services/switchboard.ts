@@ -16,6 +16,13 @@ import type {
   WorldviewActivityAction,
 } from "../types";
 import type { WavesSystemCommandStatus } from "./switchboardWavesQueue";
+
+/** Lets React (and the Chat Visualizer) commit each system-command state before the next, so Q→V→+ can paint. */
+function delayForVisualizerFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
 import { getRoutingLastMessage } from "./situationContext";
 import { runAvatarAgent } from "./avatarAgents";
 import { shouldReact } from "./opinionMatrix";
@@ -386,14 +393,18 @@ export async function distributeAndRespond(
           sourceEmailId,
         });
       } else {
-        options?.onSystemCommandStatus?.({
+        const onCmd = options?.onSystemCommandStatus;
+        onCmd?.({
           avatarId,
           userMessageId,
           status: "queued",
           detail: `${parsedIntents} command(s) returned by model`,
           sourceEmailId,
         });
-        options?.onSystemCommandStatus?.({
+        if (onCmd) {
+          await delayForVisualizerFrame();
+        }
+        onCmd?.({
           avatarId,
           userMessageId,
           status: "validated",
@@ -401,7 +412,10 @@ export async function distributeAndRespond(
           sourceEmailId,
         });
         if (executedIntents > 0) {
-          options?.onSystemCommandStatus?.({
+          if (onCmd) {
+            await delayForVisualizerFrame();
+          }
+          onCmd?.({
             avatarId,
             userMessageId,
             status: "applied",
@@ -410,7 +424,10 @@ export async function distributeAndRespond(
           });
         }
         if (resErrCount > 0) {
-          options?.onSystemCommandStatus?.({
+          if (onCmd) {
+            await delayForVisualizerFrame();
+          }
+          onCmd?.({
             avatarId,
             userMessageId,
             status: "failed",
@@ -421,7 +438,10 @@ export async function distributeAndRespond(
             sourceEmailId,
           });
         } else if (executedIntents === 0) {
-          options?.onSystemCommandStatus?.({
+          if (onCmd) {
+            await delayForVisualizerFrame();
+          }
+          onCmd?.({
             avatarId,
             userMessageId,
             status: "failed",

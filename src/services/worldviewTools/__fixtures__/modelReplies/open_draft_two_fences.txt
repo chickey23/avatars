@@ -1,0 +1,11 @@
+First try invalid.
+
+```json
+{"not":"valid"}
+```
+
+Second try valid.
+
+```json
+{"schema":"avatars_tools_v1","tools":[{"name":"avatars.workshop.open_draft","args":{"wikiQuery":"Z","seedText":""}}]}
+```

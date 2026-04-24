@@ -8,6 +8,7 @@ import type {
   SituationFocus,
   Avatar,
   AvatarAgentResult,
+  AvatarCreationWorkshopIntent,
   ConversationMessage,
   SwitchboardTraceStep,
   WorldviewActivityAction,
@@ -323,6 +324,8 @@ export type ProcessUserTurnUiHooks = {
     detail?: string;
     sourceEmailId?: string;
   }) => void;
+  /** After an avatar reply, when `postTurnUi.navigateAvatarCreationWorkshop` is set. */
+  onAvatarCreationWorkshopIntent?: (intent: AvatarCreationWorkshopIntent) => void;
 };
 
 /**
@@ -648,6 +651,13 @@ export async function processUserTurn(
         const avatarMsg = conversationMessageFromAvatarResult(avatarId, result);
         if (avatarMsg) {
           updatedContext = appendToConversation(updatedContext, avatarMsg);
+        }
+        const wIntent = result.postTurnUi?.navigateAvatarCreationWorkshop;
+        if (
+          wIntent &&
+          (wIntent.seedText?.trim() || wIntent.wikiQuery?.trim())
+        ) {
+          turnUi?.onAvatarCreationWorkshopIntent?.(wIntent);
         }
         onProgress?.(stripEphemeralFields(updatedContext));
       },

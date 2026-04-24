@@ -1,0 +1,5 @@
+Saved.
+
+```json
+{"schema":"avatars_tools_v1","tools":[{"name":"world_metadata.patch_projects","args":{"patch":{"proj_x1":{"title":"Alpha","notes":""}}}}]}
+```

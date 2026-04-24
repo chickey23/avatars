@@ -2,6 +2,8 @@ import type {
   ToolTelemetryDoc,
   ToolTelemetryEvent,
   ToolTelemetryAggregateRow,
+  ToolIntentCorrectnessSummary,
+  ToolIntentCorrectnessByAvatarRow,
 } from "./types";
 import { TOOL_TELEMETRY_SCHEMA_VERSION } from "./types";
 import {
@@ -125,6 +127,45 @@ export function computeToolTelemetryAggregates(
   }
 
   return [...map.values()];
+}
+
+/**
+ * Success events that recorded `correctToolForIntent` (turn had a non-none intent).
+ */
+export function computeToolIntentCorrectness(
+  events: ToolTelemetryEvent[]
+): ToolIntentCorrectnessSummary {
+  let correct = 0;
+  let total = 0;
+  for (const e of events) {
+    if (!e.ok || e.correctToolForIntent === undefined) continue;
+    total++;
+    if (e.correctToolForIntent) correct++;
+  }
+  return { correct, total };
+}
+
+/**
+ * Same as {@link computeToolIntentCorrectness} but grouped by avatar (for workshop UI).
+ */
+export function computeToolIntentCorrectnessByAvatar(
+  events: ToolTelemetryEvent[]
+): ToolIntentCorrectnessByAvatarRow[] {
+  const map = new Map<string, { correct: number; total: number }>();
+  for (const e of events) {
+    if (!e.ok || e.correctToolForIntent === undefined) continue;
+    const row = map.get(e.avatarId) ?? { correct: 0, total: 0 };
+    row.total++;
+    if (e.correctToolForIntent) row.correct++;
+    map.set(e.avatarId, row);
+  }
+  return [...map.entries()]
+    .map(([avatarId, v]) => ({
+      avatarId,
+      correct: v.correct,
+      total: v.total,
+    }))
+    .sort((a, b) => b.total - a.total);
 }
 
 /** Sort events for workshop: permission errors first, then time desc. */

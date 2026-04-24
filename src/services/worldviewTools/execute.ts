@@ -239,6 +239,21 @@ export function executeWorldviewTools(
           results.push({ name: tool.name, ok: true });
           break;
         }
+        case "avatars.workshop.open_draft": {
+          const a = tool.args as Record<string, unknown>;
+          const seedRaw = typeof a.seedText === "string" ? a.seedText.trim() : "";
+          const wikiRaw = typeof a.wikiQuery === "string" ? a.wikiQuery.trim() : "";
+          if (!seedRaw && !wikiRaw) {
+            results.push({
+              name: tool.name,
+              ok: false,
+              error: "missing seedText and wikiQuery",
+            });
+            break;
+          }
+          results.push({ name: tool.name, ok: true });
+          break;
+        }
         default:
           results.push({ name: tool.name, ok: false, error: "unknown tool" });
       }

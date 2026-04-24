@@ -9,6 +9,7 @@ import {
 import type {
   SituationContext,
   SituationFocus,
+  AvatarCreationWorkshopIntent,
   ConversationMessage,
   SwitchboardTraceStep,
 } from "../types";
@@ -94,6 +95,15 @@ import {
 export type { SendMessageOptions } from "./app-context";
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const avatarCreationWorkshopIntentHandlerRef = useRef<
+    ((intent: AvatarCreationWorkshopIntent) => void) | null
+  >(null);
+  const registerAvatarCreationWorkshopIntentHandler = useCallback(
+    (fn: ((intent: AvatarCreationWorkshopIntent) => void) | null) => {
+      avatarCreationWorkshopIntentHandlerRef.current = fn;
+    },
+    []
+  );
   const toolRefinerBusyRef = useRef(false);
   const [state, setState] = useState(getInitialState);
   const [pendingTurnCount, setPendingTurnCount] = useState(0);
@@ -625,6 +635,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     return next;
                   });
                 },
+                onAvatarCreationWorkshopIntent: (intent) => {
+                  avatarCreationWorkshopIntentHandlerRef.current?.(intent);
+                },
               }
             );
           } finally {
@@ -731,6 +744,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     processingUserMessageId,
     liveSwitchboardTrace,
     wavesQueue,
+    registerAvatarCreationWorkshopIntentHandler,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

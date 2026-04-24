@@ -3,6 +3,8 @@
  */
 
 import type { SituationContext } from "../types";
+import type { ToolProfileId } from "./agenticTools/toolProtocol";
+import type { TurnToolIntent } from "./turnToolIntent";
 
 export const DEFAULT_PROACTIVE_MIN_COMBINED_SCORE = 45;
 export const DEFAULT_PROACTIVE_MIN_AFFINITY_BONUS = 5;
@@ -89,22 +91,66 @@ export function formatBehaviorTuningForOllama(t: ResolvedBehaviorTuning): string
   return `Present state (apply consistently):\n${lines.map((l) => `- ${l}`).join("\n")}`;
 }
 
+export type OllamaClosingOpts = {
+  isExecutor?: boolean;
+  toolProfile?: ToolProfileId;
+  turnIntent?: TurnToolIntent;
+};
+
+function resolveClosingOpts(
+  opts?: boolean | OllamaClosingOpts
+): { isExecutor: boolean; toolProfile?: ToolProfileId; turnIntent?: TurnToolIntent } {
+  if (typeof opts === "boolean") {
+    return { isExecutor: opts };
+  }
+  return {
+    isExecutor: opts?.isExecutor === true,
+    toolProfile: opts?.toolProfile,
+    turnIntent: opts?.turnIntent,
+  };
+}
+
+function toolMandateSuffix(
+  profile: ToolProfileId | undefined,
+  intent: TurnToolIntent | undefined
+): string {
+  if (profile === "none" || !profile) return "";
+  if (profile === "creation" && intent === "creation") {
+    return " **Tools:** The user asked to create an avatar or persona. Emit exactly one trailing ```json block with avatars_tools_v1 and tool name avatars.workshop.open_draft (with wikiQuery and/or seedText). Do not describe any search API in prose; you may reply with only the JSON block.";
+  }
+  if (profile === "gmail_fetch" && intent === "email_fetch") {
+    return " **Tools:** The user needs full email text. When appropriate, emit gmail.fetch_message_body inside one trailing ```json avatars_tools_v1 block (or the AVATARS_TOOL lexical line). Do not narrate tool names as fake APIs in prose.";
+  }
+  if (
+    (profile === "patch_facts" || profile === "general") &&
+    intent === "fact_save"
+  ) {
+    return " **Tools:** The user asked to save or track durable facts. When appropriate, use one trailing ```json avatars_tools_v1 block (patch_projects, patch_people, or user_profile.patch as allowed). Do not invent external APIs in prose.";
+  }
+  return "";
+}
+
+/**
+ * Closing line for the Ollama prompt. Third argument may be `isExecutor` (boolean, legacy) or options.
+ */
 export function formatOllamaClosingInstruction(
   givenName: string,
   t: ResolvedBehaviorTuning,
-  isExecutor?: boolean
+  opts?: boolean | OllamaClosingOpts
 ): string {
+  const { isExecutor, toolProfile, turnIntent } = resolveClosingOpts(opts);
   const exec =
     isExecutor === true
       ? " You are the routing **executor** for this wave: when the user asks to add a **new** tracked project, you must carry that out with the structured tools (new project id + required title) in this reply when appropriate."
       : "";
+  const mandate = toolMandateSuffix(toolProfile, turnIntent);
   if (t.replyContextFocus >= 65) {
-    return `Respond briefly as ${givenName}, grounded in the context above and the user's message; stay in character without burying the substance. If the user shares facts worth saving (projects, people, preferences), use the structured tools JSON block from the guidelines when appropriate.${exec}`;
+    return `Respond briefly as ${givenName}, grounded in the context above and the user's message; stay in character without burying the substance. If the user shares facts worth saving (projects, people, preferences), use the structured tools JSON block from the Tool protocol section when appropriate.${mandate}${exec}`;
   }
   if (t.replyContextFocus <= 35) {
-    return `Respond briefly as ${givenName}, staying vividly in character; let personality lead while still acknowledging the user's words.${exec}`;
+    return `Respond briefly as ${givenName}, staying vividly in character; let personality lead while still acknowledging the user's words.${mandate}${exec}`;
   }
-  return `Respond briefly as ${givenName}, staying in character while addressing what the user actually asked.${exec}`;
+  return `Respond briefly as ${givenName}, staying in character while addressing what the user actually asked.${mandate}${exec}`;
 }
 
 export type RulesTuningFormatOpts = {

@@ -1,8 +1,8 @@
 # Platform persistence (durable identifiers)
 
-**Non-normative.** Authoritative values are defined in [`../src/services/platform/constants.ts`](../src/services/platform/constants.ts) and the Tauri module [`../src-tauri/src/platform_cache.rs`](../src-tauri/src/platform_cache.rs).
+**Non-normative.** Authoritative values are defined in [`../src/services/platform/constants.ts`](../src/services/platform/constants.ts), the shared Rust crate [`../crates/avatars-platform-storage/src/lib.rs`](../crates/avatars-platform-storage/src/lib.rs) (`ALLOWED_FILENAMES`, path logic), and Tauri command wrappers in [`../src-tauri/src/platform_cache.rs`](../src-tauri/src/platform_cache.rs).
 
-**See also:** [CODEBASE_GUIDELINES.md](CODEBASE_GUIDELINES.md) (platform services barrel, Tauri sidecar patterns). Targeted web/wiki search config: [TARGETED_SEARCH.md](./TARGETED_SEARCH.md).
+**See also:** [CODEBASE_GUIDELINES.md](CODEBASE_GUIDELINES.md) (platform services barrel, Tauri sidecar patterns). Targeted web/wiki search config: [TARGETED_SEARCH.md](./TARGETED_SEARCH.md). Read-only Companion App: [READONLY_COMPANION.md](./READONLY_COMPANION.md).
 
 ## On disk (Tauri desktop)
 
@@ -21,6 +21,10 @@ Base path: `%LOCALAPPDATA%\avatars\data\platform\`
 Those JSON files back **multi-provider web/wiki search** invoked from the **Context → Internet** tab (see [TARGETED_SEARCH.md](./TARGETED_SEARCH.md)). The **Storage visualizer** column does not configure or run search; it remains for local cache and diagnostics only.
 
 Atomic read/write is exposed as Tauri commands `platform_cache_read`, `platform_cache_write`, and `platform_cache_dir_display` (see `lib.rs`).
+
+## Multiple processes
+
+If a **read-only companion** reads the same directory while the main app writes, consumers still should not observe partial JSON: the Rust side writes via a temporary file then `rename`. A reader may see a **slightly stale** last-complete file. During **application update** or migration, files may be temporarily missing; handle read errors without assuming the store is corrupt. See [READONLY_COMPANION.md](./READONLY_COMPANION.md).
 
 ## Browser / tests (localStorage)
 

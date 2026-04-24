@@ -141,4 +141,59 @@ describe("executeWorldviewTools permissions", () => {
     );
     expect(r[0]?.ok).toBe(true);
   });
+
+  it("denies avatars.workshop.open_draft without tool_owner:avatar_creation", () => {
+    const r = executeWorldviewTools(
+      [
+        {
+          name: "avatars.workshop.open_draft",
+          args: { wikiQuery: "test" },
+        },
+      ],
+      {
+        avatarId: avatar.id,
+        userMessageId: "u1",
+        avatar,
+      }
+    );
+    expect(r[0]?.ok).toBe(false);
+    expect(r[0]?.error).toBe("permission_denied");
+  });
+
+  it("allows avatars.workshop.open_draft for tool_owner:avatar_creation", () => {
+    const exchequer = {
+      ...avatar,
+      id: "blessed_exchequer",
+      systemTags: ["system", "tool_owner:avatar_creation"],
+      allowedAgenticToolIds: ["avatars.workshop.open_draft"],
+    } as Avatar;
+    const r = executeWorldviewTools(
+      [{ name: "avatars.workshop.open_draft", args: { wikiQuery: "Luke Skywalker" } }],
+      {
+        avatarId: exchequer.id,
+        userMessageId: "u1",
+        avatar: exchequer,
+      }
+    );
+    expect(r[0]?.ok).toBe(true);
+  });
+
+  it("rejects avatars.workshop.open_draft when both args empty", () => {
+    const exchequer = {
+      ...avatar,
+      id: "blessed_exchequer",
+      systemTags: ["system", "tool_owner:avatar_creation"],
+      allowedAgenticToolIds: ["avatars.workshop.open_draft"],
+    } as Avatar;
+    const r = executeWorldviewTools(
+      [{ name: "avatars.workshop.open_draft", args: {} }],
+      {
+        avatarId: exchequer.id,
+        userMessageId: "u1",
+        avatar: exchequer,
+      }
+    );
+    expect(r[0]?.ok).toBe(false);
+    expect(r[0]?.error).toBe("missing seedText and wikiQuery");
+  });
 });

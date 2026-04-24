@@ -1,0 +1,8 @@
+[package]
+name = "avatars-platform-storage"
+version = "0.1.0"
+edition = "2021"
+description = "Shared allowlisted read/write for Avatars platform JSON under data_local_dir"
+
+[dependencies]
+dirs = "5"

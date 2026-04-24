@@ -1,57 +1,8 @@
-//! Platform durable cache (source snapshots, project store, drafts) under the app data tree.
-//! Invoked from `src/services/platform/` via Tauri. Writes use a `.tmp` sibling then
-//! `rename` so readers never observe a truncated file.
+//! Tauri commands for platform durable cache; I/O lives in `avatars-platform-storage`.
 
-use std::fs;
-use std::path::{Path, PathBuf};
-
-/// Hardcoded filename allowlist — prevents path traversal via the `source` argument.
-const ALLOWED_FILENAMES: &[&str] = &[
-    "source_cache.email.json",
-    "source_cache.calendar.json",
-    "source_cache.contacts.json",
-    "platform_store.json",
-    "platform_drafts.json",
-    "targeted_search_config.json",
-    "targeted_search_usage.json",
-];
-
-pub(crate) fn platform_data_dir() -> Result<PathBuf, String> {
-    let base = dirs::data_local_dir().ok_or("no local data directory (dirs::data_local_dir)")?;
-    let dir = base.join("avatars").join("data").join("platform");
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
-}
-
-fn resolve_path(filename: &str) -> Result<PathBuf, String> {
-    if !ALLOWED_FILENAMES.contains(&filename) {
-        return Err(format!("platform_cache: filename not allowed: {filename}"));
-    }
-    Ok(platform_data_dir()?.join(filename))
-}
-
-/// Same allowlist as the Tauri commands; for in-crate callers (e.g. targeted search).
-pub(crate) fn read_platform_file(filename: &str) -> Result<Option<String>, String> {
-    let path = resolve_path(filename)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
-}
-
-pub(crate) fn write_platform_file(filename: &str, payload: &str) -> Result<(), String> {
-    let path = resolve_path(filename)?;
-    atomic_write(&path, payload)
-}
-
-fn atomic_write(path: &Path, payload: &str) -> Result<(), String> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let tmp = path.with_extension("tmp");
-    fs::write(&tmp, payload).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, path).map_err(|e| e.to_string())
-}
+use avatars_platform_storage::{
+    platform_data_dir, read_platform_file, write_platform_file,
+};
 
 /// Returns file contents when present, `None` when the file does not exist.
 #[tauri::command]

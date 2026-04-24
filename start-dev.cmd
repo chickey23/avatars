@@ -40,4 +40,14 @@ if errorlevel 1 (
   )
 )
 
+rem Second process: Companion App (avatars-viewer) — same Vite 5174 + read-only library; skip if already running
+tasklist /FI "IMAGENAME eq avatars-viewer.exe" 2>nul | findstr /I "avatars-viewer.exe" >nul
+if errorlevel 1 (
+  echo Starting Companion App ^(avatars-viewer^) in a separate window...
+  start "Companion App" /D "%~dp0" cmd /c "npm run tauri:dev:viewer"
+) else (
+  echo Companion App ^(avatars-viewer.exe^) already running — skipping.
+  echo.
+)
+
 call npm run tauri dev

@@ -1,0 +1,1 @@
+{"schema":"avatars_tools_v1","name":"avatars.workshop.open_draft","args":{"wikiQuery":"Flat shape","seedText":""}}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeToolIntentCorrectnessByAvatar,
   computeToolTelemetryAggregates,
   isPermissionErrorCode,
   sortToolTelemetryEventsForDisplay,
@@ -109,5 +110,36 @@ describe("toolTelemetry store", () => {
     ];
     const agg = computeToolTelemetryAggregates(events);
     expect(agg[0]?.lastResultPreview).toBe("failed args snippet");
+  });
+
+  it("computeToolIntentCorrectnessByAvatar groups intent-labeled successes", () => {
+    const events: ToolTelemetryEvent[] = [
+      {
+        id: "1",
+        at: 1,
+        toolId: "avatars.workshop.open_draft",
+        avatarId: "blessed_exchequer",
+        source: "patch",
+        ok: true,
+        turnIntent: "creation",
+        correctToolForIntent: true,
+      },
+      {
+        id: "2",
+        at: 2,
+        toolId: "user_profile.patch",
+        avatarId: "muse",
+        source: "patch",
+        ok: true,
+        turnIntent: "creation",
+        correctToolForIntent: false,
+      },
+    ];
+    const rows = computeToolIntentCorrectnessByAvatar(events);
+    expect(rows).toHaveLength(2);
+    const exc = rows.find((r) => r.avatarId === "blessed_exchequer");
+    const muse = rows.find((r) => r.avatarId === "muse");
+    expect(exc).toEqual({ avatarId: "blessed_exchequer", correct: 1, total: 1 });
+    expect(muse).toEqual({ avatarId: "muse", correct: 0, total: 1 });
   });
 });

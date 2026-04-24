@@ -1,0 +1,23 @@
+[package]
+name = "avatars-viewer"
+version = "0.1.0"
+description = "Read-only Avatars Companion App (library + local data)"
+authors = ["you"]
+license = ""
+repository = ""
+edition = "2021"
+
+[lib]
+name = "avatars_viewer_lib"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+avatars-platform-storage = { path = "../crates/avatars-platform-storage" }
+dirs = "5"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

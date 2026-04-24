@@ -63,6 +63,12 @@ export function diagnoseWorldviewToolReply(
     );
   }
 
+  if (/\bwikipedia\.search\b/i.test(t) && envelope === null) {
+    hints.push(
+      "Mentioned wikipedia.search (or similar) in prose — use only avatars_tools_v1 JSON; do not invent APIs"
+    );
+  }
+
   const fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi;
   let fm: RegExpExecArray | null;
   let fenceCount = 0;

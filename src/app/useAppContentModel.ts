@@ -34,6 +34,7 @@ import type {
   PendingNotification,
   BehaviorTuning,
   Avatar,
+  AvatarCreationWorkshopIntent,
   ConversationMessage,
 } from "../types";
 import {
@@ -117,6 +118,7 @@ export function useAppContentModel() {
     patchSituationContext,
     pendingTurnCount,
     wavesQueue,
+    registerAvatarCreationWorkshopIntentHandler,
   } = useApp();
 
   const contextEntryBudgets = useMemo(
@@ -372,6 +374,14 @@ export function useAppContentModel() {
     []
   );
 
+  const handleOpenAvatarBuilderFromInternet = useCallback(
+    (payload: { initial: AvatarBuilderInitial }) => {
+      setAvatarBuilderInitial(payload.initial);
+      setAvatarBuilderOpen(true);
+    },
+    []
+  );
+
   const handleAvatarBuilderSave = useCallback(
     (payload: {
       avatar: Avatar;
@@ -452,7 +462,6 @@ export function useAppContentModel() {
     | "internet"
     | "user"
     | "worldview"
-    | "well"
   >("email");
   const openWorldviewTab = useCallback(() => {
     setContextTab("worldview");
@@ -599,26 +608,48 @@ export function useAppContentModel() {
   }, [focus, patchSituationContext, situationContext.recentEvents]);
   const [chatViewMode, setChatViewMode] = useState<ChatViewMode>("chat");
   const WORKSHOP_TAB_STORAGE_KEY = "avatars_workshop_subtab";
-  type WorkshopTab = "tool" | "unmet" | "source" | "projects";
+  type WorkshopTab = "tool" | "unmet" | "source" | "projects" | "creation";
   const [mainSurface, setMainSurface] = useState<"chat" | "workshops">("chat");
   const [workshopTab, setWorkshopTabState] = useState<WorkshopTab>(() => {
     try {
       const s = sessionStorage.getItem(WORKSHOP_TAB_STORAGE_KEY);
-      if (s === "tool" || s === "unmet" || s === "source" || s === "projects")
+      if (
+        s === "tool" ||
+        s === "unmet" ||
+        s === "source" ||
+        s === "projects" ||
+        s === "creation"
+      )
         return s;
     } catch {
       /* ignore */
     }
     return "tool";
   });
+  const [creationWorkshopPrefill, setCreationWorkshopPrefill] =
+    useState<AvatarCreationWorkshopIntent | null>(null);
   const setWorkshopTab = useCallback((t: WorkshopTab) => {
     setWorkshopTabState(t);
+    if (t !== "creation") {
+      setCreationWorkshopPrefill(null);
+    }
     try {
       sessionStorage.setItem(WORKSHOP_TAB_STORAGE_KEY, t);
     } catch {
       /* ignore */
     }
   }, []);
+
+  useEffect(() => {
+    registerAvatarCreationWorkshopIntentHandler((intent) => {
+      if (!intent.seedText?.trim() && !intent.wikiQuery?.trim()) return;
+      setMainSurface("workshops");
+      setWorkshopTab("creation");
+      setCreationWorkshopPrefill(intent);
+    });
+    return () => registerAvatarCreationWorkshopIntentHandler(null);
+  }, [registerAvatarCreationWorkshopIntentHandler, setWorkshopTab]);
+
   const [ollamaPresence, setOllamaPresence] = useState<
     "checking" | OllamaPresence
   >("checking");
@@ -1356,6 +1387,7 @@ export function useAppContentModel() {
     contactsLoading,
     contextEntryBudgets,
     contextTab,
+    creationWorkshopPrefill,
     effectivePrimarySlots,
     emailError,
     emailsLoading,
@@ -1387,6 +1419,7 @@ export function useAppContentModel() {
     handleSend,
     handleTodoClick,
     handleWellOfSoulsAfterGenerate,
+    handleOpenAvatarBuilderFromInternet,
     hoverMetaMessageId,
     inputValue,
     maxPrimarySlotOptions,

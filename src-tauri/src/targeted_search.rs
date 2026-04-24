@@ -5,7 +5,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-use crate::platform_cache::{read_platform_file, write_platform_file};
+use avatars_platform_storage::{read_platform_file, write_platform_file};
 
 const CONFIG_FILE: &str = "targeted_search_config.json";
 const USAGE_FILE: &str = "targeted_search_usage.json";

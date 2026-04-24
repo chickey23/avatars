@@ -26,6 +26,17 @@ describe("registry permissions", () => {
     expect(avatarMayUseAgenticTool(a, "user_profile.patch")).toBe(true);
   });
 
+  it("denies non-group tools when allowedAgenticToolIds is an empty array", () => {
+    const a = baseAvatar({ allowedAgenticToolIds: [] });
+    expect(avatarMayUseAgenticTool(a, "user_profile.patch")).toBe(false);
+    const owner = baseAvatar({
+      systemTags: ["tool_owner:drafts"],
+      allowedAgenticToolIds: [],
+    });
+    expect(avatarMayUseAgenticTool(owner, "drafts.tasks")).toBe(true);
+    expect(avatarMayUseAgenticTool(owner, "user_profile.patch")).toBe(false);
+  });
+
   it("denies when id not in allowlist", () => {
     const a = baseAvatar({ allowedAgenticToolIds: ["world_metadata.patch_projects"] });
     expect(avatarMayUseAgenticTool(a, "user_profile.patch")).toBe(false);
@@ -64,5 +75,20 @@ describe("registry permissions", () => {
     expect(avatarMayUseAgenticTool(owner, "drafts.tasks")).toBe(true);
     expect(avatarMayUseAgenticTool(owner, "drafts.calendar_event")).toBe(true);
     expect(avatarMayUseAgenticTool(owner, "drafts.email_reply")).toBe(true);
+  });
+
+  it("avatars.workshop.open_draft requires tool_owner:avatar_creation", () => {
+    const plain = baseAvatar({
+      allowedAgenticToolIds: ["avatars.workshop.open_draft"],
+    });
+    expect(avatarMayUseAgenticTool(plain, "avatars.workshop.open_draft")).toBe(
+      false
+    );
+    const owner = baseAvatar({
+      systemTags: ["system", "tool_owner:avatar_creation"],
+    });
+    expect(avatarMayUseAgenticTool(owner, "avatars.workshop.open_draft")).toBe(
+      true
+    );
   });
 });

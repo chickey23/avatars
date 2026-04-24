@@ -56,5 +56,16 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
+Write-Log "ensure viewer dist placeholder (Tauri frontendDist)"
+& (Join-Path $PSScriptRoot "ensure-viewer-dist-placeholder.ps1")
+
+Write-Log "cargo check avatars-viewer (workspace)"
+cargo check -p avatars-viewer
+if ($LASTEXITCODE -ne 0) {
+    Write-Log "error: cargo check avatars-viewer failed ($LASTEXITCODE)"
+    Write-Error "cargo check avatars-viewer failed with exit code $LASTEXITCODE"
+    exit $LASTEXITCODE
+}
+
 Write-Log "verify ok"
 Write-Host "verify ok"
