@@ -231,12 +231,17 @@ export type DistributeAndRespondOptions = {
     actions?: WorldviewActivityAction[];
     sourceEmailId?: string;
   }) => void;
-  /** Lexical malformed or tool execution failure (one callback per error string). */
+  /** Lexical malformed or tool execution failure (one callback per failure). */
   onToolResolutionError?: (args: {
     avatarId: string;
     userMessageId: string;
+    /** Short summary for legacy / a11y (e.g. `tool: code`). */
     message: string;
     detail?: string;
+    toolId?: string;
+    errorCode?: string;
+    /** Truncated non-secret args preview for Waves. */
+    argsPreview?: string;
     sourceEmailId?: string;
   }) => void;
   /** Model output looked like tools but did not parse as avatars_tools_v1. */
@@ -356,7 +361,10 @@ export async function distributeAndRespond(
         result.promptDebug?.worldviewParsedToolIntentNames?.length ?? 0;
       const executedIntents =
         result.promptDebug?.worldviewExecutedToolNames?.length ?? 0;
-      const resErrCount = result.toolResolutionErrors?.length ?? 0;
+      const resErrCount =
+        result.toolResolutionFailures?.length ??
+        result.toolResolutionErrors?.length ??
+        0;
       if (parseHints.length > 0) {
         options?.onSystemCommandStatus?.({
           avatarId,
@@ -436,16 +444,32 @@ export async function distributeAndRespond(
           sourceEmailId,
         });
       }
-      const resErrs = result.toolResolutionErrors;
-      if (resErrs?.length) {
-        for (const msg of resErrs) {
+      const structuredFails = result.toolResolutionFailures;
+      if (structuredFails?.length) {
+        for (const f of structuredFails) {
+          const msg = `${f.tool}: ${f.error}`.slice(0, 200);
           options?.onToolResolutionError?.({
             avatarId,
             userMessageId,
-            message: msg.slice(0, 160),
-            detail: msg.length > 160 ? msg.slice(160, 480) : undefined,
+            message: msg,
+            toolId: f.tool,
+            errorCode: f.error,
+            argsPreview: f.argsPreview,
             sourceEmailId,
           });
+        }
+      } else {
+        const resErrs = result.toolResolutionErrors;
+        if (resErrs?.length) {
+          for (const msg of resErrs) {
+            options?.onToolResolutionError?.({
+              avatarId,
+              userMessageId,
+              message: msg.slice(0, 160),
+              detail: msg.length > 160 ? msg.slice(160, 480) : undefined,
+              sourceEmailId,
+            });
+          }
         }
       }
       if (result.worldviewParseDiagnosis?.hints.length) {

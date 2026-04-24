@@ -2,7 +2,7 @@
 
 **Non-normative.** Authoritative values are defined in [`../src/services/platform/constants.ts`](../src/services/platform/constants.ts) and the Tauri module [`../src-tauri/src/platform_cache.rs`](../src-tauri/src/platform_cache.rs).
 
-**See also:** [CODEBASE_GUIDELINES.md](CODEBASE_GUIDELINES.md) (platform services barrel, Tauri sidecar patterns).
+**See also:** [CODEBASE_GUIDELINES.md](CODEBASE_GUIDELINES.md) (platform services barrel, Tauri sidecar patterns). Targeted web/wiki search config: [TARGETED_SEARCH.md](./TARGETED_SEARCH.md).
 
 ## On disk (Tauri desktop)
 
@@ -15,6 +15,8 @@ Base path: `%LOCALAPPDATA%\avatars\data\platform\`
 | Contacts source cache | `source_cache.contacts.json` |
 | Project / task store | `platform_store.json` |
 | Draft write-tool rows | `platform_drafts.json` |
+| Targeted search config (API keys, wiki list, caps) | `targeted_search_config.json` |
+| Targeted search usage (per-provider daily counts) | `targeted_search_usage.json` |
 
 Atomic read/write is exposed as Tauri commands `platform_cache_read`, `platform_cache_write`, and `platform_cache_dir_display` (see `lib.rs`).
 

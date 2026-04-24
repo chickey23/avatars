@@ -1,4 +1,5 @@
 mod platform_cache;
+mod targeted_search;
 mod gmail;
 mod ollama;
 mod session_log;
@@ -33,6 +34,7 @@ pub fn run() {
             platform_cache::platform_cache_read,
             platform_cache::platform_cache_write,
             platform_cache::platform_cache_dir_display,
+            targeted_search::targeted_search_query,
         ])
         .run(tauri::generate_context!())
         .expect("error while running avatars application");

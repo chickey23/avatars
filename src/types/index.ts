@@ -37,6 +37,15 @@ export type WorldviewActivityAction = {
   summary: string;
 };
 
+/**
+ * Structured tool failure for Waves / session surfaces (non-secret args preview).
+ */
+export type WorldviewToolResolutionFailure = {
+  tool: string;
+  error: string;
+  argsPreview?: string;
+};
+
 /** Result from runAvatarAgent (chat pipeline). */
 export interface AvatarAgentResult {
   content: string;
@@ -58,6 +67,8 @@ export interface AvatarAgentResult {
   };
   /** Lexical / execution issues for `tool_error` queue rows (short messages). */
   toolResolutionErrors?: string[];
+  /** Structured failures; preferred over `toolResolutionErrors` for UI when present. */
+  toolResolutionFailures?: WorldviewToolResolutionFailure[];
   /** Heuristic: model may have attempted tools but reply did not parse as avatars_tools_v1. */
   worldviewParseDiagnosis?: {
     hints: string[];

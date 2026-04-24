@@ -32,6 +32,12 @@ import {
 } from "../services/monitors";
 import { findAvatarsWithTag, monitorTag } from "../services/avatarTags";
 import { parseContractLogCategory } from "../services/sessionLog/contractLog";
+import {
+  runTargetedSearch,
+  shouldShowGoogleSearchBanner,
+  TAURI_ONLY_NOTICE,
+  type TargetedSearchResponse,
+} from "../services/targetedSearch";
 
 export type EmailInsightSample = {
   messageId: string;
@@ -82,6 +88,7 @@ type PanelSection =
   | "worldview"
   | "waves"
   | "background"
+  | "targetedSearch"
   | "future";
 
 /** Background panel rows: one per contract that has a steward avatar. */
@@ -220,6 +227,10 @@ export function SourceCacheViz({
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<PanelSection | null>(null);
   const [pinned, setPinned] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResp, setSearchResp] = useState<TargetedSearchResponse | null>(null);
+  const [searchBannerDismissed, setSearchBannerDismissed] = useState(false);
   const { runners: backgroundRunners, logTail: backgroundLogTail } =
     useContractsState();
   const backgroundNow = useMemo(
@@ -299,6 +310,25 @@ export function SourceCacheViz({
     setPinned(true);
   };
 
+  const runTargetedSearchLocal = useCallback(async () => {
+    setSearchLoading(true);
+    try {
+      const r = await runTargetedSearch(searchQuery);
+      setSearchResp(r);
+      if (shouldShowGoogleSearchBanner(r.notices)) {
+        setSearchBannerDismissed(false);
+      }
+    } catch (e) {
+      setSearchResp({
+        hits: [],
+        providersTried: [],
+        notices: [`targeted_search_invoke_error:${String(e)}`],
+      });
+    } finally {
+      setSearchLoading(false);
+    }
+  }, [searchQuery]);
+
   const useDiagInbox = (diagnostics?.inPrompt?.length ?? 0) > 0;
   const inboxRows = useDiagInbox
       ? diagnostics!.inPrompt.map((r) => ({
@@ -320,6 +350,11 @@ export function SourceCacheViz({
 
   const belowTopK = diagnostics?.belowTopK ?? [];
 
+  const showGoogleSearchBanner =
+    searchResp != null &&
+    shouldShowGoogleSearchBanner(searchResp.notices) &&
+    !searchBannerDismissed;
+
   return (
     <div
       ref={rootRef}
@@ -330,6 +365,24 @@ export function SourceCacheViz({
       <div className="source-cache-viz-heading" aria-hidden>
         Store
       </div>
+      {showGoogleSearchBanner && (
+        <div className="source-cache-viz-search-banner" role="alert">
+          <span>
+            Google Custom Search:{" "}
+            {searchResp?.notices.includes("google_daily_cap_reached")
+              ? "daily query cap reached."
+              : "not configured (add apiKey and cx in targeted_search_config.json)."}
+          </span>
+          <button
+            type="button"
+            className="source-cache-viz-search-banner-dismiss"
+            onClick={() => setSearchBannerDismissed(true)}
+            aria-label="Dismiss Google search notice"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <ul className="source-cache-viz-tracks" role="list">
         <li className="source-cache-viz-track-item">
           <button
@@ -440,6 +493,25 @@ export function SourceCacheViz({
               aria-hidden
             />
             Background
+          </button>
+        </li>
+        <li className="source-cache-viz-track-item">
+          <button
+            type="button"
+            className={`source-cache-viz-chip source-cache-viz-chip--targeted-search${
+              open === "targetedSearch" ? " is-open" : ""
+            }`}
+            aria-expanded={open === "targetedSearch"}
+            aria-controls={panelId}
+            onMouseEnter={() => !pinned && openSection("targetedSearch")}
+            onFocus={() => !pinned && openSection("targetedSearch")}
+            onMouseLeave={() =>
+              !pinned && open === "targetedSearch" && setOpen(null)
+            }
+            onClick={() => togglePin("targetedSearch")}
+          >
+            <span className="source-cache-viz-chip-dot" aria-hidden />
+            Search
           </button>
         </li>
         <li className="source-cache-viz-track-item">
@@ -800,6 +872,84 @@ export function SourceCacheViz({
                         </li>
                       );
                     })}
+                  </ul>
+                )}
+              </section>
+            </div>
+          )}
+
+          {open === "targetedSearch" && (
+            <div className="source-cache-viz-sections">
+              <section className="source-cache-viz-section">
+                <h4 className="source-cache-viz-section-title">Targeted search</h4>
+                <p className="source-cache-viz-hint">
+                  Wikis → Wikipedia → Tavily (optional key) → Google CSE. Configure{" "}
+                  <code className="source-cache-viz-code">targeted_search_config.json</code>{" "}
+                  under the platform data directory (see docs/TARGETED_SEARCH.md).
+                </p>
+                <div className="source-cache-viz-targeted-search-row">
+                  <input
+                    type="search"
+                    className="source-cache-viz-targeted-search-input"
+                    placeholder="Query…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void runTargetedSearchLocal();
+                    }}
+                    aria-label="Targeted search query"
+                  />
+                  <button
+                    type="button"
+                    className="source-cache-viz-targeted-search-btn"
+                    disabled={searchLoading || !searchQuery.trim()}
+                    onClick={() => void runTargetedSearchLocal()}
+                  >
+                    {searchLoading ? "…" : "Run"}
+                  </button>
+                </div>
+                {searchResp?.notices.includes(TAURI_ONLY_NOTICE) && (
+                  <p className="source-cache-viz-hint source-cache-viz-warn-strong">
+                    Targeted search runs in the Tauri desktop app only (not in the
+                    browser dev server).
+                  </p>
+                )}
+                {searchResp && searchResp.providersTried.length > 0 && (
+                  <p className="source-cache-viz-muted source-cache-viz-hint">
+                    Providers tried: {searchResp.providersTried.join(", ")}
+                  </p>
+                )}
+                {searchResp && searchResp.notices.length > 0 && (
+                  <ul className="source-cache-viz-bullets source-cache-viz-bullets--dense">
+                    {searchResp.notices.map((n, idx) => (
+                      <li key={`${idx}-${n}`} className="source-cache-viz-muted">
+                        {n}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {searchResp && searchResp.hits.length > 0 && (
+                  <ul className="source-cache-viz-bullets source-cache-viz-bullets--dense">
+                    {searchResp.hits.map((h, i) => (
+                      <li key={`${h.url}-${i}`}>
+                        <span className="source-cache-viz-muted">[{h.source}]</span>{" "}
+                        <a
+                          href={h.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="source-cache-viz-link"
+                        >
+                          {h.title || h.url}
+                        </a>
+                        {h.snippet ? (
+                          <span className="source-cache-viz-targeted-snippet">
+                            {" "}
+                            — {h.snippet.slice(0, 200)}
+                            {h.snippet.length > 200 ? "…" : ""}
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
                   </ul>
                 )}
               </section>

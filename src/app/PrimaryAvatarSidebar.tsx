@@ -311,17 +311,14 @@ export function PrimaryAvatarSidebar() {
               )}
               {m.avatarDetailExpandedId === avatar.id && (
                 <div className="avatar-detail-panel">
-                  <section className="avatar-detail-section">
-                    <h4 className="avatar-detail-section-label">Portrait</h4>
-                    <div className="avatar-portrait-row">
-                      <span className="avatar-portrait avatar-portrait--large" aria-hidden="true">
-                        {portraitSrc ? (
-                          <img
-                            src={portraitSrc}
-                            alt=""
-                            className="avatar-portrait-img"
-                          />
-                        ) : (
+                  {!portraitSrc && (
+                    <section className="avatar-detail-section">
+                      <h4 className="avatar-detail-section-label">Portrait</h4>
+                      <div className="avatar-portrait-row">
+                        <span
+                          className="avatar-portrait avatar-portrait--large"
+                          aria-hidden="true"
+                        >
                           <span
                             className="avatar-portrait-fallback"
                             style={{
@@ -332,41 +329,28 @@ export function PrimaryAvatarSidebar() {
                           >
                             {portraitInitial}
                           </span>
-                        )}
-                      </span>
-                      <div className="avatar-portrait-actions">
-                        <button
-                          type="button"
-                          className="avatar-portrait-choose"
-                          aria-label={`Choose portrait image for ${avatar.givenName}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            m.openPortraitFilePicker(avatar.id);
-                          }}
-                        >
-                          Choose image…
-                        </button>
-                        {portraitSrc && (
+                        </span>
+                        <div className="avatar-portrait-actions">
                           <button
                             type="button"
-                            className="avatar-portrait-remove"
-                            aria-label={`Remove portrait for ${avatar.givenName}`}
+                            className="avatar-portrait-choose"
+                            aria-label={`Choose portrait image for ${avatar.givenName}`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              m.clearPortrait(avatar.id);
+                              m.openPortraitFilePicker(avatar.id);
                             }}
                           >
-                            Remove
+                            Choose image…
                           </button>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                    {m.portraitFileError?.avatarId === avatar.id && (
-                      <p className="avatar-portrait-error" role="status">
-                        {m.portraitFileError.message}
-                      </p>
-                    )}
-                  </section>
+                      {m.portraitFileError?.avatarId === avatar.id && (
+                        <p className="avatar-portrait-error" role="status">
+                          {m.portraitFileError.message}
+                        </p>
+                      )}
+                    </section>
+                  )}
                   <section className="avatar-detail-section">
                     <h4 className="avatar-detail-section-label">
                       Tags{" "}
@@ -613,7 +597,7 @@ export function PrimaryAvatarSidebar() {
               >
                 <option value="">
                   {m.projectsList.length === 0
-                    ? "Add projects under Context → Projects"
+                    ? "Add projects under Workshops → Projects"
                     : "Choose a project…"}
                 </option>
                 {m.projectsList.map(([id, proj]) => (

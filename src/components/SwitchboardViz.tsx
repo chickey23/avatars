@@ -9,7 +9,10 @@ import {
   useRef,
   type CSSProperties,
 } from "react";
-import type { WavesQueueEntry } from "../services/switchboardWavesQueue";
+import type {
+  WavesQueueEntry,
+  WavesToolErrorEntry,
+} from "../services/switchboardWavesQueue";
 import {
   SWITCHBOARD_WAVE_TRAVEL_MS,
   isMonitorPromptEntry,
@@ -18,6 +21,52 @@ import {
   isUserEntry,
   isWorldviewEntry,
 } from "../services/switchboardWavesQueue";
+
+const WAVES_TOOL_LABEL_MAX = 28;
+const WAVES_ARGS_CAPTION_CHARS = 76;
+
+function shortenWavesToolLabel(toolId: string | undefined): string {
+  const t = toolId?.trim();
+  if (!t) return "";
+  if (t.length <= WAVES_TOOL_LABEL_MAX) return t;
+  return `${t.slice(0, WAVES_TOOL_LABEL_MAX - 1)}…`;
+}
+
+function toolErrorDisplayFields(entry: WavesToolErrorEntry): {
+  toolLine: string;
+  codeLine: string;
+  argsCaption?: string;
+  tooltip: string;
+} {
+  const toolRaw =
+    entry.toolId?.trim() ||
+    (entry.message.includes(":")
+      ? entry.message.split(":")[0]!.trim()
+      : "");
+  const code =
+    entry.errorCode?.trim() ||
+    (entry.message.includes(":")
+      ? entry.message.slice(entry.message.indexOf(":") + 1).trim()
+      : entry.message.trim());
+  const toolLine = shortenWavesToolLabel(toolRaw || "tool");
+  const codeLine = (code || "failed").slice(0, 96);
+  const argsCaption = entry.argsPreview
+    ? entry.argsPreview.length > WAVES_ARGS_CAPTION_CHARS
+      ? `${entry.argsPreview.slice(0, WAVES_ARGS_CAPTION_CHARS - 1)}…`
+      : entry.argsPreview
+    : undefined;
+  const tooltipParts = [
+    toolRaw && code ? `${toolRaw} — ${code}` : entry.message,
+    entry.argsPreview ? `Args: ${entry.argsPreview}` : "",
+    entry.detail && !entry.argsPreview ? entry.detail : "",
+  ].filter(Boolean);
+  return {
+    toolLine,
+    codeLine,
+    argsCaption,
+    tooltip: tooltipParts.join("\n").slice(0, 1400),
+  };
+}
 
 export type WavesMotionTier = "full" | "blink";
 
@@ -37,7 +86,11 @@ export type SwitchboardVizProps = {
   vizDebug?: boolean;
   /** No primary avatars: explain missing routing dots. */
   rosterEmpty?: boolean;
+  /** User-turn excerpt from chat (tooltip + compact caption). */
+  getUserMessagePreview?: (userMessageId: string) => string | undefined;
 };
+
+const WAVES_USER_PREVIEW_MAX = 48;
 
 export function SwitchboardViz({
   entries,
@@ -48,6 +101,7 @@ export function SwitchboardViz({
   onActivateUserMessage,
   vizDebug = false,
   rosterEmpty = false,
+  getUserMessagePreview,
 }: SwitchboardVizProps) {
   const scrollRef = useRef<HTMLUListElement>(null);
   const travelS = `${travelMs}ms`;
@@ -112,6 +166,15 @@ export function SwitchboardViz({
         {entries.map((entry, index) => {
           const isLast = index === entries.length - 1;
           if (isUserEntry(entry)) {
+            const raw = getUserMessagePreview?.(entry.userMessageId)
+              ?.replace(/\s+/g, " ")
+              .trim();
+            const tip =
+              raw && raw.length > 220 ? `${raw.slice(0, 217).trimEnd()}…` : raw;
+            const caption =
+              raw && raw.length > WAVES_USER_PREVIEW_MAX
+                ? `${raw.slice(0, WAVES_USER_PREVIEW_MAX - 1).trimEnd()}…`
+                : raw;
             return (
               <li
                 key={entry.id}
@@ -129,9 +192,17 @@ export function SwitchboardViz({
                   type="button"
                   className="switchboard-viz-user-node"
                   onClick={() => onActivateUserMessage?.(entry.userMessageId)}
-                  aria-label="Scroll to your message"
+                  title={tip || undefined}
+                  aria-label={
+                    tip ? `Scroll to your message: ${tip}` : "Scroll to your message"
+                  }
                 >
                   <span className="switchboard-viz-user-tick" />
+                  {caption ? (
+                    <span className="switchboard-viz-user-caption" aria-hidden>
+                      {caption}
+                    </span>
+                  ) : null}
                 </button>
               </li>
             );
@@ -258,7 +329,8 @@ export function SwitchboardViz({
           }
           if (isToolErrorEntry(entry)) {
             const c = getAccentColor(entry.avatarId);
-            const tip = `${entry.message}${entry.detail ? ` — ${entry.detail}` : ""}`;
+            const { toolLine, codeLine, argsCaption, tooltip } =
+              toolErrorDisplayFields(entry);
             return (
               <li
                 key={entry.id}
@@ -266,13 +338,13 @@ export function SwitchboardViz({
                   showTravel && isLast ? " switchboard-viz-queue-item--travel-in" : ""
                 }`}
                 role="listitem"
-                title={tip}
+                title={tooltip}
               >
                 <button
                   type="button"
                   className="switchboard-viz-worldview-hit switchboard-viz-tool-error-hit"
                   onClick={() => onActivateUserMessage?.(entry.userMessageId)}
-                  aria-label="Tool resolution failed; scroll to turn"
+                  aria-label={`Tool ${toolLine} failed: ${codeLine}; scroll to turn`}
                 >
                   <span
                     className="switchboard-viz-worldview-icon switchboard-viz-tool-error-icon"
@@ -280,6 +352,19 @@ export function SwitchboardViz({
                     aria-hidden
                   >
                     ?
+                  </span>
+                  <span className="switchboard-viz-tool-error-caption" aria-hidden>
+                    <span className="switchboard-viz-tool-error-tool">
+                      {toolLine}
+                    </span>
+                    <span className="switchboard-viz-tool-error-code">
+                      {codeLine}
+                    </span>
+                    {argsCaption ? (
+                      <span className="switchboard-viz-tool-error-args">
+                        {argsCaption}
+                      </span>
+                    ) : null}
                   </span>
                 </button>
               </li>

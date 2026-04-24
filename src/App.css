@@ -732,6 +732,14 @@ button.env-tag.session-log-open-btn {
   color: #fca5a5;
 }
 
+.avatar-portrait-builder-hint {
+  margin: 0;
+  max-width: 12rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  opacity: 0.82;
+}
+
 .avatar-card-toolbar {
   display: flex;
   align-items: center;
@@ -3530,8 +3538,10 @@ button.env-tag.session-log-open-btn {
   position: relative;
   z-index: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.12rem;
   min-width: 2.75rem;
   min-height: 1.35rem;
   padding: 0.25rem 0.5rem;
@@ -3540,6 +3550,18 @@ button.env-tag.session-log-open-btn {
   background: transparent;
   cursor: pointer;
   border-radius: 4px;
+}
+
+.switchboard-viz-user-caption {
+  display: block;
+  max-width: 6.25rem;
+  font-size: 0.58rem;
+  line-height: 1.15;
+  color: rgba(255, 255, 255, 0.52);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .switchboard-viz-user-node:hover .switchboard-viz-user-tick,
@@ -3643,6 +3665,47 @@ button.env-tag.session-log-open-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.switchboard-viz-tool-error-hit {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  max-width: 7.5rem;
+}
+
+.switchboard-viz-tool-error-caption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.04rem;
+  max-width: 7.4rem;
+  text-align: center;
+  font-size: 0.52rem;
+  line-height: 1.12;
+  color: rgba(255, 255, 255, 0.74);
+  word-break: break-word;
+}
+
+.switchboard-viz-tool-error-tool {
+  font-weight: 650;
+  color: rgba(255, 236, 210, 0.95);
+}
+
+.switchboard-viz-tool-error-code {
+  font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+  font-size: 0.48rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  opacity: 0.96;
+}
+
+.switchboard-viz-tool-error-args {
+  font-size: 0.46rem;
+  line-height: 1.1;
+  opacity: 0.82;
+  max-height: 2.35em;
+  overflow: hidden;
 }
 
 .switchboard-viz-tool-error-icon {
@@ -3784,6 +3847,92 @@ button.env-tag.session-log-open-btn {
   text-align: center;
 }
 
+.source-cache-viz-search-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.4rem;
+  font-size: 0.58rem;
+  line-height: 1.35;
+  margin-bottom: 0.35rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: rgba(120, 53, 15, 0.35);
+  color: rgba(254, 243, 199, 0.95);
+}
+
+.source-cache-viz-search-banner-dismiss {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 0.55rem;
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+  cursor: pointer;
+}
+
+.source-cache-viz-search-banner-dismiss:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.source-cache-viz-targeted-search-row {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  align-items: stretch;
+}
+
+.source-cache-viz-targeted-search-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.62rem;
+  padding: 0.25rem 0.35rem;
+  border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(0, 0, 0, 0.25);
+  color: rgba(248, 250, 252, 0.95);
+}
+
+.source-cache-viz-targeted-search-btn {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 0.62rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid rgba(45, 212, 191, 0.45);
+  background: rgba(15, 118, 110, 0.35);
+  color: rgba(240, 253, 250, 0.95);
+  cursor: pointer;
+}
+
+.source-cache-viz-targeted-search-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.source-cache-viz-code {
+  font-size: 0.58rem;
+  word-break: break-all;
+}
+
+.source-cache-viz-link {
+  color: #7dd3fc;
+  text-decoration: none;
+}
+
+.source-cache-viz-link:hover {
+  text-decoration: underline;
+}
+
+.source-cache-viz-targeted-snippet {
+  color: rgba(226, 232, 240, 0.75);
+  font-size: 0.58rem;
+}
+
 .source-cache-viz-tracks {
   list-style: none;
   margin: 0;
@@ -3846,6 +3995,9 @@ button.env-tag.session-log-open-btn {
 }
 .source-cache-viz-chip--waves .source-cache-viz-chip-dot {
   background: #fb923c;
+}
+.source-cache-viz-chip--targeted-search .source-cache-viz-chip-dot {
+  background: #2dd4bf;
 }
 .source-cache-viz-chip--future .source-cache-viz-chip-dot {
   background: rgba(148, 163, 184, 0.4);
@@ -4154,4 +4306,474 @@ button.env-tag.session-log-open-btn {
   font-size: 0.66rem;
   flex-basis: 100%;
   padding-left: 8em;
+}
+
+/* ——— Workshops hub (Tool | Unmet | Source) ——— */
+.workshops-panel {
+  max-width: 52rem;
+  margin: 0 auto;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.workshops-hub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.workshops-hub-tab {
+  padding: 0.32rem 0.65rem;
+  border-radius: 4px;
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  background: rgba(30, 58, 138, 0.25);
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.workshops-hub-tab.is-active {
+  border-color: rgba(147, 197, 253, 0.75);
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.project-workshop-panel {
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.tool-workshop-table-preview {
+  max-width: 14rem;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.78);
+  vertical-align: top;
+}
+
+.tool-workshop-event-escalate {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.65rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(251, 191, 36, 0.95);
+  cursor: pointer;
+}
+
+.tool-workshop-event-escalate:hover {
+  border-color: rgba(251, 191, 36, 0.45);
+}
+
+.unmet-needs-panel {
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.unmet-needs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.unmet-needs-card {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.unmet-needs-card-head {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.unmet-needs-title-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+  font-size: 0.82rem;
+}
+
+.unmet-needs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.unmet-needs-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+}
+
+.unmet-needs-span-2 {
+  grid-column: 1 / -1;
+}
+
+.unmet-needs-excerpt {
+  font-size: 0.75rem;
+  margin: 0.35rem 0;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.unmet-needs-meta {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0.35rem 0 0;
+}
+
+.unmet-needs-code {
+  margin-right: 0.35rem;
+  font-size: 0.68rem;
+}
+
+.source-workshop-panel {
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.source-workshop-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.source-workshop-card {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.source-workshop-card-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+/* ——— Tool Workshop ——— */
+.chat-body-row--tool-workshop {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.5rem 0.75rem 1rem;
+}
+
+.chat-tool-workshop-label {
+  align-items: center;
+}
+
+.chat-workshop-footer-hint {
+  margin: 0.5rem 0.75rem 1rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.tool-workshop-panel {
+  max-width: 52rem;
+  margin: 0 auto;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.tool-workshop-header {
+  margin-bottom: 0.75rem;
+}
+
+.tool-workshop-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+}
+
+.tool-workshop-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.62);
+  line-height: 1.35;
+}
+
+.tool-workshop-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.tool-workshop-tab {
+  padding: 0.28rem 0.55rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.tool-workshop-tab.is-active {
+  border-color: rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.tool-workshop-flash {
+  font-size: 0.82rem;
+  color: rgba(251, 191, 36, 0.95);
+  margin: 0 0 0.5rem;
+}
+
+.tool-workshop-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.tool-workshop-modal {
+  width: 100%;
+  max-width: 26rem;
+  max-height: min(90vh, 32rem);
+  overflow: auto;
+  padding: 1rem 1.1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(22, 22, 28, 0.98);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.tool-workshop-modal h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.tool-workshop-escalate-excerpt {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0 0 0.65rem;
+  line-height: 1.35;
+}
+
+.tool-workshop-escalate-title-input {
+  min-height: unset;
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.tool-workshop-modal select {
+  width: 100%;
+  padding: 0.35rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+  font-size: 0.8rem;
+}
+
+.tool-workshop-section h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+}
+
+.tool-workshop-hint {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0 0 0.5rem;
+}
+
+.tool-workshop-empty {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.tool-workshop-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.tool-workshop-table th,
+.tool-workshop-table td {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.28rem 0.4rem;
+  text-align: left;
+}
+
+.tool-workshop-table-icon {
+  width: 2rem;
+  text-align: center;
+}
+
+.tool-workshop-denied-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.tool-workshop-event-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: min(50vh, 28rem);
+  overflow: auto;
+}
+
+.tool-workshop-event {
+  display: flex;
+  gap: 0.35rem;
+  align-items: flex-start;
+  padding: 0.35rem 0.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.72rem;
+}
+
+.tool-workshop-event--denied {
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.tool-workshop-event-icon {
+  flex-shrink: 0;
+  width: 1.1rem;
+}
+
+.tool-workshop-event-body {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.tool-workshop-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.tool-workshop-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+}
+
+.tool-workshop-form-grid input[type="number"] {
+  padding: 0.25rem 0.35rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+}
+
+.tool-workshop-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  grid-column: 1 / -1;
+}
+
+.tool-workshop-label-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.tool-workshop-textarea {
+  width: 100%;
+  min-height: 6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.78rem;
+}
+
+.tool-workshop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.tool-workshop-ollama {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.tool-workshop-primary {
+  padding: 0.35rem 0.65rem;
+  border-radius: 4px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.18);
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.tool-workshop-proposals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tool-workshop-proposal-card {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 0.6rem 0.65rem;
+  margin-bottom: 0.6rem;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.tool-workshop-proposal-summary {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.tool-workshop-addenda {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tool-workshop-addendum {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.78rem;
+}
+
+.tool-workshop-remove {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }

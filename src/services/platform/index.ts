@@ -15,6 +15,8 @@ export {
   PLATFORM_STORE_FILE,
   PLATFORM_STORE_STORAGE_KEY,
   PLATFORM_STORE_SCHEMA_VERSION,
+  TARGETED_SEARCH_CONFIG_FILE,
+  TARGETED_SEARCH_USAGE_FILE,
 } from "./constants";
 export {
   isPlatformAttributionAvatarId,

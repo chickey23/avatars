@@ -13,6 +13,7 @@ import { runSyntheticAction } from "../services/monitors";
 import { getAvatarPortraitSrc } from "../services/avatarPortrait";
 import { useAppContentView } from "./appContentViewContext";
 import { useAudioVisualPulse } from "./audioVisualPulseContext";
+import { WorkshopsPanel } from "../components/WorkshopsPanel";
 
 export function ChatMainPanel() {
   const m = useAppContentView();
@@ -83,12 +84,25 @@ export function ChatMainPanel() {
                     title="Color for your messages and Chat Visualizer user marker"
                   />
                 </label>
+                <label className="chat-view-mode-label chat-tool-workshop-label">
+                  <input
+                    type="checkbox"
+                    className="chat-switchboard-viz-check"
+                    checked={m.mainSurface === "workshops"}
+                    onChange={(e) =>
+                      m.setMainSurface(e.target.checked ? "workshops" : "chat")
+                    }
+                    aria-label="Open Workshops hub (Tool, Unmet Needs, Source)"
+                  />
+                  <span className="chat-view-mode-label-text">Workshops</span>
+                </label>
                 <label className="chat-view-mode-label">
                   <span className="chat-view-mode-label-text">View</span>
                   <select
                     className="chat-view-mode-select"
                     aria-label="Chat view mode"
                     value={m.chatViewMode}
+                    disabled={m.mainSurface === "workshops"}
                     onChange={(e) =>
                       m.setChatViewMode(e.target.value as ChatViewMode)
                     }
@@ -139,6 +153,18 @@ export function ChatMainPanel() {
               </div>
             </div>
 
+            {m.mainSurface === "workshops" ? (
+              <div className="chat-body-row chat-body-row--tool-workshop">
+                <WorkshopsPanel
+                  workshopTab={m.workshopTab}
+                  setWorkshopTab={m.setWorkshopTab}
+                  ollamaPresence={m.ollamaPresence}
+                  onRefreshOllama={m.refreshOllama}
+                  messages={m.messages}
+                  projectsList={m.projectsList}
+                />
+              </div>
+            ) : (
             <div className="chat-body-row">
             {m.showSwitchboardViz && m.wavesColumnVisible && (
               <>
@@ -156,6 +182,10 @@ export function ChatMainPanel() {
                     reducedMotion={m.reducedMotion}
                     vizDebug={m.vizDebug}
                     rosterEmpty={m.avatars.length === 0}
+                    getUserMessagePreview={(uid) =>
+                      m.messages.find((row) => row.id === uid && row.role === "user")
+                        ?.content
+                    }
                     onActivateUserMessage={(uid) => {
                       const row = m.chatMessagesRef.current?.querySelector(
                         `[data-message-id="${uid}"]`
@@ -703,8 +733,10 @@ export function ChatMainPanel() {
               </>
             )}
             </div>
+            )}
 
-            {(m.pendingTurnCount > 0 ||
+            {m.mainSurface === "chat" &&
+            (m.pendingTurnCount > 0 ||
               (m.showSwitchboardViz && m.wavesColumnVisible && m.vizDebug)) && (
               <div className="chat-pending-bar" role="status" aria-live="polite">
                 {m.showSwitchboardViz && m.wavesColumnVisible && m.vizDebug && (() => {
@@ -735,6 +767,7 @@ export function ChatMainPanel() {
               </div>
             )}
 
+            {m.mainSurface === "chat" && (
             <div
               className="chat-avatar-picker"
               role="group"
@@ -800,7 +833,9 @@ export function ChatMainPanel() {
                 </button>
               )}
             </div>
+            )}
 
+            {m.mainSurface === "chat" ? (
             <div className="chat-input-area">
               <input
                 type="text"
@@ -827,6 +862,11 @@ export function ChatMainPanel() {
                 Send
               </button>
             </div>
+            ) : (
+              <p className="chat-workshop-footer-hint" role="note">
+                Uncheck <strong>Workshops</strong> in the header to return to chat.
+              </p>
+            )}
       </main>
   );
 }

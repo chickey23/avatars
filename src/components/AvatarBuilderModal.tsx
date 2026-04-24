@@ -1,6 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, type ChangeEvent } from "react";
 import type { Avatar } from "../types";
 import { DEFAULT_ROSTER_SCORE } from "../services/avatarRoster";
+import {
+  getAvatarPortraitSrc,
+  readPortraitFileAsDataUrl,
+  MAX_PORTRAIT_FILE_BYTES,
+} from "../services/avatarPortrait";
 import { PERSONALITY_TRAITS, type PersonalityTraitId } from "../theme/designTokens";
 import { AI_RULE_BLOCKS, AI_RULE_SETS } from "../data/aiRulesLibrary";
 
@@ -21,7 +26,15 @@ type Props = {
   /** When editing, roster priority score (0–100) from persisted context. */
   initialRosterScore?: number;
   existingUserAvatars: Avatar[];
-  onSave: (payload: { avatar: Avatar; rosterScore: number }) => void;
+  onSave: (payload: {
+    avatar: Avatar;
+    rosterScore: number;
+    seedPortraitDataUrl?: string | null;
+  }) => void;
+  openPortraitFilePicker: (avatarId: string) => void;
+  clearPortrait: (avatarId: string) => void;
+  portraitFileError: { avatarId: string; message: string } | null;
+  avatarPortraitSrcById: Record<string, string> | undefined;
 };
 
 function splitComma(s: string): string[] {
@@ -75,6 +88,10 @@ export function AvatarBuilderModal({
   initialRosterScore,
   existingUserAvatars,
   onSave,
+  openPortraitFilePicker,
+  clearPortrait,
+  portraitFileError,
+  avatarPortraitSrcById,
 }: Props) {
   const [givenName, setGivenName] = useState("");
   const [appellation, setAppellation] = useState("");
@@ -89,6 +106,24 @@ export function AvatarBuilderModal({
   const [rosterScore, setRosterScore] = useState(DEFAULT_ROSTER_SCORE);
   const [accentColor, setAccentColor] = useState<string>(DEFAULT_SIGNATURE_COLOR);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [seedPortraitDataUrl, setSeedPortraitDataUrl] = useState<string | null>(
+    null
+  );
+  const [seedPortraitError, setSeedPortraitError] = useState<string | null>(null);
+  const seedPortraitInputRef = useRef<HTMLInputElement>(null);
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (open) {
+      if (!wasOpenRef.current) {
+        setSeedPortraitDataUrl(null);
+        setSeedPortraitError(null);
+      }
+      wasOpenRef.current = true;
+    } else {
+      wasOpenRef.current = false;
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open || !initial) return;
@@ -157,6 +192,24 @@ export function AvatarBuilderModal({
       return next;
     });
   }, []);
+
+  const handleSeedPortraitFileChange = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+      const dataUrl = await readPortraitFileAsDataUrl(file);
+      if (!dataUrl) {
+        setSeedPortraitError(
+          `Choose an image under ${Math.floor(MAX_PORTRAIT_FILE_BYTES / (1024 * 1024))} MB.`
+        );
+        return;
+      }
+      setSeedPortraitError(null);
+      setSeedPortraitDataUrl(dataUrl);
+    },
+    []
+  );
 
   const handleSave = useCallback(() => {
     setSaveError(null);
@@ -238,7 +291,11 @@ export function AvatarBuilderModal({
       supplementalRules: supp,
       appearance: { accentColor: accentOut },
     };
-    onSave({ avatar, rosterScore });
+    onSave({
+      avatar,
+      rosterScore,
+      seedPortraitDataUrl: seedPortraitDataUrl ?? undefined,
+    });
     onClose();
   }, [
     initial,
@@ -253,6 +310,7 @@ export function AvatarBuilderModal({
     supplementalRules,
     accentColor,
     existingUserAvatars,
+    seedPortraitDataUrl,
     onSave,
     onClose,
   ]);
@@ -260,6 +318,25 @@ export function AvatarBuilderModal({
   const isEdit = initial?.kind === "edit";
 
   if (!open) return null;
+
+  const portraitSrcForUi =
+    initial?.kind === "edit"
+      ? getAvatarPortraitSrc(
+          avatarPortraitSrcById,
+          initial.avatar.id,
+          initial.avatar.appearance?.portraitUrl
+        )
+      : initial?.kind === "seed"
+        ? seedPortraitDataUrl ?? undefined
+        : undefined;
+  const portraitPickLabel =
+    initial?.kind === "edit"
+      ? `Choose portrait image for ${initial.avatar.givenName}`
+      : "Choose portrait image for new avatar";
+  const portraitRemoveLabel =
+    initial?.kind === "edit"
+      ? `Remove portrait for ${initial.avatar.givenName}`
+      : "Clear chosen portrait";
 
   return (
     <div
@@ -341,6 +418,92 @@ export function AvatarBuilderModal({
             onChange={(e) => setInterestsStr(e.target.value)}
           />
         </label>
+        {initial != null && (
+          <div className="avatar-builder-label">
+            <span>Portrait</span>
+            <p className="avatar-builder-signature-hint">
+              {initial.kind === "edit"
+                ? "Choosing a file updates the session portrait immediately."
+                : "Optional — stored when you save this new avatar."}
+            </p>
+            {initial.kind === "seed" && (
+              <input
+                ref={seedPortraitInputRef}
+                type="file"
+                accept="image/*"
+                className="avatar-portrait-file-input"
+                aria-hidden
+                tabIndex={-1}
+                onChange={handleSeedPortraitFileChange}
+              />
+            )}
+            <div className="avatar-portrait-row">
+              <span className="avatar-portrait avatar-portrait--large" aria-hidden="true">
+                {portraitSrcForUi ? (
+                  <img
+                    src={portraitSrcForUi}
+                    alt=""
+                    className="avatar-portrait-img"
+                  />
+                ) : (
+                  <span
+                    className="avatar-portrait-fallback"
+                    style={{
+                      background:
+                        normalizeHex6(accentColor) ?? DEFAULT_SIGNATURE_COLOR,
+                    }}
+                  >
+                    {givenName.trim().charAt(0).toUpperCase() || "?"}
+                  </span>
+                )}
+              </span>
+              <div className="avatar-portrait-actions">
+                <button
+                  type="button"
+                  className="avatar-portrait-choose"
+                  aria-label={portraitPickLabel}
+                  onClick={() => {
+                    if (initial.kind === "edit") {
+                      openPortraitFilePicker(initial.avatar.id);
+                    } else {
+                      seedPortraitInputRef.current?.click();
+                    }
+                  }}
+                >
+                  Choose image…
+                </button>
+                {portraitSrcForUi && (
+                  <button
+                    type="button"
+                    className="avatar-portrait-remove"
+                    aria-label={portraitRemoveLabel}
+                    onClick={() => {
+                      if (initial.kind === "edit") {
+                        clearPortrait(initial.avatar.id);
+                      } else {
+                        setSeedPortraitDataUrl(null);
+                        setSeedPortraitError(null);
+                      }
+                    }}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+            {initial.kind === "edit" &&
+              portraitFileError?.avatarId === initial.avatar.id && (
+                <p className="avatar-portrait-error" role="status">
+                  {portraitFileError.message}
+                </p>
+              )}
+            {initial.kind === "seed" && seedPortraitError && (
+              <p className="avatar-portrait-error" role="status">
+                {seedPortraitError}
+              </p>
+            )}
+          </div>
+        )}
         <div className="avatar-builder-label">
           <span>Signature color</span>
           <p className="avatar-builder-signature-hint">

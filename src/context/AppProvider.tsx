@@ -85,10 +85,16 @@ import {
   enqueueVoiceSnippet,
 } from "../services/audio";
 import { AUDIO_SNIPPET_IDS, voiceProfileIdForAvatar } from "../services/audio/cueRegistry";
+import { getOllamaPresence } from "../services/ollama";
+import {
+  evaluateAutoRefinerTrigger,
+  runToolWorkshopRefiner,
+} from "../services/toolWorkshop";
 
 export type { SendMessageOptions } from "./app-context";
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const toolRefinerBusyRef = useRef(false);
   const [state, setState] = useState(getInitialState);
   const [pendingTurnCount, setPendingTurnCount] = useState(0);
   const [processingUserMessageId, setProcessingUserMessageId] = useState<
@@ -420,6 +426,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rosterScoresKey,
   ]);
 
+  /** Tool Workshop: auto refiner on interval / failure delta when enabled. */
+  useEffect(() => {
+    const tick = async () => {
+      if (toolRefinerBusyRef.current) return;
+      const decision = evaluateAutoRefinerTrigger(Date.now());
+      if (!decision.run) return;
+      const presence = await getOllamaPresence();
+      if (presence !== "ready") return;
+      toolRefinerBusyRef.current = true;
+      try {
+        await runToolWorkshopRefiner();
+      } finally {
+        toolRefinerBusyRef.current = false;
+      }
+    };
+    const id = window.setInterval(() => {
+      void tick();
+    }, 60_000);
+    void tick();
+    return () => window.clearInterval(id);
+  }, []);
+
   const handleSendMessage = useCallback(
     async (
       content: string,
@@ -526,11 +554,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   userMessageId: uid,
                   message,
                   detail,
+                  toolId,
+                  errorCode,
+                  argsPreview,
                   sourceEmailId,
                 }) => {
                   appendSessionLog("switchboard", "tool_resolution_error", {
                     level: "warn",
-                    detail: `${avatarId}: ${message}${detail ? ` — ${detail}` : ""}`,
+                    detail: `${avatarId}: ${message}${
+                      toolId || errorCode
+                        ? ` [${[toolId, errorCode].filter(Boolean).join(" · ")}]`
+                        : ""
+                    }${argsPreview ? ` — args ${argsPreview.slice(0, 160)}${argsPreview.length > 160 ? "…" : ""}` : ""}${detail ? ` — ${detail}` : ""}`,
                   });
                   setWavesQueue((prev) => {
                     const next = appendToolResolutionErrorEntry(prev, {
@@ -538,6 +573,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       avatarId,
                       message,
                       detail,
+                      toolId,
+                      errorCode,
+                      argsPreview,
                       sourceEmailId,
                     });
                     schedulePersistWaves(next);

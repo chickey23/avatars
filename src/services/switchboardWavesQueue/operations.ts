@@ -74,6 +74,17 @@ export function appendWorldviewEntry(
   return [...entries, row];
 }
 
+const WAVES_TOOL_ERROR_ARGS_MAX = 520;
+
+function clampWavesArgsPreview(s: string | undefined): string | undefined {
+  if (!s) return undefined;
+  const t = s.trim();
+  if (!t) return undefined;
+  return t.length > WAVES_TOOL_ERROR_ARGS_MAX
+    ? `${t.slice(0, WAVES_TOOL_ERROR_ARGS_MAX - 1)}…`
+    : t;
+}
+
 export function appendToolResolutionErrorEntry(
   entries: WavesQueueEntry[],
   args: {
@@ -81,6 +92,9 @@ export function appendToolResolutionErrorEntry(
     avatarId: string;
     message: string;
     detail?: string;
+    toolId?: string;
+    errorCode?: string;
+    argsPreview?: string;
     sourceEmailId?: string;
   }
 ): WavesQueueEntry[] {
@@ -92,6 +106,9 @@ export function appendToolResolutionErrorEntry(
     avatarId: args.avatarId,
     message: args.message,
     detail: args.detail,
+    toolId: args.toolId?.trim() || undefined,
+    errorCode: args.errorCode?.trim() || undefined,
+    argsPreview: clampWavesArgsPreview(args.argsPreview),
     settled: true,
     sourceEmailId: args.sourceEmailId,
   };

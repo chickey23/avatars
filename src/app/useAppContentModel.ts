@@ -373,8 +373,12 @@ export function useAppContentModel() {
   );
 
   const handleAvatarBuilderSave = useCallback(
-    (payload: { avatar: Avatar; rosterScore: number }) => {
-      const { avatar, rosterScore } = payload;
+    (payload: {
+      avatar: Avatar;
+      rosterScore: number;
+      seedPortraitDataUrl?: string | null;
+    }) => {
+      const { avatar, rosterScore, seedPortraitDataUrl } = payload;
       const nextScores = {
         ...(situationContext.avatarRosterPriorityScoreById ?? {}),
       };
@@ -382,11 +386,21 @@ export function useAppContentModel() {
         0,
         Math.min(100, Math.round(rosterScore))
       );
+      const portraitCtx =
+        seedPortraitDataUrl != null && seedPortraitDataUrl !== ""
+          ? {
+              avatarPortraitSrcById: {
+                ...(situationContext.avatarPortraitSrcById ?? {}),
+                [avatar.id]: seedPortraitDataUrl,
+              },
+            }
+          : {};
       if (isDefaultAvatarId(avatar.id)) {
         const prev = situationContext.builtinAvatarEdits ?? {};
         patchSituationContext({
           builtinAvatarEdits: { ...prev, [avatar.id]: avatar },
           avatarRosterPriorityScoreById: nextScores,
+          ...portraitCtx,
         });
         return;
       }
@@ -398,11 +412,13 @@ export function useAppContentModel() {
         patchSituationContext({
           userAvatars: next,
           avatarRosterPriorityScoreById: nextScores,
+          ...portraitCtx,
         });
       } else {
         patchSituationContext({
           userAvatars: [...userPrev, avatar],
           avatarRosterPriorityScoreById: nextScores,
+          ...portraitCtx,
         });
       }
     },
@@ -410,6 +426,7 @@ export function useAppContentModel() {
       situationContext.userAvatars,
       situationContext.builtinAvatarEdits,
       situationContext.avatarRosterPriorityScoreById,
+      situationContext.avatarPortraitSrcById,
       patchSituationContext,
     ]
   );
@@ -432,7 +449,6 @@ export function useAppContentModel() {
     | "email"
     | "calendar"
     | "contacts"
-    | "projects"
     | "user"
     | "worldview"
     | "well"
@@ -581,6 +597,27 @@ export function useAppContentModel() {
     });
   }, [focus, patchSituationContext, situationContext.recentEvents]);
   const [chatViewMode, setChatViewMode] = useState<ChatViewMode>("chat");
+  const WORKSHOP_TAB_STORAGE_KEY = "avatars_workshop_subtab";
+  type WorkshopTab = "tool" | "unmet" | "source" | "projects";
+  const [mainSurface, setMainSurface] = useState<"chat" | "workshops">("chat");
+  const [workshopTab, setWorkshopTabState] = useState<WorkshopTab>(() => {
+    try {
+      const s = sessionStorage.getItem(WORKSHOP_TAB_STORAGE_KEY);
+      if (s === "tool" || s === "unmet" || s === "source" || s === "projects")
+        return s;
+    } catch {
+      /* ignore */
+    }
+    return "tool";
+  });
+  const setWorkshopTab = useCallback((t: WorkshopTab) => {
+    setWorkshopTabState(t);
+    try {
+      sessionStorage.setItem(WORKSHOP_TAB_STORAGE_KEY, t);
+    } catch {
+      /* ignore */
+    }
+  }, []);
   const [ollamaPresence, setOllamaPresence] = useState<
     "checking" | OllamaPresence
   >("checking");
@@ -1218,7 +1255,7 @@ export function useAppContentModel() {
       console.warn("[assign-task] project has empty title", { taskProjectId, proj });
       setTaskAssignStatus({
         kind: "warn",
-        text: "That project has no title; edit it under Context → Projects.",
+        text: "That project has no title; edit it under Workshops → Projects.",
       });
       return;
     }
@@ -1226,7 +1263,7 @@ export function useAppContentModel() {
     if (!task) {
       setTaskAssignStatus({
         kind: "warn",
-        text: "Could not link that project (missing title or not in Context).",
+        text: "Could not link that project (missing title or not in Workshops).",
       });
       return;
     }
@@ -1353,6 +1390,8 @@ export function useAppContentModel() {
     inputValue,
     maxPrimarySlotOptions,
     mergeAssignedTaskIdOntoAvatar,
+    mainSurface,
+    workshopTab,
     messageIdsKey,
     messagePlaceholder,
     messages,
@@ -1407,6 +1446,8 @@ export function useAppContentModel() {
     setChatSkin,
     setChatViewMode,
     setChatVizWidthPx,
+    setMainSurface,
+    setWorkshopTab,
     setContacts,
     setContactsError,
     setContactsLoading,

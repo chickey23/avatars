@@ -30,6 +30,10 @@ export function AppOverlays() {
         }
         existingUserAvatars={m.situationContext.userAvatars ?? []}
         onSave={m.handleAvatarBuilderSave}
+        openPortraitFilePicker={m.openPortraitFilePicker}
+        clearPortrait={m.clearPortrait}
+        portraitFileError={m.portraitFileError}
+        avatarPortraitSrcById={m.situationContext.avatarPortraitSrcById}
       />
     </>
   );

@@ -12,9 +12,11 @@ const ALLOWED_FILENAMES: &[&str] = &[
     "source_cache.contacts.json",
     "platform_store.json",
     "platform_drafts.json",
+    "targeted_search_config.json",
+    "targeted_search_usage.json",
 ];
 
-fn platform_data_dir() -> Result<PathBuf, String> {
+pub(crate) fn platform_data_dir() -> Result<PathBuf, String> {
     let base = dirs::data_local_dir().ok_or("no local data directory (dirs::data_local_dir)")?;
     let dir = base.join("avatars").join("data").join("platform");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -26,6 +28,20 @@ fn resolve_path(filename: &str) -> Result<PathBuf, String> {
         return Err(format!("platform_cache: filename not allowed: {filename}"));
     }
     Ok(platform_data_dir()?.join(filename))
+}
+
+/// Same allowlist as the Tauri commands; for in-crate callers (e.g. targeted search).
+pub(crate) fn read_platform_file(filename: &str) -> Result<Option<String>, String> {
+    let path = resolve_path(filename)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
+}
+
+pub(crate) fn write_platform_file(filename: &str, payload: &str) -> Result<(), String> {
+    let path = resolve_path(filename)?;
+    atomic_write(&path, payload)
 }
 
 fn atomic_write(path: &Path, payload: &str) -> Result<(), String> {
@@ -40,18 +56,13 @@ fn atomic_write(path: &Path, payload: &str) -> Result<(), String> {
 /// Returns file contents when present, `None` when the file does not exist.
 #[tauri::command]
 pub fn platform_cache_read(filename: String) -> Result<Option<String>, String> {
-    let path = resolve_path(&filename)?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    fs::read_to_string(&path).map(Some).map_err(|e| e.to_string())
+    read_platform_file(&filename)
 }
 
 /// Atomic replace-write. Caller supplies a fully-formed JSON payload.
 #[tauri::command]
 pub fn platform_cache_write(filename: String, payload: String) -> Result<(), String> {
-    let path = resolve_path(&filename)?;
-    atomic_write(&path, &payload)
+    write_platform_file(&filename, &payload)
 }
 
 /// Directory for user diagnostics ("where are my caches?"). Best-effort string.

@@ -62,3 +62,7 @@ export const PLATFORM_STORE_SCHEMA_VERSION = 1 as const;
 export const PLATFORM_DRAFTS_FILE = "platform_drafts.json";
 export const PLATFORM_DRAFTS_STORAGE_KEY = "avatars_platform_drafts_v1";
 export const PLATFORM_DRAFTS_SCHEMA_VERSION = 1 as const;
+
+/** Targeted multi-provider search (wikis → Wikipedia → Tavily → Google CSE). */
+export const TARGETED_SEARCH_CONFIG_FILE = "targeted_search_config.json";
+export const TARGETED_SEARCH_USAGE_FILE = "targeted_search_usage.json";

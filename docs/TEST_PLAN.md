@@ -26,6 +26,8 @@ Or: `npm run test -- --run` if you only need Vitest. The verify script also cove
 | A8 | **Waves — parse warning** | With malformed tool output: orange **!** worldview tick, tooltip mentions parse; scroll-to-turn still works. |
 | A9 | **WV log** tab | Entries list tool results; **Revert bad patches** only on rows with revert data; confirm dialog; projects/profile refresh. |
 | A10 | **Clear chat** | Thread clears; waves queue resets (per session log note). |
+| A11 | **Waves — denied / failed tool** (optional) | When the model returns tools but execution fails (e.g. `permission_denied`, `permission_denied_projects`), you can determine **which tool** and **why** via **Waves** tooltip, **Model reply / tools parse**, and/or **WV log**; after [PROGRESS.md](../PROGRESS.md) “Operability” work, the column should show **error code** and **non-secret arg preview** without relying on the session log alone. |
+| A12 | **Audio + visual cue** (optional) | A cue that plays sound also produces a **visible** pulse (e.g. `audio-visual-cue-active` on the main region or a column) unless **focus mode** / **reduced motion** / a documented exception applies. |
 
 ## 3. Structured tools & world metadata (Ollama required)
 
@@ -51,9 +53,10 @@ Or: `npm run test -- --run` if you only need Vitest. The verify script also cove
 
 ## 6. Quick smoke order (5–10 min)
 
-1. `npm run verify`  
+1. `npm run verify` (if you use [`start-dev.cmd`](../start-dev.cmd) without `SKIP_VERIFY=1`, you already ran verify on that launch; still run it yourself before merge if you need an explicit pass after edits.)  
 2. A3 + A5 + A7  
 3. B1 or B2 once if you use world tools  
 4. A9 if you care about audit revert  
+5. A11 and/or A12 if you touched **Waves** / **permissions** / **audio** paths  
 
-Full depth: run the checklist in [HANDOFF_TOMORROW.md](../HANDOFF_TOMORROW.md) **Verification checklist** plus rows **A6–A8** above.
+Full depth: run the checklist in [HANDOFF_TOMORROW.md](../HANDOFF_TOMORROW.md) **Verification checklist** plus rows **A6–A8** and (when relevant) **A11–A12** above.

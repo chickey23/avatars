@@ -178,6 +178,26 @@ describe("switchboardWavesQueue operations", () => {
     });
   });
 
+  it("appendToolResolutionErrorEntry stores toolId, errorCode, clamped argsPreview", () => {
+    let e: WavesQueueEntry[] = [];
+    e = appendToolResolutionErrorEntry(e, {
+      userMessageId: "u1",
+      avatarId: "muse",
+      message: "gmail.fetch_message_body: permission_denied",
+      toolId: "gmail.fetch_message_body",
+      errorCode: "permission_denied",
+      argsPreview: "x".repeat(800),
+    });
+    const row = e[0];
+    expect(row?.kind).toBe("tool_error");
+    if (row?.kind === "tool_error") {
+      expect(row.toolId).toBe("gmail.fetch_message_body");
+      expect(row.errorCode).toBe("permission_denied");
+      expect(row.argsPreview?.length).toBe(520);
+      expect(row.argsPreview?.endsWith("…")).toBe(true);
+    }
+  });
+
   it("appendSystemCommandEntry counts lifecycle status buckets", () => {
     let e: WavesQueueEntry[] = appendUserEntry([], "u1");
     e = appendSystemCommandEntry(e, {

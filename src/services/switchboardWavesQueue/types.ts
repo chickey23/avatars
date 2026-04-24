@@ -43,6 +43,12 @@ export type WavesToolErrorEntry = WavesQueueEntryBase & {
   avatarId: string;
   message: string;
   detail?: string;
+  /** Stable tool id when known (e.g. gmail.fetch_message_body, lexical). */
+  toolId?: string;
+  /** Machine-oriented code (e.g. permission_denied, malformed). */
+  errorCode?: string;
+  /** Truncated non-secret args (JSON or line preview). */
+  argsPreview?: string;
   settled: true;
   sourceEmailId?: string;
 };

@@ -302,6 +302,9 @@ export type ProcessUserTurnUiHooks = {
     userMessageId: string;
     message: string;
     detail?: string;
+    toolId?: string;
+    errorCode?: string;
+    argsPreview?: string;
     sourceEmailId?: string;
   }) => void;
   /** Heuristic: model tried tools but reply did not parse as avatars_tools_v1. */

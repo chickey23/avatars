@@ -9,6 +9,7 @@ import type {
   OllamaPromptDebug,
   SituationContext,
   WorldviewActivityAction,
+  WorldviewToolResolutionFailure,
 } from "../types";
 import { getRecentConversation } from "./situationContext";
 import { getTasksForAvatar } from "./longTermTasks";
@@ -28,6 +29,7 @@ import {
   splitWorldviewToolsFromReply,
   type WorldviewToolCall,
 } from "./worldviewTools/parse";
+import { summarizePatchProjectsForActivity } from "./worldviewTools/patchProjectsSummary";
 import {
   diagnoseWorldviewToolReply,
   formatWorldviewParseDiagnosisForLog,
@@ -50,6 +52,8 @@ import {
   scanLexicalMalformedTriggers,
   stripLexicalToolSyntaxFromVisible,
 } from "./agenticTools";
+import { renderWorkshopGuidanceForPrompt } from "./toolWorkshop";
+import { recordToolTelemetryForOllamaTurn } from "./toolTelemetry";
 
 /** Machine token: reply with exactly this (alone) when you have nothing to add (single-wave mode). */
 export const AVATARS_NO_COMMENT = "AVATARS_NO_COMMENT";
@@ -150,9 +154,7 @@ function summarizeExecutedPatchTool(t: WorldviewToolCall): string {
     }
     case "world_metadata.patch_projects": {
       const patch = t.args.patch as Record<string, unknown> | undefined;
-      const n = patch ? Object.keys(patch).length : 0;
-      const ids = patch ? Object.keys(patch).slice(0, 4).join(", ") : "";
-      return clampActSummary(`${n} project(s)${ids ? `: ${ids}` : ""}`);
+      return summarizePatchProjectsForActivity(patch);
     }
     case "world_metadata.patch_people": {
       const patch = t.args.patch as Record<string, unknown> | undefined;
@@ -182,6 +184,40 @@ function dedupeResolutionErrors(errs: string[]): string[] {
     out.push(t);
   }
   return out;
+}
+
+function dedupeResolutionFailures(
+  failures: WorldviewToolResolutionFailure[]
+): WorldviewToolResolutionFailure[] {
+  const out: WorldviewToolResolutionFailure[] = [];
+  const seen = new Set<string>();
+  for (const f of failures) {
+    const tool = f.tool.trim() || "(unknown)";
+    const err = f.error.trim() || "failed";
+    const ap = f.argsPreview?.trim() ?? "";
+    const key = `${tool}\0${err}\0${ap}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      tool,
+      error: err,
+      argsPreview: f.argsPreview?.trim() || undefined,
+    });
+  }
+  return out;
+}
+
+function failuresToLegacyErrorStrings(
+  failures: WorldviewToolResolutionFailure[]
+): string[] {
+  return failures.map((f) => {
+    const ap = f.argsPreview;
+    if (!ap) return `${f.tool}: ${f.error}`;
+    const oneLine = ap.replace(/\s+/g, " ").trim();
+    const short =
+      oneLine.length > 100 ? `${oneLine.slice(0, 97).trimEnd()}…` : oneLine;
+    return `${f.tool}: ${f.error} (${short})`;
+  });
 }
 
 /** Models often omit the middle "S" or add markdown / punctuation around the token. */
@@ -294,10 +330,14 @@ export async function runAvatarAgent(
     const isExec =
       Boolean(ctx.executorAvatarIdForTurn) &&
       ctx.executorAvatarIdForTurn === avatar.id;
-    const toolsInstr = buildWorldviewToolsPrompt(
+    const toolsBase = buildWorldviewToolsPrompt(
       isExec,
       managedProjectIdsForAvatar(avatar.id)
     );
+    const workshopBlock = renderWorkshopGuidanceForPrompt();
+    const toolsInstr = workshopBlock
+      ? `${toolsBase}\n\n${workshopBlock}`
+      : toolsBase;
     const rulesWithTools = rulesText?.trim()
       ? `${rulesText.trim()}\n\n${toolsInstr}`
       : toolsInstr;
@@ -340,7 +380,13 @@ export async function runAvatarAgent(
     const gen = await generateWithOllama({ prompt: fullPrompt });
     if (gen.ok) {
       const lexicalMalformed = scanLexicalMalformedTriggers(gen.text);
-      const resolutionErrors: string[] = [...lexicalMalformed];
+      const resolutionFailures: WorldviewToolResolutionFailure[] =
+        lexicalMalformed.map((issue) => ({
+          tool: "lexical",
+          error: "malformed",
+          argsPreview:
+            issue.length > 280 ? `${issue.slice(0, 279)}…` : issue,
+        }));
       const activityActions: WorldviewActivityAction[] = [];
       const activityNames = new Set<string>();
 
@@ -394,7 +440,11 @@ export async function runAvatarAgent(
                 summary: summarizeExecutedPatchTool(t),
               });
             } else {
-              resolutionErrors.push(`${t.name}: ${r.error ?? "failed"}`);
+              resolutionFailures.push({
+                tool: t.name,
+                error: r.error ?? "failed",
+                argsPreview: formatWorldviewToolArgsForAudit(t),
+              });
             }
           }
           combinedPatchResults.push(...r1);
@@ -435,9 +485,11 @@ export async function runAvatarAgent(
                 summary: summarizeFetchToolLine(messageId, true),
               });
             } else {
-              resolutionErrors.push(
-                `${t.name}: ${r.error ?? "failed"}${messageId ? ` (${messageId.slice(0, 40)})` : ""}`
-              );
+              resolutionFailures.push({
+                tool: t.name,
+                error: r.error ?? "failed",
+                argsPreview: formatWorldviewToolArgsForAudit(t),
+              });
             }
           }
 
@@ -497,7 +549,11 @@ export async function runAvatarAgent(
                         summary: summarizeExecutedPatchTool(t),
                       });
                     } else {
-                      resolutionErrors.push(`${t.name}: ${r.error ?? "failed"}`);
+                      resolutionFailures.push({
+                        tool: t.name,
+                        error: r.error ?? "failed",
+                        argsPreview: formatWorldviewToolArgsForAudit(t),
+                      });
                     }
                   }
                   combinedPatchResults.push(...r2);
@@ -574,12 +630,38 @@ export async function runAvatarAgent(
           : undefined;
 
       finalVisible = stripLexicalToolSyntaxFromVisible(finalVisible);
-      const toolResolutionErrors =
-        resolutionErrors.length > 0
-          ? dedupeResolutionErrors(resolutionErrors)
-          : undefined;
+      const dedupedFailures = dedupeResolutionFailures(resolutionFailures);
+      const toolResolutionFailures =
+        dedupedFailures.length > 0 ? dedupedFailures : undefined;
+      const toolResolutionErrors = toolResolutionFailures
+        ? dedupeResolutionErrors(
+            failuresToLegacyErrorStrings(toolResolutionFailures)
+          )
+        : undefined;
 
       const suppressUserMessage = isAvatarsNoCommentOnly(finalVisible);
+
+      const successNames =
+        worldviewActivity?.names ?? worldviewToolSummary?.names ?? [];
+      const actionPreviewByTool = new Map(
+        (worldviewActivity?.actions ?? []).map((a) => [a.tool, a.summary])
+      );
+      const telemetrySuccesses = successNames.map((toolId) => ({
+        toolId,
+        resultPreview: actionPreviewByTool.get(toolId),
+      }));
+
+      recordToolTelemetryForOllamaTurn({
+        avatarId: avatar.id,
+        userMessageId: ctx.replyToUserMessageId,
+        successes: telemetrySuccesses,
+        failures: toolResolutionFailures,
+        parseHints:
+          parseDiagnosis.hints.length > 0 ? parseDiagnosis.hints : undefined,
+        hadMergedToolCalls: mergedFinal.length > 0,
+        isExecutor: isExec,
+        switchboardRoutingMode: ctx.switchboardRoutingMode,
+      });
 
       return {
         content: finalVisible,
@@ -588,6 +670,7 @@ export async function runAvatarAgent(
         worldviewToolSummary,
         worldviewActivity,
         toolResolutionErrors,
+        toolResolutionFailures,
         worldviewParseDiagnosis,
         suppressUserMessage,
       };

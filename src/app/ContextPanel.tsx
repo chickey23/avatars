@@ -156,14 +156,6 @@ export function ContextPanel() {
           </button>
           <button
             type="button"
-            className={`context-tab ${m.contextTab === "projects" ? "active" : ""}`}
-            onClick={() => m.setContextTab("projects")}
-            title="Shared project list (local metadata)"
-          >
-            Projects
-          </button>
-          <button
-            type="button"
             className={`context-tab ${m.contextTab === "user" ? "active" : ""}`}
             onClick={() => m.setContextTab("user")}
             title="Your name, pronouns, and notes for prompts"
@@ -482,97 +474,6 @@ export function ContextPanel() {
               </button>
             </div>
           )}
-          {m.contextTab === "projects" && (
-            <div className="context-projects">
-              <p className="context-projects-hint">
-                Local shared metadata (this browser). For future project execution
-                and context.
-              </p>
-              <div className="context-projects-add">
-                <input
-                  type="text"
-                  className="context-projects-title-input"
-                  placeholder="Project title…"
-                  value={m.newProjectTitle}
-                  onChange={(e) => m.setNewProjectTitle(e.target.value)}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && (e.preventDefault(), m.handleAddWorldProject())
-                  }
-                  aria-label="New project title"
-                />
-                <textarea
-                  className="context-projects-notes-input"
-                  placeholder="Summary for prompts (optional)"
-                  value={m.newProjectSummary}
-                  onChange={(e) => m.setNewProjectSummary(e.target.value)}
-                  rows={2}
-                  aria-label="New project summary"
-                />
-                <textarea
-                  className="context-projects-notes-input"
-                  placeholder="Notes (optional)"
-                  value={m.newProjectNotes}
-                  onChange={(e) => m.setNewProjectNotes(e.target.value)}
-                  rows={2}
-                  aria-label="New project notes"
-                />
-                <button
-                  type="button"
-                  className="context-projects-add-btn"
-                  onClick={m.handleAddWorldProject}
-                  disabled={!m.newProjectTitle.trim()}
-                >
-                  Add project
-                </button>
-              </div>
-              {m.projectsList.length === 0 ? (
-                <p className="context-empty">No projects yet.</p>
-              ) : (
-                <ul className="wm-project-list">
-                  {m.projectsList.map(([id, proj]) => (
-                    <li
-                      key={id}
-                      className={`wm-project-item ${
-                        m.focus.project?.id === id ? "focused" : ""
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="wm-project-select"
-                        onClick={() =>
-                          m.setFocus((f) => ({
-                            ...f,
-                            project: { id, title: proj.title },
-                          }))
-                        }
-                        aria-label={`Set focus to project ${proj.title}`}
-                      >
-                        <span className="wm-project-title">{proj.title}</span>
-                        {proj.summary?.trim() && (
-                          <span className="wm-project-summary">{proj.summary.trim()}</span>
-                        )}
-                        {proj.notes?.trim() && (
-                          <span className="wm-project-notes">{proj.notes.trim()}</span>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        className="wm-project-remove"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          m.handleRemoveWorldProject(id);
-                        }}
-                        aria-label={`Remove ${proj.title}`}
-                        title="Remove from list"
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
           {m.contextTab === "well" && (
             <div className="context-well">
               <WellOfSouls
@@ -638,8 +539,7 @@ export function ContextPanel() {
           const depthKey =
             m.contextTab === "email" ||
             m.contextTab === "calendar" ||
-            m.contextTab === "contacts" ||
-            m.contextTab === "projects"
+            m.contextTab === "contacts"
               ? m.contextTab
               : null;
           if (!depthKey) return null;
@@ -650,9 +550,7 @@ export function ContextPanel() {
               ? `${m.contextEntryBudgets.emailTopK} emails`
               : depthKey === "calendar"
                 ? `${m.contextEntryBudgets.calendarTopK} events`
-                : depthKey === "contacts"
-                  ? `${m.contextEntryBudgets.contactsTopK} m.contacts`
-                  : `${m.contextEntryBudgets.projectExtraTopK} extra`;
+                : `${m.contextEntryBudgets.contactsTopK} m.contacts`;
           return (
             <div className="context-entry-depth">
               <div className="context-entry-depth-row">
