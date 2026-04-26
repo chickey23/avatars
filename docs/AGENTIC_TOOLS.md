@@ -64,6 +64,12 @@ Denied tools return `permission_denied` in [executeWorldviewTools](../src/servic
 
 **Telemetry:** successful tool rows may record `turnIntent` and `correctToolForIntent` (heuristic match vs [turnToolIntent.ts](../src/services/turnToolIntent.ts)). The Tool Workshop **Overview** shows a global intent-match summary and an **Intent match by avatar** table when data exists ([`computeToolIntentCorrectness`](../src/services/toolTelemetry/store.ts), [`computeToolIntentCorrectnessByAvatar`](../src/services/toolTelemetry/store.ts)).
 
+## Complex requests and task splitting
+
+Tool telemetry is a signal, not the whole solution. When a request requires several coordinated outcomes, the system should prefer project/task decomposition over asking one avatar to emit a large or repeated tool payload.
+
+Example: “create three named avatars” should become a project-level goal plus one task per avatar. Each task can name the required capability (`tool_owner:avatar_creation`), track research/form-fill/review state, and record whether failure came from bad tool syntax, missing permission, missing source evidence, or user approval needs. Parser repair and prompt addenda are still useful, but repeated misuse should also update task state or capability assignment.
+
 ## Routing: single-wave + no-comment + preflight
 
 - **`switchboardRoutingMode: "single_wave"`** — One responder wave per user turn; no opinion-matrix cascade ([switchboard.ts](../src/services/switchboard.ts)).

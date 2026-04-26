@@ -13,6 +13,17 @@ The **Workshops** surface (header checkbox) replaces the older single **Tool Wor
 | **Creation** | Well of Souls and internet-assisted avatar creation flow. |
 | **Stewardship** | Assign avatar-held operational **Stewardships** and tool **Capabilities** without editing raw system tags. |
 
+## Creation research priority
+
+The Creation tab supports the app objective that Avatars are extensible individuals, including named historical, fictional, or public-reference characters. The next quality pass should make search-result-driven form completion dependable instead of merely convenient.
+
+Planned improvements:
+
+- Field-specific searches should use stronger entity disambiguation, aliases, and source-family hints rather than only broad terms such as “personality” or “backstory.”
+- Empty or weak fields should trigger targeted follow-up searches before the builder accepts sparse results.
+- Filled fields should carry confidence and source evidence so the user can see what came from search results and what still needs judgment.
+- Reference sources remain read-only supplemental inputs for avatar/persona construction; they should improve creation quality without becoming required for ordinary chat.
+
 ## Stewardship and capabilities
 
 User-facing terminology separates two concepts that used to share internal “contract” language:

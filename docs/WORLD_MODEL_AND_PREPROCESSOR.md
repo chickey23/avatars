@@ -28,6 +28,10 @@ SQLite/Tauri on-disk persistence for metadata is **out of scope** until SPEC/Tec
 
 **Workflow state contract:** Platform tasks are the execution grain for autonomous / cooperative work. A task may record a richer `workflowStatus`, `nextActor`, `requiredCapability`, `approval`, `blockers`, and `completionEvidence` in the durable platform store while the legacy `status` remains the compatibility field for scheduler and existing UI paths. Local project/task metadata changes are allowed autonomously; external side effects, private data access, destructive actions, and user-only steps must be represented as approval, missing capability, or `waiting_for_user` state instead of being executed silently. `LongTermTask` remains a thin stewardship / routing view; do not put the rich workflow state there unless the platform store has already changed.
 
+**Complex task handling priority:** The next project-execution step is task splitting. A broad user request should create or update a **Project** that captures the goal and then produce one or more execution **Tasks** with owners, required capabilities, and completion criteria. For example, “create three named avatars” should become one avatar-creation project plus three per-avatar tasks. Each task can run research, form-fill, review, and save steps independently. This keeps the **Project** as the durable context while the **Task** is the unit that an avatar, steward, or future background agent can actually complete.
+
+Tool misuse should feed this loop. If a steward avatar emits the wrong tool shape or tries to use a capability it does not own, record the failure via tool telemetry, then decide whether the issue is (1) bad prompt/tool instructions, (2) missing capability assignment, (3) a request that needs decomposition, or (4) a step that must wait for the user. The fix should not be limited to parser repair when the user intent is genuinely multi-step.
+
 ```mermaid
 flowchart LR
   subgraph wm [WorldMetadata]
@@ -92,4 +96,4 @@ sequenceDiagram
 
 ## Agentic roadmap (later)
 
-Stronger **Project agents**, autonomous gathering, and summarization are **not** prerequisites for schema + UI + preprocessor **v1**; document extension points when implementing hooks.
+Stronger **Project agents**, autonomous gathering, and summarization are **not** prerequisites for schema + UI + preprocessor **v1**; document extension points when implementing hooks. The near-term priority is narrower: split complex user goals into platform tasks, route by capability/stewardship, and keep the user-visible project context coherent.

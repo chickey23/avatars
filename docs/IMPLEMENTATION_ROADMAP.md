@@ -13,7 +13,7 @@
 3. **UI:** Component beside chat (`SwitchboardViz`); default Chat remains readable when the column is off.
 4. **Docs:** SPEC § Implemented UI / PROGRESS / this file updated.
 
-**Immediate next focus:** Phases **B–C** (avatar builder usage, **`assignedTasks`**, shared metadata / **Projects**). See [`WORLD_MODEL_AND_PREPROCESSOR.md`](WORLD_MODEL_AND_PREPROCESSOR.md).
+**Immediate next focus:** Phase **D** — complex task handling over project/task state — plus a focused Phase **B2** quality pass on search-assisted avatar creation. See [`WORLD_MODEL_AND_PREPROCESSOR.md`](WORLD_MODEL_AND_PREPROCESSOR.md).
 
 ---
 
@@ -21,6 +21,18 @@
 
 1. Grow catalog via avatar builder (`userAvatars`, `builtinAvatarEdits` on situation context).
 2. Use **`assignedTasks`** until shared **Projects** exist (Phase C).
+
+---
+
+## Phase B2 — Avatar creation research quality
+
+**Goal:** Make internet-assisted avatar creation reliably fill builder fields from search results, especially for named historical / fictional / public-reference avatars.
+
+1. Improve query generation: include entity disambiguation, source-family hints (official / wiki / encyclopedia / fandom source as appropriate), aliases, and field-specific terms. Current section queries are broad and can miss field evidence.
+2. Improve result extraction: prefer fetched page snippets or structured source summaries over only top-level search result lines; preserve citations per field.
+3. Add confidence and missing-field reporting: every builder field should show whether it was filled from evidence, guessed from weak evidence, or left for the user.
+4. Iterate searches when a field is empty: run narrower follow-up queries for missing fields instead of accepting sparse first-pass results.
+5. Keep connector boundaries read-only. Reference sources (Wikipedia, Wookieepedia, Memory Alpha, etc.) remain supplemental inputs for avatar/persona construction, not core chat dependencies.
 
 ---
 
@@ -34,8 +46,15 @@
 
 ## Phase D — Project execution
 
-1. Bridge `assignedTasks`, Project records, and `activeTask` for prompts and routing.
-2. Later: Active Task / Focus Watcher agents per SPEC.
+**Goal:** Let avatars handle complex user requests by splitting them into executable tasks, routing each task to the right capability owner, and surfacing progress without forcing a single avatar/tool call to do everything at once.
+
+1. Treat the **Project** as the narrative container: user goal, rationale, constraints, source links, and progress history.
+2. Treat **Tasks** as the execution grain: one clear action, owner avatar or required capability, status/workflow state, blocker/approval fields, and completion evidence.
+3. Add a task-splitting step for complex requests. Example: “create three named avatars” becomes one project plus three avatar-creation tasks, each with its own research/form-fill/approval path.
+4. Route tasks by capability and stewardship (`tool_owner:*`, `allowedAgenticToolIds`, `monitor:*`) before model prompting so the wrong avatar is not asked to use the wrong tool.
+5. Use tool telemetry and parse diagnostics as feedback, but do not treat repeated tool misuse as only a parser problem. Escalate it into task decomposition, missing capability, or waiting-for-user state.
+6. Bridge `assignedTasks`, platform Project/Task records, and `activeTask` for prompts and routing.
+7. Later: Active Task / Focus Watcher agents per SPEC.
 
 ---
 
@@ -78,7 +97,7 @@ Reddit, Wikipedia, Wookieepedia, Memory Alpha, etc. — read-only **supplemental
 
 ## Documentation realignment (done)
 
-SPEC / PROGRESS / HANDOFF prioritize **world model / metadata** after shipped visualization; proactive **sequential batch** polish is lower priority.
+SPEC / PROGRESS / HANDOFF now prioritize **complex task handling / project execution** on top of the world model, with **search-assisted avatar creation quality** as a parallel near-term track; proactive **sequential batch** polish is lower priority.
 
 ---
 
