@@ -34,13 +34,80 @@ export type PlatformTaskStatus =
   | "done"
   | "cancelled";
 
+export type PlatformWorkflowStatus =
+  | "open"
+  | "ready"
+  | "in_progress"
+  | "blocked"
+  | "waiting_for_user"
+  | "waiting_for_approval"
+  | "done"
+  | "cancelled";
+
+export type PlatformWorkflowNextActor =
+  | "avatar"
+  | "user"
+  | "platform"
+  | "external";
+
+export type PlatformRequiredCapability = {
+  id: string;
+  kind?: "tool" | "source" | "permission" | "human" | "unknown";
+  label?: string;
+  reason?: string;
+};
+
+export type PlatformApprovalStatus =
+  | "not_required"
+  | "pending"
+  | "approved"
+  | "rejected";
+
+export type PlatformApprovalPolicy =
+  | "autonomous_local"
+  | "user_approval_required"
+  | "external_approval_required";
+
+export type PlatformTaskApproval = {
+  status: PlatformApprovalStatus;
+  policy: PlatformApprovalPolicy;
+  requestedAt?: number;
+  requestedBy?: string;
+  decidedAt?: number;
+  decidedBy?: string;
+  rationale?: string;
+};
+
+export type PlatformTaskBlocker = {
+  id: string;
+  title: string;
+  detail?: string;
+  createdAt: number;
+  createdBy: string;
+  resolvedAt?: number;
+  resolvedBy?: string;
+  resolution?: string;
+};
+
+export type PlatformTaskCompletionEvidence = {
+  id: string;
+  note: string;
+  recordedAt: number;
+  recordedBy: string;
+  sourceRef?: string;
+};
+
 export type PlatformHistoryKind =
   | "created"
   | "updated"
   | "status_change"
   | "owner_change"
   | "note"
-  | "migration";
+  | "migration"
+  | "workflow_change"
+  | "approval_change"
+  | "blocker_change"
+  | "completion_evidence";
 
 export type PlatformHistoryEvent = {
   ts: number;
@@ -55,6 +122,11 @@ export type PlatformProjectRecord = {
   title: string;
   summary?: string;
   status: PlatformProjectStatus;
+  workflowStatus?: PlatformWorkflowStatus;
+  nextActor?: PlatformWorkflowNextActor;
+  requiredCapability?: PlatformRequiredCapability;
+  blockers?: PlatformTaskBlocker[];
+  completionEvidence?: PlatformTaskCompletionEvidence[];
   /** Singleton user id until multi-user is introduced. */
   authorUserId: "user";
   /** Avatar that stewards the project. Undefined until explicitly assigned. */
@@ -74,6 +146,12 @@ export type PlatformTaskRecord = {
   title: string;
   notes?: string;
   status: PlatformTaskStatus;
+  workflowStatus?: PlatformWorkflowStatus;
+  nextActor?: PlatformWorkflowNextActor;
+  requiredCapability?: PlatformRequiredCapability;
+  approval?: PlatformTaskApproval;
+  blockers?: PlatformTaskBlocker[];
+  completionEvidence?: PlatformTaskCompletionEvidence[];
   createdAt: number;
   updatedAt: number;
   dueAt?: number;
@@ -121,14 +199,75 @@ function getLocalStorage(): Storage | null {
   return ls ?? null;
 }
 
+type RawPlatformStoreDoc = Omit<PlatformStoreDoc, "schemaVersion"> & {
+  schemaVersion?: number;
+};
+
+function workflowFromTaskStatus(status: PlatformTaskStatus): PlatformWorkflowStatus {
+  if (status === "done") return "done";
+  if (status === "cancelled") return "cancelled";
+  return "open";
+}
+
+function taskStatusFromWorkflow(
+  workflowStatus: PlatformWorkflowStatus
+): PlatformTaskStatus {
+  if (workflowStatus === "done") return "done";
+  if (workflowStatus === "cancelled") return "cancelled";
+  return "open";
+}
+
+function workflowFromProjectStatus(
+  status: PlatformProjectStatus
+): PlatformWorkflowStatus {
+  if (status === "done") return "done";
+  if (status === "archived") return "cancelled";
+  return "open";
+}
+
+function normalizeProjectRecord(
+  rec: PlatformProjectRecord
+): PlatformProjectRecord {
+  return {
+    ...rec,
+    workflowStatus: rec.workflowStatus ?? workflowFromProjectStatus(rec.status),
+  };
+}
+
+function normalizeTaskRecord(rec: PlatformTaskRecord): PlatformTaskRecord {
+  return {
+    ...rec,
+    workflowStatus: rec.workflowStatus ?? workflowFromTaskStatus(rec.status),
+  };
+}
+
+function migrateStoreDoc(raw: RawPlatformStoreDoc): PlatformStoreDoc {
+  const projects: Record<string, PlatformProjectRecord> = {};
+  for (const [id, rec] of Object.entries(raw.projects ?? {})) {
+    projects[id] = normalizeProjectRecord(rec);
+  }
+  const tasks: Record<string, PlatformTaskRecord> = {};
+  for (const [id, rec] of Object.entries(raw.tasks ?? {})) {
+    tasks[id] = normalizeTaskRecord(rec);
+  }
+  return {
+    schemaVersion: PLATFORM_STORE_SCHEMA_VERSION,
+    projects,
+    tasks,
+    migrations: raw.migrations ?? {},
+  };
+}
+
 function validateDoc(raw: unknown): PlatformStoreDoc | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  if (o.schemaVersion !== PLATFORM_STORE_SCHEMA_VERSION) return null;
+  if (o.schemaVersion !== PLATFORM_STORE_SCHEMA_VERSION && o.schemaVersion !== 1) {
+    return null;
+  }
   if (!o.projects || typeof o.projects !== "object") return null;
   if (!o.tasks || typeof o.tasks !== "object") return null;
   if (!o.migrations || typeof o.migrations !== "object") return null;
-  return o as unknown as PlatformStoreDoc;
+  return migrateStoreDoc(o as unknown as RawPlatformStoreDoc);
 }
 
 async function readFromDisk(): Promise<PlatformStoreDoc | null> {
@@ -295,6 +434,11 @@ export type UpsertProjectInput = {
   /** Pass null to clear an existing summary while preserving other lifecycle fields. */
   summary?: string | null;
   status?: PlatformProjectStatus;
+  workflowStatus?: PlatformWorkflowStatus;
+  nextActor?: PlatformWorkflowNextActor | null;
+  requiredCapability?: PlatformRequiredCapability | null;
+  blockers?: PlatformTaskBlocker[];
+  completionEvidence?: PlatformTaskCompletionEvidence[];
   ownerAvatarId?: string;
   dueAt?: number;
   snoozedUntil?: number;
@@ -347,6 +491,19 @@ export function upsertProject(input: UpsertProjectInput): PlatformProjectRecord 
     title,
     summary,
     status: input.status ?? existing?.status ?? "active",
+    workflowStatus:
+      input.workflowStatus ??
+      existing?.workflowStatus ??
+      workflowFromProjectStatus(input.status ?? existing?.status ?? "active"),
+    nextActor:
+      input.nextActor === null ? undefined : input.nextActor ?? existing?.nextActor,
+    requiredCapability:
+      input.requiredCapability === null
+        ? undefined
+        : input.requiredCapability ?? existing?.requiredCapability,
+    blockers: input.blockers ?? existing?.blockers,
+    completionEvidence:
+      input.completionEvidence ?? existing?.completionEvidence,
     authorUserId: "user",
     ownerAvatarId: owner ?? existing?.ownerAvatarId,
     createdAt: existing?.createdAt ?? nowTs,
@@ -375,6 +532,18 @@ export function upsertProject(input: UpsertProjectInput): PlatformProjectRecord 
       actor: input.actor,
       kind: "owner_change",
       detail: `${existing!.ownerAvatarId ?? "none"} -> ${owner ?? "none"}`,
+    });
+  }
+  if (
+    existing &&
+    input.workflowStatus &&
+    existing.workflowStatus !== input.workflowStatus
+  ) {
+    record.history = appendHistory(record.history, {
+      ts: nowTs,
+      actor: input.actor,
+      kind: "workflow_change",
+      detail: `${existing.workflowStatus ?? workflowFromProjectStatus(existing.status)} -> ${input.workflowStatus}`,
     });
   }
   doc = { ...doc, projects: { ...doc.projects, [id]: record } };
@@ -436,6 +605,12 @@ export type UpsertTaskInput = {
   title: string;
   notes?: string;
   status?: PlatformTaskStatus;
+  workflowStatus?: PlatformWorkflowStatus;
+  nextActor?: PlatformWorkflowNextActor | null;
+  requiredCapability?: PlatformRequiredCapability | null;
+  approval?: PlatformTaskApproval | null;
+  blockers?: PlatformTaskBlocker[];
+  completionEvidence?: PlatformTaskCompletionEvidence[];
   ownerAvatarId?: string;
   dueAt?: number;
   snoozedUntil?: number;
@@ -456,15 +631,36 @@ export function upsertTask(input: UpsertTaskInput): PlatformTaskRecord {
   const nowTs = now();
   const existing = input.id ? doc.tasks[input.id] : undefined;
   const id = existing?.id ?? input.id ?? makeId("task");
+  const workflowStatus =
+    input.workflowStatus ??
+    existing?.workflowStatus ??
+    workflowFromTaskStatus(input.status ?? existing?.status ?? "open");
+  const status =
+    input.status ??
+    (input.workflowStatus
+      ? taskStatusFromWorkflow(workflowStatus)
+      : existing?.status ?? taskStatusFromWorkflow(workflowStatus));
   const statusChanged =
-    existing && input.status && existing.status !== input.status;
+    existing && status && existing.status !== status;
   const title = input.title.trim() || existing?.title || "Untitled task";
   const record: PlatformTaskRecord = {
     id,
     projectId: input.projectId,
     title,
     notes: input.notes ?? existing?.notes,
-    status: input.status ?? existing?.status ?? "open",
+    status,
+    workflowStatus,
+    nextActor:
+      input.nextActor === null ? undefined : input.nextActor ?? existing?.nextActor,
+    requiredCapability:
+      input.requiredCapability === null
+        ? undefined
+        : input.requiredCapability ?? existing?.requiredCapability,
+    approval:
+      input.approval === null ? undefined : input.approval ?? existing?.approval,
+    blockers: input.blockers ?? existing?.blockers,
+    completionEvidence:
+      input.completionEvidence ?? existing?.completionEvidence,
     createdAt: existing?.createdAt ?? nowTs,
     updatedAt: nowTs,
     dueAt: input.dueAt ?? existing?.dueAt,
@@ -483,13 +679,139 @@ export function upsertTask(input: UpsertTaskInput): PlatformTaskRecord {
       ts: nowTs,
       actor: input.actor,
       kind: "status_change",
-      detail: `${existing!.status} -> ${input.status}`,
+      detail: `${existing!.status} -> ${status}`,
+    });
+  }
+  if (
+    existing &&
+    input.workflowStatus &&
+    existing.workflowStatus !== input.workflowStatus
+  ) {
+    record.history = appendHistory(record.history, {
+      ts: nowTs,
+      actor: input.actor,
+      kind: "workflow_change",
+      detail: `${existing.workflowStatus ?? workflowFromTaskStatus(existing.status)} -> ${input.workflowStatus}`,
     });
   }
   doc = { ...doc, tasks: { ...doc.tasks, [id]: record } };
   schedulePersist();
   notify();
   return record;
+}
+
+export type UpdateTaskWorkflowInput = {
+  taskId: string;
+  actor: string;
+  workflowStatus?: PlatformWorkflowStatus;
+  nextActor?: PlatformWorkflowNextActor | null;
+  requiredCapability?: PlatformRequiredCapability | null;
+  approval?: PlatformTaskApproval | null;
+  blockers?: PlatformTaskBlocker[];
+  completionEvidence?: PlatformTaskCompletionEvidence[];
+  detail?: string;
+};
+
+export function updateTaskWorkflow(
+  input: UpdateTaskWorkflowInput
+): PlatformTaskRecord {
+  if (!loaded) ensurePlatformStoreLoadedSync();
+  const existing = doc.tasks[input.taskId];
+  if (!existing) throw new Error(`unknown taskId: ${input.taskId}`);
+
+  const nowTs = now();
+  const workflowStatus =
+    input.workflowStatus ?? existing.workflowStatus ?? workflowFromTaskStatus(existing.status);
+  let history = existing.history ? [...existing.history] : [];
+  if (workflowStatus !== (existing.workflowStatus ?? workflowFromTaskStatus(existing.status))) {
+    history = appendHistory(history, {
+      ts: nowTs,
+      actor: input.actor,
+      kind: "workflow_change",
+      detail:
+        input.detail ??
+        `${existing.workflowStatus ?? workflowFromTaskStatus(existing.status)} -> ${workflowStatus}`,
+    });
+  }
+  if (input.approval !== undefined) {
+    history = appendHistory(history, {
+      ts: nowTs,
+      actor: input.actor,
+      kind: "approval_change",
+      detail: input.approval
+        ? `${input.approval.policy}:${input.approval.status}`
+        : "cleared",
+    });
+  }
+  if (input.blockers !== undefined) {
+    history = appendHistory(history, {
+      ts: nowTs,
+      actor: input.actor,
+      kind: "blocker_change",
+      detail: `${input.blockers.length} blocker(s)`,
+    });
+  }
+  if (input.completionEvidence !== undefined) {
+    history = appendHistory(history, {
+      ts: nowTs,
+      actor: input.actor,
+      kind: "completion_evidence",
+      detail: `${input.completionEvidence.length} evidence item(s)`,
+    });
+  }
+
+  const record: PlatformTaskRecord = {
+    ...existing,
+    status: input.workflowStatus
+      ? taskStatusFromWorkflow(workflowStatus)
+      : existing.status,
+    workflowStatus,
+    nextActor:
+      input.nextActor === null ? undefined : input.nextActor ?? existing.nextActor,
+    requiredCapability:
+      input.requiredCapability === null
+        ? undefined
+        : input.requiredCapability ?? existing.requiredCapability,
+    approval:
+      input.approval === null ? undefined : input.approval ?? existing.approval,
+    blockers: input.blockers ?? existing.blockers,
+    completionEvidence:
+      input.completionEvidence ?? existing.completionEvidence,
+    updatedAt: nowTs,
+    history,
+  };
+  doc = { ...doc, tasks: { ...doc.tasks, [record.id]: record } };
+  schedulePersist();
+  notify();
+  return record;
+}
+
+export function createTaskBlocker(
+  actor: string,
+  title: string,
+  detail?: string
+): PlatformTaskBlocker {
+  return {
+    id: makeId("blocker"),
+    title,
+    detail,
+    createdAt: now(),
+    createdBy: actor,
+  };
+}
+
+export function createTaskCompletionEvidence(
+  actor: string,
+  note: string,
+  sourceRef?: string
+): PlatformTaskCompletionEvidence {
+  return {
+    id: makeId("evidence"),
+    note,
+    sourceRef,
+    recordedAt: now(),
+    recordedBy: actor,
+  };
 }
 
 export function deleteTask(id: string, actor: string): void {
@@ -534,6 +856,7 @@ export function migrateProjectsFromWorldMetadata(
       title: wp.title,
       summary: wp.summary,
       status: "active",
+      workflowStatus: "open",
       authorUserId: "user",
       createdAt: wp.updatedAt ?? nowTs,
       updatedAt: nowTs,
@@ -607,6 +930,7 @@ export function syncWorldMetadataProjectsAdditive(
       title: wp.title.trim(),
       summary,
       status: "active",
+      workflowStatus: "open",
       authorUserId: "user",
       createdAt: wp.updatedAt ?? nowTs,
       updatedAt: nowTs,

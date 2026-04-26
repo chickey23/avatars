@@ -26,6 +26,8 @@ SQLite/Tauri on-disk persistence for metadata is **out of scope** until SPEC/Tec
 3. **Avatar contributions:** Short-term: append structured or human-readable lines to `notes` or a `contributions[]` log from hooks after turns; later, dedicated agent steps.
 4. **`assignedTasks` bridge:** When tasks reference a **`projectId`**, prompts and routing can align with “work on project X.”
 
+**Workflow state contract:** Platform tasks are the execution grain for autonomous / cooperative work. A task may record a richer `workflowStatus`, `nextActor`, `requiredCapability`, `approval`, `blockers`, and `completionEvidence` in the durable platform store while the legacy `status` remains the compatibility field for scheduler and existing UI paths. Local project/task metadata changes are allowed autonomously; external side effects, private data access, destructive actions, and user-only steps must be represented as approval, missing capability, or `waiting_for_user` state instead of being executed silently. `LongTermTask` remains a thin stewardship / routing view; do not put the rich workflow state there unless the platform store has already changed.
+
 ```mermaid
 flowchart LR
   subgraph wm [WorldMetadata]

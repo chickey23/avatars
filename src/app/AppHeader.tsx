@@ -78,22 +78,6 @@ export function AppHeader() {
           </button>
         </div>
       </div>
-      <nav className="todo-list">
-        <h3>To Do List</h3>
-        <ul>
-          {m.todoLinks.map((item) => (
-            <li key={item.label}>
-              <button
-                type="button"
-                className="todo-link"
-                onClick={(e) => m.handleTodoClick(e, item.urlOrPath)}
-              >
-                {item.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
     </header>
   );
 }

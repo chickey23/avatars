@@ -54,7 +54,6 @@ import {
   getOllamaPresence,
   type OllamaPresence,
 } from "../services/ollama";
-import { openLink } from "../utils/openLink";
 import { resolveContextEntryBudgets } from "../utils/contextEntryBudget";
 import {
   appendSessionLog,
@@ -1361,24 +1360,6 @@ export function useAppContentModel() {
     }
   };
 
-  const handleTodoClick = useCallback(
-    (e: React.MouseEvent, urlOrPath: string) => {
-      e.preventDefault();
-      openLink(urlOrPath).catch(console.error);
-    },
-    []
-  );
-
-  const todoLinks: { label: string; urlOrPath: string }[] = [
-    { label: "Google", urlOrPath: "https://google.com" },
-    ...(userPaths
-      ? [
-          { label: "Screenshots folder", urlOrPath: userPaths.screenshots },
-          { label: "Downloads folder", urlOrPath: userPaths.downloads },
-        ]
-      : []),
-  ];
-
   return {
     archivedTurnCount,
     avatarBuilderInitial,
@@ -1433,7 +1414,6 @@ export function useAppContentModel() {
     handleRemoveWorldProject,
     handleSaveUserProfile,
     handleSend,
-    handleTodoClick,
     handleWellOfSoulsAfterGenerate,
     handleOpenAvatarBuilderFromInternet,
     hoverMetaMessageId,
@@ -1555,7 +1535,6 @@ export function useAppContentModel() {
     tasks,
     toggleAvatarSelection,
     turnByUserId,
-    todoLinks,
     upcomingEvents,
     userChromeColor,
     userDisplayName,

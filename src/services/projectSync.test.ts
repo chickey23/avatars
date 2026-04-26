@@ -4,6 +4,7 @@ import {
   __resetPlatformStoreForTests,
   ensurePlatformStoreLoadedSync,
   getPlatformStore,
+  updateTaskWorkflow,
   upsertProject,
   upsertTask,
 } from "./platform/store";
@@ -51,6 +52,13 @@ describe("project execution sync", () => {
       title: "Alpha",
       summary: "First",
       status: "paused",
+      workflowStatus: "blocked",
+      nextActor: "user",
+      requiredCapability: {
+        id: "source.sms",
+        kind: "source",
+        reason: "Needs private messages for this step.",
+      },
       ownerAvatarId: "muse",
       dueAt: 42,
       actor: "user",
@@ -64,6 +72,9 @@ describe("project execution sync", () => {
     expect(synced.title).toBe("Beta");
     expect(synced.summary).toBeUndefined();
     expect(synced.status).toBe("paused");
+    expect(synced.workflowStatus).toBe("blocked");
+    expect(synced.nextActor).toBe("user");
+    expect(synced.requiredCapability?.id).toBe("source.sms");
     expect(synced.ownerAvatarId).toBe("muse");
     expect(synced.dueAt).toBe(42);
   });
@@ -101,5 +112,40 @@ describe("project execution sync", () => {
     expect(getPlatformStore().tasks[platformTask.id]).toBeUndefined();
     const completed = loadTasks().find((t) => t.id === longTermTask.id)!;
     expect(completed.status).toBe("completed");
+  });
+
+  it("preserves platform task workflow fields when world metadata edits sync", () => {
+    patchWorldMetadataProjectsForExecution({
+      p1: { title: "Alpha", summary: "First", updatedAt: 1 },
+    });
+    const platformTask = upsertTask({
+      projectId: "p1",
+      title: "Investigate",
+      actor: "user",
+      ownerAvatarId: "muse",
+    });
+    updateTaskWorkflow({
+      taskId: platformTask.id,
+      actor: "muse",
+      workflowStatus: "waiting_for_user",
+      nextActor: "user",
+      blockers: [
+        {
+          id: "blocker_1",
+          title: "Needs confirmation",
+          createdAt: 1,
+          createdBy: "muse",
+        },
+      ],
+    });
+
+    patchWorldMetadataProjectsForExecution({
+      p1: { title: "Beta", summary: "Updated", updatedAt: 2 },
+    });
+
+    const synced = getPlatformStore().tasks[platformTask.id]!;
+    expect(synced.workflowStatus).toBe("waiting_for_user");
+    expect(synced.nextActor).toBe("user");
+    expect(synced.blockers?.[0]?.title).toBe("Needs confirmation");
   });
 });

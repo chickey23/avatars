@@ -1,16 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetPlatformStoreForTests,
+  createTaskBlocker,
+  createTaskCompletionEvidence,
   deleteProject,
   deleteTask,
   ensurePlatformStoreLoadedSync,
   getPlatformStore,
   migrateProjectsFromWorldMetadata,
   syncWorldMetadataProjectsAdditive,
+  updateTaskWorkflow,
   upsertProject,
   upsertTask,
 } from "./store";
-import { PLATFORM_ATTRIBUTION_AVATAR_ID, PLATFORM_STORE_STORAGE_KEY } from "./constants";
+import {
+  PLATFORM_ATTRIBUTION_AVATAR_ID,
+  PLATFORM_STORE_SCHEMA_VERSION,
+  PLATFORM_STORE_STORAGE_KEY,
+} from "./constants";
 
 function installMemoryLocalStorage(): void {
   const map = new Map<string, string>();
@@ -101,6 +108,119 @@ describe("platform store", () => {
     deleteTask(t.id, "user");
     expect(getPlatformStore().projects[p.id]).toBeDefined();
     expect(getPlatformStore().tasks[t.id]).toBeUndefined();
+  });
+
+  it("migrates v1 store docs to workflow-aware schema", () => {
+    __resetPlatformStoreForTests();
+    localStorage.setItem(
+      PLATFORM_STORE_STORAGE_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        projects: {
+          p1: {
+            id: "p1",
+            title: "Legacy project",
+            status: "active",
+            authorUserId: "user",
+            createdAt: 1,
+            updatedAt: 1,
+            history: [],
+          },
+        },
+        tasks: {
+          t1: {
+            id: "t1",
+            projectId: "p1",
+            title: "Legacy done task",
+            status: "done",
+            createdAt: 1,
+            updatedAt: 1,
+            history: [],
+          },
+        },
+        migrations: {},
+      })
+    );
+
+    ensurePlatformStoreLoadedSync();
+
+    const migrated = getPlatformStore();
+    expect(migrated.schemaVersion).toBe(PLATFORM_STORE_SCHEMA_VERSION);
+    expect(migrated.projects.p1?.workflowStatus).toBe("open");
+    expect(migrated.tasks.t1?.workflowStatus).toBe("done");
+  });
+
+  it("updates workflow status, blockers, approvals, and completion evidence", () => {
+    const p = upsertProject({ title: "Autonomous work", actor: "user" });
+    const t = upsertTask({
+      projectId: p.id,
+      title: "Research source",
+      actor: "user",
+      ownerAvatarId: "muse",
+    });
+    const blocker = createTaskBlocker(
+      "muse",
+      "Missing SMS access",
+      "Could proceed if text-message search existed."
+    );
+
+    const blocked = updateTaskWorkflow({
+      taskId: t.id,
+      actor: "muse",
+      workflowStatus: "blocked",
+      nextActor: "user",
+      requiredCapability: {
+        id: "source.sms",
+        kind: "source",
+        label: "Text messages",
+      },
+      approval: {
+        policy: "user_approval_required",
+        status: "pending",
+        requestedAt: 123,
+        requestedBy: "muse",
+        rationale: "Needs user/private data access.",
+      },
+      blockers: [blocker],
+    });
+
+    expect(blocked.status).toBe("open");
+    expect(blocked.workflowStatus).toBe("blocked");
+    expect(blocked.nextActor).toBe("user");
+    expect(blocked.requiredCapability?.id).toBe("source.sms");
+    expect(blocked.approval?.status).toBe("pending");
+    expect(blocked.blockers).toHaveLength(1);
+    expect(blocked.history.map((h) => h.kind)).toEqual(
+      expect.arrayContaining([
+        "workflow_change",
+        "approval_change",
+        "blocker_change",
+      ])
+    );
+
+    const evidence = createTaskCompletionEvidence(
+      "muse",
+      "User confirmed the research source is complete.",
+      "chat:user-confirmation"
+    );
+    const done = updateTaskWorkflow({
+      taskId: t.id,
+      actor: "muse",
+      workflowStatus: "done",
+      nextActor: null,
+      requiredCapability: null,
+      approval: null,
+      blockers: [],
+      completionEvidence: [evidence],
+    });
+
+    expect(done.status).toBe("done");
+    expect(done.workflowStatus).toBe("done");
+    expect(done.nextActor).toBeUndefined();
+    expect(done.requiredCapability).toBeUndefined();
+    expect(done.approval).toBeUndefined();
+    expect(done.completionEvidence?.[0]?.note).toContain("confirmed");
+    expect(done.history.map((h) => h.kind)).toContain("completion_evidence");
   });
 
   it("migrates world_metadata projects once, then is idempotent", () => {

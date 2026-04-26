@@ -62,6 +62,12 @@ describe("platformFocusedProjectBlock", () => {
       title: "Sketch cover",
       actor: "user",
       ownerAvatarId: "muse",
+      workflowStatus: "blocked",
+      nextActor: "user",
+      requiredCapability: {
+        id: "source.sms",
+        kind: "source",
+      },
       dueAt: Date.UTC(2030, 0, 10, 0, 0, 0),
     });
     upsertTask({
@@ -79,5 +85,8 @@ describe("platformFocusedProjectBlock", () => {
     expect(lines.some((l) => l.includes("steward: muse"))).toBe(true);
     expect(lines.some((l) => l.includes("Cover art"))).toBe(true);
     expect(lines.some((l) => l.includes("Sketch cover"))).toBe(true);
+    expect(lines.some((l) => l.includes("workflow=blocked"))).toBe(true);
+    expect(lines.some((l) => l.includes("next=user"))).toBe(true);
+    expect(lines.some((l) => l.includes("needs=source.sms"))).toBe(true);
   });
 });

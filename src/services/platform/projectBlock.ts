@@ -55,6 +55,15 @@ export function platformFocusedProjectBlock(
   if (project.snoozedUntil !== undefined) {
     out.push(`  snoozed_until: ${formatTs(project.snoozedUntil)}`);
   }
+  if (project.workflowStatus && project.workflowStatus !== "open") {
+    out.push(`  workflow: ${project.workflowStatus}`);
+  }
+  if (project.nextActor) {
+    out.push(`  next_actor: ${project.nextActor}`);
+  }
+  if (project.requiredCapability) {
+    out.push(`  needs_capability: ${project.requiredCapability.id}`);
+  }
 
   const tasks = Object.values(store.tasks)
     .filter((t) => t.projectId === project.id && t.status !== "cancelled")
@@ -75,7 +84,17 @@ export function platformFocusedProjectBlock(
     for (const t of tasks) {
       const dueBit = t.dueAt !== undefined ? ` due=${formatTs(t.dueAt)}` : "";
       const ownerBit = t.ownerAvatarId ? ` owner=${t.ownerAvatarId}` : "";
-      out.push(`    - [${t.status}] ${t.title}${dueBit}${ownerBit}`);
+      const workflowBit =
+        t.workflowStatus && t.workflowStatus !== t.status
+          ? ` workflow=${t.workflowStatus}`
+          : "";
+      const nextActorBit = t.nextActor ? ` next=${t.nextActor}` : "";
+      const capabilityBit = t.requiredCapability
+        ? ` needs=${t.requiredCapability.id}`
+        : "";
+      out.push(
+        `    - [${t.status}] ${t.title}${dueBit}${ownerBit}${workflowBit}${nextActorBit}${capabilityBit}`
+      );
     }
   }
   return out;

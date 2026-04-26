@@ -57,7 +57,7 @@ export const PLATFORM_SCHEDULER_INTERVAL_MS = 60_000;
 /** Durable project/task store file. */
 export const PLATFORM_STORE_FILE = "platform_store.json";
 export const PLATFORM_STORE_STORAGE_KEY = "avatars_platform_store_v1";
-export const PLATFORM_STORE_SCHEMA_VERSION = 1 as const;
+export const PLATFORM_STORE_SCHEMA_VERSION = 2 as const;
 
 /** Durable drafts store. */
 export const PLATFORM_DRAFTS_FILE = "platform_drafts.json";
