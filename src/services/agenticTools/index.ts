@@ -1,8 +1,10 @@
 export {
   AGENTIC_TOOL_IDS,
+  TOOL_GROUPS,
   avatarMayUseAgenticTool,
   filterToolsByAvatarPermissions,
   isRegisteredAgenticToolId,
+  toolGroupFor,
 } from "./registry";
 export {
   FULL_GENERAL_WORLDVIEW_TOOL_INSTRUCTIONS,

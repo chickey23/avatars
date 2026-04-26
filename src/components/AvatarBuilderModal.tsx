@@ -2,13 +2,22 @@ import { useState, useEffect, useCallback, useRef, type ChangeEvent } from "reac
 import type { Avatar } from "../types";
 import { DEFAULT_ROSTER_SCORE } from "../services/avatarRoster";
 import {
+  DEFAULT_AVATAR_PORTRAIT_SCALE,
+  MAX_AVATAR_PORTRAIT_SCALE,
+  MIN_AVATAR_PORTRAIT_SCALE,
   getAvatarPortraitSrc,
+  getAvatarPortraitObjectPosition,
+  getAvatarPortraitTransform,
+  normalizeAvatarPortraitPosition,
+  normalizeAvatarPortraitScale,
   readPortraitFileAsDataUrl,
   MAX_PORTRAIT_FILE_BYTES,
+  type AvatarPortraitPosition,
 } from "../services/avatarPortrait";
 import { PERSONALITY_TRAITS, type PersonalityTraitId } from "../theme/designTokens";
 import { AI_RULE_BLOCKS, AI_RULE_SETS } from "../data/aiRulesLibrary";
 import type { AvatarBuilderInternetSectionRefs } from "../services/avatarCreationWorkshopSectionSearch";
+import { getAvatarOperationalRoles } from "../services/avatarOperations";
 
 export type AvatarBuilderInitial =
   | {
@@ -37,11 +46,15 @@ type Props = {
     avatar: Avatar;
     rosterScore: number;
     seedPortraitDataUrl?: string | null;
+    portraitPosition?: AvatarPortraitPosition;
+    portraitScale?: number;
   }) => void;
   openPortraitFilePicker: (avatarId: string) => void;
   clearPortrait: (avatarId: string) => void;
   portraitFileError: { avatarId: string; message: string } | null;
   avatarPortraitSrcById: Record<string, string> | undefined;
+  avatarPortraitPositionById: Record<string, AvatarPortraitPosition> | undefined;
+  avatarPortraitScaleById: Record<string, number> | undefined;
 };
 
 function splitComma(s: string): string[] {
@@ -118,9 +131,12 @@ export function AvatarBuilderModal({
   clearPortrait,
   portraitFileError,
   avatarPortraitSrcById,
+  avatarPortraitPositionById,
+  avatarPortraitScaleById,
 }: Props) {
   const [givenName, setGivenName] = useState("");
   const [appellation, setAppellation] = useState("");
+  const [description, setDescription] = useState("");
   const [personality, setPersonality] = useState("");
   const [tagsStr, setTagsStr] = useState("");
   const [interestsStr, setInterestsStr] = useState("");
@@ -135,6 +151,16 @@ export function AvatarBuilderModal({
   const [seedPortraitDataUrl, setSeedPortraitDataUrl] = useState<string | null>(
     null
   );
+  const [seedPortraitPosition, setSeedPortraitPosition] =
+    useState<AvatarPortraitPosition>(() => ({ x: 50, y: 50 }));
+  const [seedPortraitScale, setSeedPortraitScale] = useState(
+    DEFAULT_AVATAR_PORTRAIT_SCALE
+  );
+  const [portraitPosition, setPortraitPosition] =
+    useState<AvatarPortraitPosition>(() => ({ x: 50, y: 50 }));
+  const [portraitScale, setPortraitScale] = useState(
+    DEFAULT_AVATAR_PORTRAIT_SCALE
+  );
   const [seedPortraitError, setSeedPortraitError] = useState<string | null>(null);
   const seedPortraitInputRef = useRef<HTMLInputElement>(null);
   const wasOpenRef = useRef(false);
@@ -143,6 +169,8 @@ export function AvatarBuilderModal({
     if (open) {
       if (!wasOpenRef.current) {
         setSeedPortraitDataUrl(null);
+        setSeedPortraitPosition({ x: 50, y: 50 });
+        setSeedPortraitScale(DEFAULT_AVATAR_PORTRAIT_SCALE);
         setSeedPortraitError(null);
       }
       wasOpenRef.current = true;
@@ -157,12 +185,13 @@ export function AvatarBuilderModal({
     if (initial.kind === "seed") {
       setGivenName("");
       setAppellation("");
-      setPersonality(
+      setDescription(
         initial.seed.trim() ||
           (seedShowInternetBlock(initial)
             ? "Review internet references below; edit to describe this avatar."
             : "")
       );
+      setPersonality("");
       setTagsStr("");
       setInterestsStr("");
       setTraits(new Set(initial.traitIds));
@@ -170,11 +199,14 @@ export function AvatarBuilderModal({
       setSupplementalRules(initial.supplementalRules.trim());
       setRosterScore(DEFAULT_ROSTER_SCORE);
       setAccentColor(DEFAULT_SIGNATURE_COLOR);
+      setPortraitPosition({ x: 50, y: 50 });
+      setPortraitScale(DEFAULT_AVATAR_PORTRAIT_SCALE);
     } else {
       const a = initial.avatar;
       setGivenName(a.givenName);
       setAppellation(a.appellation);
-      setPersonality(a.personality.trim() || a.description.trim() || "");
+      setDescription(a.description.trim());
+      setPersonality(a.personality.trim());
       setTagsStr(a.tags.join(", "));
       setInterestsStr(a.interests.join(", "));
       const traitSet = new Set<PersonalityTraitId>();
@@ -194,8 +226,18 @@ export function AvatarBuilderModal({
       setAccentColor(
         normalizeHex6(a.appearance?.accentColor) ?? DEFAULT_SIGNATURE_COLOR
       );
+      setPortraitPosition(
+        normalizeAvatarPortraitPosition(avatarPortraitPositionById?.[a.id])
+      );
+      setPortraitScale(normalizeAvatarPortraitScale(avatarPortraitScaleById?.[a.id]));
     }
-  }, [open, initial, initialRosterScore]);
+  }, [
+    open,
+    initial,
+    initialRosterScore,
+    avatarPortraitPositionById,
+    avatarPortraitScaleById,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -238,6 +280,8 @@ export function AvatarBuilderModal({
       }
       setSeedPortraitError(null);
       setSeedPortraitDataUrl(dataUrl);
+      setSeedPortraitPosition({ x: 50, y: 50 });
+      setSeedPortraitScale(DEFAULT_AVATAR_PORTRAIT_SCALE);
     },
     []
   );
@@ -253,6 +297,7 @@ export function AvatarBuilderModal({
       setSaveError("Given name is required.");
       return;
     }
+    const desc = description.trim();
     const p = personality.trim();
     const appellationOut = appellation.trim() || name;
     const tags = splitComma(tagsStr);
@@ -274,7 +319,7 @@ export function AvatarBuilderModal({
         ...base,
         givenName: name,
         appellation: appellationOut,
-        description: p.slice(0, 500) || `A custom avatar: ${name}.`,
+        description: desc.slice(0, 500) || `A custom avatar: ${name}.`,
         personality: p || "Thoughtful and in character.",
         tags,
         interests,
@@ -287,7 +332,17 @@ export function AvatarBuilderModal({
           accentColor: accentOut,
         },
       };
-      onSave({ avatar, rosterScore });
+      const editPortraitSrc = getAvatarPortraitSrc(
+        avatarPortraitSrcById,
+        base.id,
+        base.appearance?.portraitUrl
+      );
+      onSave({
+        avatar,
+        rosterScore,
+        portraitPosition: editPortraitSrc ? portraitPosition : undefined,
+        portraitScale: editPortraitSrc ? portraitScale : undefined,
+      });
       onClose();
       return;
     }
@@ -311,7 +366,7 @@ export function AvatarBuilderModal({
       processName,
       givenName: name,
       appellation: appellationOut,
-      description: p.slice(0, 500) || `A custom avatar: ${name}.`,
+      description: desc.slice(0, 500) || `A custom avatar: ${name}.`,
       personality: p || "Thoughtful and in character.",
       tags,
       interests,
@@ -326,6 +381,8 @@ export function AvatarBuilderModal({
       avatar,
       rosterScore,
       seedPortraitDataUrl: seedPortraitDataUrl ?? undefined,
+      portraitPosition: seedPortraitDataUrl ? seedPortraitPosition : undefined,
+      portraitScale: seedPortraitDataUrl ? seedPortraitScale : undefined,
     });
     onClose();
   }, [
@@ -333,6 +390,7 @@ export function AvatarBuilderModal({
     rosterScore,
     givenName,
     appellation,
+    description,
     personality,
     tagsStr,
     interestsStr,
@@ -341,7 +399,12 @@ export function AvatarBuilderModal({
     supplementalRules,
     accentColor,
     existingUserAvatars,
+    avatarPortraitSrcById,
     seedPortraitDataUrl,
+    seedPortraitPosition,
+    seedPortraitScale,
+    portraitPosition,
+    portraitScale,
     onSave,
     onClose,
   ]);
@@ -368,6 +431,19 @@ export function AvatarBuilderModal({
     initial?.kind === "edit"
       ? `Remove portrait for ${initial.avatar.givenName}`
       : "Clear chosen portrait";
+  const operationalRoles =
+    initial?.kind === "edit" ? getAvatarOperationalRoles(initial.avatar) : null;
+  const activePortraitPosition =
+    initial?.kind === "seed" ? seedPortraitPosition : portraitPosition;
+  const activePortraitScale =
+    initial?.kind === "seed" ? seedPortraitScale : portraitScale;
+  const portraitObjectPosition =
+    getAvatarPortraitObjectPosition(activePortraitPosition);
+  const portraitTransform = getAvatarPortraitTransform(activePortraitScale);
+  const setActivePortraitPosition =
+    initial?.kind === "seed" ? setSeedPortraitPosition : setPortraitPosition;
+  const setActivePortraitScale =
+    initial?.kind === "seed" ? setSeedPortraitScale : setPortraitScale;
 
   return (
     <div
@@ -461,12 +537,21 @@ export function AvatarBuilderModal({
           />
         </label>
         <label className="avatar-builder-label">
-          Personality / backstory
+          Backstory / description
+          <textarea
+            className="avatar-builder-textarea"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+          />
+        </label>
+        <label className="avatar-builder-label">
+          Personality
           <textarea
             className="avatar-builder-textarea"
             value={personality}
             onChange={(e) => setPersonality(e.target.value)}
-            rows={4}
+            rows={3}
           />
         </label>
         <label className="avatar-builder-label">
@@ -513,6 +598,11 @@ export function AvatarBuilderModal({
                     src={portraitSrcForUi}
                     alt=""
                     className="avatar-portrait-img"
+                    style={{
+                      objectPosition: portraitObjectPosition,
+                      transform: portraitTransform,
+                      transformOrigin: portraitObjectPosition,
+                    }}
                   />
                 ) : (
                   <span
@@ -551,6 +641,8 @@ export function AvatarBuilderModal({
                         clearPortrait(initial.avatar.id);
                       } else {
                         setSeedPortraitDataUrl(null);
+                        setSeedPortraitPosition({ x: 50, y: 50 });
+                        setSeedPortraitScale(DEFAULT_AVATAR_PORTRAIT_SCALE);
                         setSeedPortraitError(null);
                       }
                     }}
@@ -560,6 +652,68 @@ export function AvatarBuilderModal({
                 )}
               </div>
             </div>
+            {portraitSrcForUi && (
+              <div className="avatar-portrait-position">
+                <p className="avatar-builder-signature-hint">
+                  Reposition for headshot framing.
+                </p>
+                <label className="avatar-portrait-position-row">
+                  <span>Zoom</span>
+                  <input
+                    type="range"
+                    min={MIN_AVATAR_PORTRAIT_SCALE}
+                    max={MAX_AVATAR_PORTRAIT_SCALE}
+                    step={0.05}
+                    value={activePortraitScale}
+                    onChange={(e) => {
+                      const scale = Number(e.target.value);
+                      setActivePortraitScale(normalizeAvatarPortraitScale(scale));
+                    }}
+                  />
+                  <output>{activePortraitScale.toFixed(2)}x</output>
+                </label>
+                <label className="avatar-portrait-position-row">
+                  <span>Left / right</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={activePortraitPosition.x}
+                    onChange={(e) => {
+                      const x = Number(e.target.value);
+                      setActivePortraitPosition((prev) =>
+                        normalizeAvatarPortraitPosition({ ...prev, x })
+                      );
+                    }}
+                  />
+                </label>
+                <label className="avatar-portrait-position-row">
+                  <span>Up / down</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={activePortraitPosition.y}
+                    onChange={(e) => {
+                      const y = Number(e.target.value);
+                      setActivePortraitPosition((prev) =>
+                        normalizeAvatarPortraitPosition({ ...prev, y })
+                      );
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="avatar-portrait-reset"
+                  onClick={() => {
+                    setActivePortraitPosition({ x: 50, y: 50 });
+                    setActivePortraitScale(DEFAULT_AVATAR_PORTRAIT_SCALE);
+                  }}
+                >
+                  Reset framing
+                </button>
+              </div>
+            )}
             {initial.kind === "edit" &&
               portraitFileError?.avatarId === initial.avatar.id && (
                 <p className="avatar-portrait-error" role="status">
@@ -649,6 +803,56 @@ export function AvatarBuilderModal({
             ))}
           </div>
         </div>
+        {operationalRoles && (
+          <div className="avatar-builder-operational">
+            <span className="avatar-builder-label-text">Operational roles</span>
+            <p className="avatar-builder-signature-hint">
+              Stewardships and capabilities are managed in Workshops → Stewardship.
+            </p>
+            <div className="avatar-builder-operational-grid">
+              <section>
+                <h3 className="avatar-builder-operational-heading">
+                  Stewardships
+                </h3>
+                {operationalRoles.stewardships.length > 0 ? (
+                  <div className="avatar-builder-chip-row" aria-label="Stewardships">
+                    {operationalRoles.stewardships.map((role) => (
+                      <span
+                        key={role.tag}
+                        className="avatar-builder-chip"
+                        title={role.description}
+                      >
+                        {role.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="avatar-builder-operational-empty">None</p>
+                )}
+              </section>
+              <section>
+                <h3 className="avatar-builder-operational-heading">
+                  Capabilities
+                </h3>
+                {operationalRoles.capabilities.length > 0 ? (
+                  <div className="avatar-builder-chip-row" aria-label="Capabilities">
+                    {operationalRoles.capabilities.map((role) => (
+                      <span
+                        key={`${role.kind}:${role.id}`}
+                        className="avatar-builder-chip"
+                        title={role.description}
+                      >
+                        {role.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="avatar-builder-operational-empty">None</p>
+                )}
+              </section>
+            </div>
+          </div>
+        )}
         <label className="avatar-builder-label">
           Supplemental rules
           <textarea

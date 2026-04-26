@@ -50,14 +50,15 @@ Debug: [`OllamaPromptDebug`](../src/types/index.ts) may include `recentTranscrip
 
 Durable draft records are stored by [`../src/services/platform/drafts.ts`](../src/services/platform/drafts.ts) (see [`../src/services/platform/`](../src/services/platform/)).
 
-Execution is implemented in [`execute.ts`](../src/services/worldviewTools/execute.ts). Permission groups: draft tools are gated by **`tool_owner:drafts`**; workshop open_draft by **`tool_owner:avatar_creation`** on [`Avatar.systemTags`](../src/types/index.ts) (see `TOOL_GROUPS` in [`registry.ts`](../src/services/agenticTools/registry.ts)).
+Execution is implemented in [`execute.ts`](../src/services/worldviewTools/execute.ts). Permission groups are user-facing **Capabilities**: draft tools are gated by **`tool_owner:drafts`**; workshop open_draft by **`tool_owner:avatar_creation`** on [`Avatar.systemTags`](../src/types/index.ts) (see `TOOL_GROUPS` in [`registry.ts`](../src/services/agenticTools/registry.ts)). Monitor ownership uses separate **Stewardships** (`monitor:*`) and is managed with capabilities in **Workshops → Stewardship**.
 
 ## Permissions
 
 On each [Avatar](../src/types/index.ts), optional **`allowedAgenticToolIds`**: string array of tool ids this avatar may execute.
 
-- **Omit** (undefined) = all registered **non–group-owned** tools allowed (subject to `tool_owner:*` tags for group tools).
+- **Omit** (undefined) = **Default general tools**: all registered **non–group-owned** tools allowed (subject to `tool_owner:*` tags for group tools). In **Workshops → Stewardship**, these avatars are grouped under **The Chorus**.
 - **Empty array `[]`** = no JSON agentic tools for that avatar (explicit opt-out); group-owned tools still require the matching `tool_owner:<group>` tag.
+- **Non-empty array** = custom allowlist; in **Workshops → Stewardship**, these avatars are grouped under **The Privileged**.
 
 Denied tools return `permission_denied` in [executeWorldviewTools](../src/services/worldviewTools/execute.ts) and Gmail fetch execution.
 

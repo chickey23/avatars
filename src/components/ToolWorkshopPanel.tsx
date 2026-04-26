@@ -82,12 +82,13 @@ export function ToolWorkshopPanel({
 
   const aggSorted = useMemo(() => {
     return [...aggregates].sort((a, b) => {
-      const pa = a.errorCode && isPermissionErrorCode(a.errorCode) ? 0 : 1;
-      const pb = b.errorCode && isPermissionErrorCode(b.errorCode) ? 0 : 1;
-      if (pa !== pb) return pa - pb;
+      const atDelta = (b.lastEventAt ?? 0) - (a.lastEventAt ?? 0);
+      if (atDelta !== 0) return atDelta;
       return (b.failureCount + b.successCount) - (a.failureCount + a.successCount);
     });
   }, [aggregates]);
+
+  const formatEventDateTime = (at: number) => new Date(at).toLocaleString();
 
   const onApprove = (p: ToolWorkshopProposal) => {
     const r = approveToolWorkshopProposal(p);
@@ -236,7 +237,7 @@ export function ToolWorkshopPanel({
             </div>
           ) : null}
           <p className="tool-workshop-hint">
-            Permission-related error codes are listed first.
+            Rows are ordered by newest event time.
           </p>
           {aggSorted.length === 0 ? (
             <p className="tool-workshop-empty">No telemetry yet.</p>
@@ -245,6 +246,7 @@ export function ToolWorkshopPanel({
               <thead>
                 <tr>
                   <th aria-hidden />
+                  <th>Date / time</th>
                   <th>Tool</th>
                   <th>Avatar</th>
                   <th>Error</th>
@@ -267,6 +269,15 @@ export function ToolWorkshopPanel({
                         </span>
                       ) : (
                         <span aria-hidden>·</span>
+                      )}
+                    </td>
+                    <td>
+                      {r.lastEventAt ? (
+                        <time dateTime={new Date(r.lastEventAt).toISOString()}>
+                          {formatEventDateTime(r.lastEventAt)}
+                        </time>
+                      ) : (
+                        "—"
                       )}
                     </td>
                     <td>{r.toolId}</td>
@@ -296,41 +307,63 @@ export function ToolWorkshopPanel({
           {eventsDisplay.length === 0 ? (
             <p className="tool-workshop-empty">No events yet.</p>
           ) : (
-            <ul className="tool-workshop-event-list">
-              {eventsDisplay.slice(0, 200).map((e) => (
-                <li
-                  key={e.id}
-                  className={`tool-workshop-event${
-                    e.isPermissionError ? " tool-workshop-event--denied" : ""
-                  }`}
-                >
-                  <span className="tool-workshop-event-icon" aria-hidden>
-                    {e.isPermissionError ? "⛔" : e.ok ? "✓" : "✗"}
-                  </span>
-                  <span className="tool-workshop-event-body">
-                    <time dateTime={new Date(e.at).toISOString()}>
-                      {new Date(e.at).toLocaleString()}
-                    </time>
-                    {" · "}
-                    {e.toolId} · {e.avatarId} · {e.source} ·{" "}
-                    {e.ok ? "ok" : e.errorCode ?? "fail"}
-                    {e.resultPreview
-                      ? ` — ${e.resultPreview.slice(0, 160)}${e.resultPreview.length > 160 ? "…" : ""}`
-                      : e.argsPreview
-                        ? ` — ${e.argsPreview.slice(0, 160)}${e.argsPreview.length > 160 ? "…" : ""}`
-                        : ""}
-                  </span>
-                  <button
-                    type="button"
-                    className="tool-workshop-event-escalate"
-                    title="Create an Unmet Need from this event"
-                    onClick={() => openEscalateForm(e)}
+            <table className="tool-workshop-table">
+              <thead>
+                <tr>
+                  <th aria-hidden />
+                  <th>Date / time</th>
+                  <th>Tool</th>
+                  <th>Avatar</th>
+                  <th>Source</th>
+                  <th>Status</th>
+                  <th>Preview</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {eventsDisplay.slice(0, 200).map((e) => (
+                  <tr
+                    key={e.id}
+                    className={
+                      e.isPermissionError ? "tool-workshop-event--denied" : undefined
+                    }
                   >
-                    Add to Unmet Needs
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    <td className="tool-workshop-table-icon">
+                      {e.isPermissionError ? "⛔" : e.ok ? "✓" : "✗"}
+                    </td>
+                    <td>
+                      <time dateTime={new Date(e.at).toISOString()}>
+                        {formatEventDateTime(e.at)}
+                      </time>
+                    </td>
+                    <td>{e.toolId}</td>
+                    <td>{e.avatarId}</td>
+                    <td>{e.source}</td>
+                    <td>{e.ok ? "ok" : e.errorCode ?? "fail"}</td>
+                    <td
+                      className="tool-workshop-table-preview"
+                      title={e.resultPreview ?? e.argsPreview ?? undefined}
+                    >
+                      {e.resultPreview
+                        ? `${e.resultPreview.slice(0, 160)}${e.resultPreview.length > 160 ? "…" : ""}`
+                        : e.argsPreview
+                          ? `${e.argsPreview.slice(0, 160)}${e.argsPreview.length > 160 ? "…" : ""}`
+                          : "—"}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="tool-workshop-event-escalate"
+                        title="Create an Unmet Need from this event"
+                        onClick={() => openEscalateForm(e)}
+                      >
+                        Add to Unmet Needs
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </section>
       )}

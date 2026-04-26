@@ -10,7 +10,11 @@ import { SourceCacheViz } from "../components/SourceCacheViz";
 import { countWavesQueueByKind } from "../services/switchboardWavesQueue";
 import { applyUnhelpfulDecrement } from "../services/avatarRoster";
 import { runSyntheticAction } from "../services/monitors";
-import { getAvatarPortraitSrc } from "../services/avatarPortrait";
+import {
+  getAvatarPortraitObjectPosition,
+  getAvatarPortraitSrc,
+  getAvatarPortraitTransform,
+} from "../services/avatarPortrait";
 import { useAppContentView } from "./appContentViewContext";
 import { useAudioVisualPulse } from "./audioVisualPulseContext";
 import { WorkshopsPanel } from "../components/WorkshopsPanel";
@@ -161,6 +165,7 @@ export function ChatMainPanel() {
                   ollamaPresence={m.ollamaPresence}
                   onRefreshOllama={m.refreshOllama}
                   messages={m.messages}
+                  fullAvatarCatalog={m.fullAvatarCatalog}
                   projectsList={m.projectsList}
                   situationContext={m.situationContext}
                   patchSituationContext={m.patchSituationContext}
@@ -253,6 +258,22 @@ export function ChatMainPanel() {
                           m.situationContext.avatarPortraitSrcById,
                           msg.avatarId,
                           fromAvatar?.appearance?.portraitUrl
+                        )
+                      : undefined;
+                  const msgPortraitObjectPosition =
+                    msg.role === "avatar" && msg.avatarId
+                      ? getAvatarPortraitObjectPosition(
+                          m.situationContext.avatarPortraitPositionById?.[
+                            msg.avatarId
+                          ]
+                        )
+                      : undefined;
+                  const msgPortraitTransform =
+                    msg.role === "avatar" && msg.avatarId
+                      ? getAvatarPortraitTransform(
+                          m.situationContext.avatarPortraitScaleById?.[
+                            msg.avatarId
+                          ]
                         )
                       : undefined;
                   const msgPortraitInitial =
@@ -351,6 +372,11 @@ export function ChatMainPanel() {
                                     src={msgPortraitSrc}
                                     alt=""
                                     className="message-avatar-portrait-img"
+                                    style={{
+                                      objectPosition: msgPortraitObjectPosition,
+                                      transform: msgPortraitTransform,
+                                      transformOrigin: msgPortraitObjectPosition,
+                                    }}
                                   />
                                 ) : (
                                   <span
@@ -792,6 +818,12 @@ export function ChatMainPanel() {
                     a.id,
                     a.appearance?.portraitUrl
                   );
+                  const pObjectPosition = getAvatarPortraitObjectPosition(
+                    m.situationContext.avatarPortraitPositionById?.[a.id]
+                  );
+                  const pTransform = getAvatarPortraitTransform(
+                    m.situationContext.avatarPortraitScaleById?.[a.id]
+                  );
                   const pInitial =
                     a.givenName.trim().charAt(0).toUpperCase() || "?";
                   return (
@@ -812,6 +844,11 @@ export function ChatMainPanel() {
                             src={pSrc}
                             alt=""
                             className="chat-avatar-picker-img"
+                            style={{
+                              objectPosition: pObjectPosition,
+                              transform: pTransform,
+                              transformOrigin: pObjectPosition,
+                            }}
                           />
                         ) : (
                           <span

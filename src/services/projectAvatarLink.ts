@@ -3,7 +3,7 @@
  * long-term tasks and surface in the assign-task UI.
  */
 
-import { upsertProject } from "./platform/store";
+import { getPlatformStore, upsertProject } from "./platform/store";
 import {
   assignTask,
   completeActiveTasksForProjectExcept,
@@ -33,17 +33,23 @@ export function ensureProjectTaskForAvatar(
   avatarId: string,
   projectId: string
 ): LongTermTask | null {
-  const proj = getWorldMetadata().projects[projectId];
-  if (!proj?.title?.trim()) return null;
+  const worldProject = getWorldMetadata().projects[projectId];
+  const platformProject = getPlatformStore().projects[projectId];
+  const title = (worldProject?.title ?? platformProject?.title ?? "").trim();
+  if (!title) return null;
 
-  const title = proj.title.trim();
   const description =
-    proj.notes?.trim() || proj.summary?.trim() || undefined;
+    worldProject?.notes?.trim() ||
+    worldProject?.summary?.trim() ||
+    platformProject?.summary?.trim() ||
+    undefined;
 
   upsertProject({
     id: projectId,
     title,
-    summary: proj.summary?.trim() || null,
+    summary: worldProject
+      ? worldProject.summary?.trim() || null
+      : platformProject?.summary?.trim() || null,
     ownerAvatarId: avatarId,
     actor: "user",
   });

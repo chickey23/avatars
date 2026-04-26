@@ -1,13 +1,296 @@
-import { getTasksForAvatar } from "../services/longTermTasks";
-import { getAvatarPortraitSrc } from "../services/avatarPortrait";
+import { getProjectAssignmentsForAvatar } from "../services/longTermTasks";
+import {
+  getAvatarPortraitObjectPosition,
+  getAvatarPortraitSrc,
+  getAvatarPortraitTransform,
+} from "../services/avatarPortrait";
 import { AiRulesLibraryPanel } from "../components/AiRulesLibraryPanel";
 import { PERSONALITY_TRAITS } from "../theme/designTokens";
+import { getAvatarOperationalRoles } from "../services/avatarOperations";
 import { useAppContentView } from "./appContentViewContext";
 import { useAudioVisualPulse } from "./audioVisualPulseContext";
+import type { AvatarDetailTabId } from "./useAppContentModel";
+
+const AVATAR_DETAIL_TABS: ReadonlyArray<{ id: AvatarDetailTabId; label: string }> = [
+  { id: "match", label: "Match" },
+  { id: "bio", label: "Bio" },
+  { id: "rules", label: "Rules" },
+];
 
 export function PrimaryAvatarSidebar() {
   const m = useAppContentView();
   const audioPulse = useAudioVisualPulse();
+  const renderAvatarDetailPanel = (
+    avatar: (typeof m.fullAvatarCatalog)[number],
+    portraitSrc: string | undefined,
+    portraitInitial: string
+  ) => {
+    const detailProjects = getProjectAssignmentsForAvatar(
+      avatar.id,
+      avatar.assignedTasks
+    );
+    const operationalRoles = getAvatarOperationalRoles(avatar);
+    const hasOperationalRoles =
+      operationalRoles.stewardships.length > 0 ||
+      operationalRoles.capabilities.length > 0;
+
+    return (
+      <div className="avatar-detail-panel">
+        {!portraitSrc && (
+          <section className="avatar-detail-section">
+            <h4 className="avatar-detail-section-label">Portrait</h4>
+            <div className="avatar-portrait-row">
+              <span
+                className="avatar-portrait avatar-portrait--large"
+                aria-hidden="true"
+              >
+                <span
+                  className="avatar-portrait-fallback"
+                  style={{
+                    background:
+                      avatar.appearance?.accentColor ?? "rgba(120,120,140,0.5)",
+                  }}
+                >
+                  {portraitInitial}
+                </span>
+              </span>
+              <div className="avatar-portrait-actions">
+                <button
+                  type="button"
+                  className="avatar-portrait-choose"
+                  aria-label={`Choose portrait image for ${avatar.givenName}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    m.openPortraitFilePicker(avatar.id);
+                  }}
+                >
+                  Choose image…
+                </button>
+              </div>
+            </div>
+            {m.portraitFileError?.avatarId === avatar.id && (
+              <p className="avatar-portrait-error" role="status">
+                {m.portraitFileError.message}
+              </p>
+            )}
+          </section>
+        )}
+        <div
+          className="avatar-detail-tabs"
+          role="tablist"
+          aria-label={`${avatar.givenName} detail sections`}
+        >
+          {AVATAR_DETAIL_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`avatar-detail-tab${
+                m.avatarDetailActiveTab === tab.id ? " is-active" : ""
+              }`}
+              role="tab"
+              id={`avatar-detail-tab-${avatar.id}-${tab.id}`}
+              aria-selected={m.avatarDetailActiveTab === tab.id}
+              aria-controls={`avatar-detail-panel-${avatar.id}-${tab.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                m.setAvatarDetailActiveTab(tab.id);
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {m.avatarDetailActiveTab === "match" && (
+          <div
+            id={`avatar-detail-panel-${avatar.id}-match`}
+            className="avatar-detail-tab-panel"
+            role="tabpanel"
+            aria-labelledby={`avatar-detail-tab-${avatar.id}-match`}
+          >
+            <section className="avatar-detail-section">
+              <h4 className="avatar-detail-section-label">
+                Assigned projects{" "}
+                <span className="avatar-detail-section-hint">
+                  (for match and response)
+                </span>
+              </h4>
+              {detailProjects.length > 0 ? (
+                <ul className="avatar-detail-task-list">
+                  {detailProjects.map((t) => (
+                    <li
+                      key={t.projectId ?? t.id}
+                      title={t.description ?? undefined}
+                    >
+                      {t.title}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="avatar-detail-empty">None</span>
+              )}
+            </section>
+            <section className="avatar-detail-section">
+              <h4 className="avatar-detail-section-label">
+                Tags <span className="avatar-detail-section-hint">(for match)</span>
+              </h4>
+              {avatar.tags.length > 0 ? (
+                <div
+                  className="avatar-trait-chips avatar-trait-chips--meta"
+                  aria-label="Tags"
+                >
+                  {avatar.tags.map((tag) => (
+                    <span key={tag} className="avatar-trait-chip">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="avatar-detail-empty">None</span>
+              )}
+            </section>
+            <section className="avatar-detail-section">
+              <h4 className="avatar-detail-section-label">
+                Interests{" "}
+                <span className="avatar-detail-section-hint">(for match)</span>
+              </h4>
+              {avatar.interests.length > 0 ? (
+                <div
+                  className="avatar-trait-chips avatar-trait-chips--meta"
+                  aria-label="Interests"
+                >
+                  {avatar.interests.map((interest) => (
+                    <span key={interest} className="avatar-trait-chip">
+                      {interest}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="avatar-detail-empty">None</span>
+              )}
+            </section>
+          </div>
+        )}
+        {m.avatarDetailActiveTab === "bio" && (
+          <div
+            id={`avatar-detail-panel-${avatar.id}-bio`}
+            className="avatar-detail-tab-panel"
+            role="tabpanel"
+            aria-labelledby={`avatar-detail-tab-${avatar.id}-bio`}
+          >
+            <section className="avatar-detail-section">
+              <h4 className="avatar-detail-section-label">
+                Description{" "}
+                <span className="avatar-detail-section-hint">(for response)</span>
+              </h4>
+              <p className="avatar-desc">{avatar.description}</p>
+            </section>
+            <section className="avatar-detail-section">
+              <h4 className="avatar-detail-section-label">
+                Personality description{" "}
+                <span className="avatar-detail-section-hint">(for response)</span>
+              </h4>
+              <p className="avatar-personality">{avatar.personality}</p>
+            </section>
+          </div>
+        )}
+        {m.avatarDetailActiveTab === "rules" && (
+          <div
+            id={`avatar-detail-panel-${avatar.id}-rules`}
+            className="avatar-detail-tab-panel"
+            role="tabpanel"
+            aria-labelledby={`avatar-detail-tab-${avatar.id}-rules`}
+          >
+            <section className="avatar-detail-section">
+              <h4 className="avatar-detail-section-label">
+                Traits{" "}
+                <span className="avatar-detail-section-hint">(for response)</span>
+              </h4>
+              {avatar.traitIds && avatar.traitIds.length > 0 ? (
+                <div
+                  className="avatar-trait-chips"
+                  aria-label="Personality traits"
+                >
+                  {avatar.traitIds.map((tid) => (
+                    <span key={tid} className="avatar-trait-chip">
+                      {PERSONALITY_TRAITS.find((t) => t.id === tid)?.label ?? tid}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="avatar-detail-empty">None</span>
+              )}
+            </section>
+            <section className="avatar-detail-section">
+              <h4 className="avatar-detail-section-label">
+                Stewardships{" "}
+                <span className="avatar-detail-section-hint">(operational duties)</span>
+              </h4>
+              {operationalRoles.stewardships.length > 0 ? (
+                <div
+                  className="avatar-trait-chips avatar-trait-chips--meta"
+                  aria-label="Stewardships"
+                >
+                  {operationalRoles.stewardships.map((role) => (
+                    <span
+                      key={role.tag}
+                      className="avatar-trait-chip"
+                      title={role.description}
+                    >
+                      {role.label}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="avatar-detail-empty">None</span>
+              )}
+            </section>
+            <section className="avatar-detail-section">
+              <h4 className="avatar-detail-section-label">
+                Capabilities{" "}
+                <span className="avatar-detail-section-hint">(tool access)</span>
+              </h4>
+              {operationalRoles.capabilities.length > 0 ? (
+                <div
+                  className="avatar-trait-chips avatar-trait-chips--meta"
+                  aria-label="Capabilities"
+                >
+                  {operationalRoles.capabilities.map((role) => (
+                    <span
+                      key={`${role.kind}:${role.id}`}
+                      className="avatar-trait-chip"
+                      title={role.description}
+                    >
+                      {role.label}
+                    </span>
+                  ))}
+                </div>
+              ) : hasOperationalRoles ? (
+                <span className="avatar-detail-empty">None</span>
+              ) : (
+                <span className="avatar-detail-empty">No operational roles.</span>
+              )}
+            </section>
+          </div>
+        )}
+        {!avatar.uneditable && (
+          <section className="avatar-detail-section avatar-detail-section--builder">
+            <button
+              type="button"
+              className="avatar-detail-edit-builder"
+              onClick={(e) => {
+                e.stopPropagation();
+                m.setAvatarBuilderInitial({ kind: "edit", avatar: { ...avatar } });
+                m.setAvatarBuilderOpen(true);
+              }}
+            >
+              Edit in builder…
+            </button>
+          </section>
+        )}
+      </div>
+    );
+  };
+
   return (
       <aside className="avatar-sidebar">
         <input
@@ -141,12 +424,17 @@ export function PrimaryAvatarSidebar() {
             avatar.id,
             avatar.appearance?.portraitUrl
           );
+          const portraitObjectPosition = getAvatarPortraitObjectPosition(
+            m.situationContext.avatarPortraitPositionById?.[avatar.id]
+          );
+          const portraitTransform = getAvatarPortraitTransform(
+            m.situationContext.avatarPortraitScaleById?.[avatar.id]
+          );
           const portraitInitial =
             avatar.givenName.trim().charAt(0).toUpperCase() || "?";
           const pendList = m.pendingByAvatar.get(avatar.id);
           const pendCount = pendList?.length ?? 0;
           const firstPending = pendList?.[0];
-          const detailTasks = getTasksForAvatar(avatar.id);
           return (
             <div
               key={avatar.id}
@@ -198,6 +486,11 @@ export function PrimaryAvatarSidebar() {
                         src={portraitSrc}
                         alt=""
                         className="avatar-portrait-img"
+                        style={{
+                          objectPosition: portraitObjectPosition,
+                          transform: portraitTransform,
+                          transformOrigin: portraitObjectPosition,
+                        }}
                       />
                     ) : (
                       <span
@@ -309,165 +602,8 @@ export function PrimaryAvatarSidebar() {
                   ))}
                 </ul>
               )}
-              {m.avatarDetailExpandedId === avatar.id && (
-                <div className="avatar-detail-panel">
-                  {!portraitSrc && (
-                    <section className="avatar-detail-section">
-                      <h4 className="avatar-detail-section-label">Portrait</h4>
-                      <div className="avatar-portrait-row">
-                        <span
-                          className="avatar-portrait avatar-portrait--large"
-                          aria-hidden="true"
-                        >
-                          <span
-                            className="avatar-portrait-fallback"
-                            style={{
-                              background:
-                                avatar.appearance?.accentColor ??
-                                "rgba(120,120,140,0.5)",
-                            }}
-                          >
-                            {portraitInitial}
-                          </span>
-                        </span>
-                        <div className="avatar-portrait-actions">
-                          <button
-                            type="button"
-                            className="avatar-portrait-choose"
-                            aria-label={`Choose portrait image for ${avatar.givenName}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              m.openPortraitFilePicker(avatar.id);
-                            }}
-                          >
-                            Choose image…
-                          </button>
-                        </div>
-                      </div>
-                      {m.portraitFileError?.avatarId === avatar.id && (
-                        <p className="avatar-portrait-error" role="status">
-                          {m.portraitFileError.message}
-                        </p>
-                      )}
-                    </section>
-                  )}
-                  <section className="avatar-detail-section">
-                    <h4 className="avatar-detail-section-label">
-                      Tags{" "}
-                      <span className="avatar-detail-section-hint">(for match)</span>
-                    </h4>
-                    {avatar.tags.length > 0 ? (
-                      <div
-                        className="avatar-trait-chips avatar-trait-chips--meta"
-                        aria-label="Tags"
-                      >
-                        {avatar.tags.map((tag) => (
-                          <span key={tag} className="avatar-trait-chip">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="avatar-detail-empty">None</span>
-                    )}
-                  </section>
-                  <section className="avatar-detail-section">
-                    <h4 className="avatar-detail-section-label">
-                      Interests{" "}
-                      <span className="avatar-detail-section-hint">(for match)</span>
-                    </h4>
-                    {avatar.interests.length > 0 ? (
-                      <div
-                        className="avatar-trait-chips avatar-trait-chips--meta"
-                        aria-label="Interests"
-                      >
-                        {avatar.interests.map((interest) => (
-                          <span key={interest} className="avatar-trait-chip">
-                            {interest}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="avatar-detail-empty">None</span>
-                    )}
-                  </section>
-                  <section className="avatar-detail-section">
-                    <h4 className="avatar-detail-section-label">
-                      Assigned tasks{" "}
-                      <span className="avatar-detail-section-hint">
-                        (for match and response)
-                      </span>
-                    </h4>
-                    {detailTasks.length > 0 ? (
-                      <ul className="avatar-detail-task-list">
-                        {detailTasks.map((t) => (
-                          <li key={t.id} title={t.description ?? undefined}>
-                            {t.title}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span className="avatar-detail-empty">None</span>
-                    )}
-                  </section>
-                  <section className="avatar-detail-section">
-                    <h4 className="avatar-detail-section-label">
-                      Description{" "}
-                      <span className="avatar-detail-section-hint">
-                        (for response)
-                      </span>
-                    </h4>
-                    <p className="avatar-desc">{avatar.description}</p>
-                  </section>
-                  <section className="avatar-detail-section">
-                    <h4 className="avatar-detail-section-label">
-                      Personality{" "}
-                      <span className="avatar-detail-section-hint">
-                        (for response)
-                      </span>
-                    </h4>
-                    <p className="avatar-personality">{avatar.personality}</p>
-                  </section>
-                  <section className="avatar-detail-section">
-                    <h4 className="avatar-detail-section-label">
-                      Traits{" "}
-                      <span className="avatar-detail-section-hint">
-                        (for response)
-                      </span>
-                    </h4>
-                    {avatar.traitIds && avatar.traitIds.length > 0 ? (
-                      <div
-                        className="avatar-trait-chips"
-                        aria-label="Personality traits"
-                      >
-                        {avatar.traitIds.map((tid) => (
-                          <span key={tid} className="avatar-trait-chip">
-                            {PERSONALITY_TRAITS.find((t) => t.id === tid)
-                              ?.label ?? tid}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="avatar-detail-empty">None</span>
-                    )}
-                  </section>
-                  {!avatar.uneditable && (
-                    <section className="avatar-detail-section avatar-detail-section--builder">
-                      <button
-                        type="button"
-                        className="avatar-detail-edit-builder"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          m.setAvatarBuilderInitial({ kind: "edit", avatar: { ...avatar } });
-                          m.setAvatarBuilderOpen(true);
-                        }}
-                      >
-                        Edit in builder…
-                      </button>
-                    </section>
-                  )}
-                </div>
-              )}
+              {m.avatarDetailExpandedId === avatar.id &&
+                renderAvatarDetailPanel(avatar, portraitSrc, portraitInitial)}
             </div>
           );
         })}
@@ -490,32 +626,69 @@ export function PrimaryAvatarSidebar() {
                   a.id,
                   a.appearance?.portraitUrl
                 );
+                const objectPosition = getAvatarPortraitObjectPosition(
+                  m.situationContext.avatarPortraitPositionById?.[a.id]
+                );
+                const transform = getAvatarPortraitTransform(
+                  m.situationContext.avatarPortraitScaleById?.[a.id]
+                );
                 const initial = a.givenName.trim().charAt(0).toUpperCase() || "?";
                 return (
                   <li key={id}>
-                    <button
-                      type="button"
-                      className="avatar-popin-card avatar-popup-card"
-                      aria-label={`Remove ${a.givenName} from Talk to selection`}
-                      onClick={() => m.toggleAvatarSelection(id)}
-                    >
-                      <span className="avatar-portrait avatar-portrait--sm" aria-hidden>
-                        {src ? (
-                          <img src={src} alt="" className="avatar-portrait-img" />
-                        ) : (
-                          <span
-                            className="avatar-portrait-fallback"
-                            style={{
-                              background:
-                                a.appearance?.accentColor ?? "rgba(120,120,140,0.5)",
-                            }}
-                          >
-                            {initial}
-                          </span>
-                        )}
-                      </span>
-                      <span className="avatar-popin-name">{a.givenName}</span>
-                    </button>
+                    <div className="avatar-popup-row">
+                      <button
+                        type="button"
+                        className="avatar-popin-card avatar-popup-card"
+                        aria-label={`Remove ${a.givenName} from Talk to selection`}
+                        onClick={() => m.toggleAvatarSelection(id)}
+                      >
+                        <span className="avatar-portrait avatar-portrait--sm" aria-hidden>
+                          {src ? (
+                            <img
+                              src={src}
+                              alt=""
+                              className="avatar-portrait-img"
+                              style={{
+                                objectPosition,
+                                transform,
+                                transformOrigin: objectPosition,
+                              }}
+                            />
+                          ) : (
+                            <span
+                              className="avatar-portrait-fallback"
+                              style={{
+                                background:
+                                  a.appearance?.accentColor ?? "rgba(120,120,140,0.5)",
+                              }}
+                            >
+                              {initial}
+                            </span>
+                          )}
+                        </span>
+                        <span className="avatar-popin-name">{a.givenName}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="avatar-detail-toggle avatar-popup-detail-toggle"
+                        title="Avatar details"
+                        aria-label={`Show ${a.givenName} details`}
+                        aria-expanded={m.avatarDetailExpandedId === a.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          m.setAvatarDetailExpandedId((expandedId) =>
+                            expandedId === a.id ? null : a.id
+                          );
+                          m.setAvatarPendingListOpenId(null);
+                        }}
+                      >
+                        <span className="avatar-detail-toggle-icon" aria-hidden>
+                          &#128269;
+                        </span>
+                      </button>
+                    </div>
+                    {m.avatarDetailExpandedId === a.id &&
+                      renderAvatarDetailPanel(a, src, initial)}
                   </li>
                 );
               })}
@@ -538,6 +711,12 @@ export function PrimaryAvatarSidebar() {
                   a.id,
                   a.appearance?.portraitUrl
                 );
+                const objectPosition = getAvatarPortraitObjectPosition(
+                  m.situationContext.avatarPortraitPositionById?.[a.id]
+                );
+                const transform = getAvatarPortraitTransform(
+                  m.situationContext.avatarPortraitScaleById?.[a.id]
+                );
                 const initial = a.givenName.trim().charAt(0).toUpperCase() || "?";
                 return (
                   <li key={id}>
@@ -550,7 +729,16 @@ export function PrimaryAvatarSidebar() {
                     >
                       <span className="avatar-portrait avatar-portrait--sm" aria-hidden>
                         {src ? (
-                          <img src={src} alt="" className="avatar-portrait-img" />
+                          <img
+                            src={src}
+                            alt=""
+                            className="avatar-portrait-img"
+                            style={{
+                              objectPosition,
+                              transform,
+                              transformOrigin: objectPosition,
+                            }}
+                          />
                         ) : (
                           <span
                             className="avatar-portrait-fallback"
@@ -574,8 +762,8 @@ export function PrimaryAvatarSidebar() {
         <details className="task-assign-details">
           <summary className="task-assign-summary">
             {m.taskAssignAvatar
-              ? `Assign task · ${m.taskAssignAvatar.givenName}`
-              : "Assign tasks"}
+              ? `Assign project · ${m.taskAssignAvatar.givenName}`
+              : "Assign project"}
             {m.tasks.length > 0 ? (
               <span className="task-assign-count" aria-hidden>
                 {" "}
@@ -585,7 +773,7 @@ export function PrimaryAvatarSidebar() {
           </summary>
           <div className="task-assign-body">
             {!m.firstSelectedId && (
-              <p className="task-assign-hint">Select an avatar to assign tasks.</p>
+              <p className="task-assign-hint">Select an avatar to assign a project.</p>
             )}
             <div className="task-input-row">
               <select
@@ -593,7 +781,7 @@ export function PrimaryAvatarSidebar() {
                 value={m.taskProjectId}
                 onChange={(e) => m.setTaskProjectId(e.target.value)}
                 disabled={!m.firstSelectedId || m.projectsList.length === 0}
-                aria-label="Project to assign as task"
+                aria-label="Project to assign"
               >
                 <option value="">
                   {m.projectsList.length === 0

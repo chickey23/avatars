@@ -2,6 +2,8 @@
  * Core data models for the Avatar Interface System
  */
 
+import type { AvatarPortraitPosition } from "../services/avatarPortrait";
+
 /** Shared base for Avatars and Agents */
 export interface Profile {
   id: string;
@@ -453,6 +455,16 @@ export interface SituationContext {
    * Persisted.
    */
   avatarPortraitSrcById?: Record<string, string>;
+  /**
+   * Per-avatar focal point for `object-position`, used to frame headshots.
+   * Values are percentages from 0 to 100.
+   */
+  avatarPortraitPositionById?: Record<string, AvatarPortraitPosition>;
+  /**
+   * Per-avatar portrait magnification. 1 = natural cover crop; range is 0.5–2.
+   * Persisted.
+   */
+  avatarPortraitScaleById?: Record<string, number>;
   /**
    * User-created avatars appended after built-in defaults in catalog order.
    * Persisted.

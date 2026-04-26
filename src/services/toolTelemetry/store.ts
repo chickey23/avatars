@@ -99,11 +99,13 @@ export function computeToolTelemetryAggregates(
         errorCode: e.ok ? null : (e.errorCode ?? "failed"),
         successCount: 0,
         failureCount: 0,
+        lastEventAt: undefined,
         lastSuccessAt: undefined,
         lastFailureAt: undefined,
       };
       map.set(key, row);
     }
+    row.lastEventAt = Math.max(row.lastEventAt ?? 0, e.at);
     if (e.ok) {
       row.successCount++;
       row.lastSuccessAt = Math.max(row.lastSuccessAt ?? 0, e.at);
@@ -168,16 +170,11 @@ export function computeToolIntentCorrectnessByAvatar(
     .sort((a, b) => b.total - a.total);
 }
 
-/** Sort events for workshop: permission errors first, then time desc. */
+/** Sort events for workshop: newest first. */
 export function sortToolTelemetryEventsForDisplay(
   events: ToolTelemetryEvent[]
 ): ToolTelemetryEvent[] {
-  return [...events].sort((a, b) => {
-    const pa = a.isPermissionError ? 0 : 1;
-    const pb = b.isPermissionError ? 0 : 1;
-    if (pa !== pb) return pa - pb;
-    return b.at - a.at;
-  });
+  return [...events].sort((a, b) => b.at - a.at);
 }
 
 export { isPermissionErrorCode };

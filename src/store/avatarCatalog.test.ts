@@ -34,6 +34,26 @@ describe("getFullAvatarCatalog", () => {
     const ctx = { ...emptyCtx(), userAvatars: [u] };
     expect(getFullAvatarCatalog(ctx)).toEqual([...defaultAvatars, u]);
   });
+
+  it("merges persisted edits for built-in avatars", () => {
+    const base = defaultAvatars.find((a) => (a.systemTags?.length ?? 0) > 0)!;
+    const edit = {
+      ...base,
+      givenName: "Edited",
+      personality: "Updated personality",
+      systemTags: [],
+    } satisfies Avatar;
+    const ctx = {
+      ...emptyCtx(),
+      builtinAvatarEdits: { [base.id]: edit },
+    };
+
+    const hit = getFullAvatarCatalog(ctx).find((a) => a.id === base.id);
+
+    expect(hit?.givenName).toBe("Edited");
+    expect(hit?.personality).toBe("Updated personality");
+    expect(hit?.systemTags).toEqual(base.systemTags);
+  });
 });
 
 describe("findAvatarInCatalog", () => {

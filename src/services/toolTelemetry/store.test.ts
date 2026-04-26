@@ -43,7 +43,7 @@ describe("toolTelemetry store", () => {
     expect(denyRow?.failureCount).toBe(1);
   });
 
-  it("sortToolTelemetryEventsForDisplay puts permission errors first", () => {
+  it("sortToolTelemetryEventsForDisplay orders events newest first", () => {
     const events: ToolTelemetryEvent[] = [
       {
         id: "a",
@@ -66,7 +66,7 @@ describe("toolTelemetry store", () => {
       },
     ];
     const s = sortToolTelemetryEventsForDisplay(events);
-    expect(s[0]!.id).toBe("b");
+    expect(s.map((e) => e.id)).toEqual(["a", "b"]);
   });
 
   it("computeToolTelemetryAggregates sets lastResultPreview from newest event in bucket", () => {
@@ -93,6 +93,7 @@ describe("toolTelemetry store", () => {
     const agg = computeToolTelemetryAggregates(events);
     const okRow = agg.find((r) => r.errorCode == null);
     expect(okRow?.lastResultPreview).toBe("newest wins");
+    expect(okRow?.lastEventAt).toBe(200);
   });
 
   it("computeToolTelemetryAggregates uses argsPreview for failure bucket when no resultPreview", () => {

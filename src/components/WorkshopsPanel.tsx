@@ -1,17 +1,25 @@
 import { useCallback, useState } from "react";
 import type { OllamaPresence } from "../services/ollama";
 import type { ConversationMessage } from "../types";
+import type { Avatar } from "../types";
 import type { ProjectMetadataRecord } from "../services/worldMetadata/types";
 import { ToolWorkshopPanel } from "./ToolWorkshopPanel";
 import { UnmetNeedsPanel } from "./UnmetNeedsPanel";
 import { SourceWorkshopPanel } from "./SourceWorkshopPanel";
 import { ProjectWorkshopPanel } from "./ProjectWorkshopPanel";
 import { AvatarCreationWorkshopPanel } from "./AvatarCreationWorkshopPanel";
+import { StewardshipWorkshopPanel } from "./StewardshipWorkshopPanel";
 import type { SituationContext } from "../types";
 import type { PersonalityTraitId } from "../theme/designTokens";
 import type { AvatarBuilderInitial } from "./AvatarBuilderModal";
 
-export type WorkshopTabId = "tool" | "unmet" | "source" | "projects" | "creation";
+export type WorkshopTabId =
+  | "tool"
+  | "unmet"
+  | "source"
+  | "projects"
+  | "creation"
+  | "stewardship";
 
 export type WorkshopsPanelProps = {
   workshopTab: WorkshopTabId;
@@ -19,6 +27,7 @@ export type WorkshopsPanelProps = {
   ollamaPresence: "checking" | OllamaPresence;
   onRefreshOllama: () => void;
   messages: ConversationMessage[];
+  fullAvatarCatalog: Avatar[];
   projectsList: [string, ProjectMetadataRecord][];
   situationContext: SituationContext;
   patchSituationContext: (patch: Partial<SituationContext>) => void;
@@ -41,6 +50,7 @@ export function WorkshopsPanel({
   ollamaPresence,
   onRefreshOllama,
   messages,
+  fullAvatarCatalog,
   projectsList,
   situationContext,
   patchSituationContext,
@@ -70,6 +80,7 @@ export function WorkshopsPanel({
             ["source", "Source"],
             ["projects", "Projects"],
             ["creation", "Creation"],
+            ["stewardship", "Stewardship"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -111,6 +122,13 @@ export function WorkshopsPanel({
           onWellOfSoulsAfterGenerate={onWellOfSoulsAfterGenerate}
           onOpenAvatarBuilderFromInternet={onOpenAvatarBuilderFromInternet}
           creationWorkshopPrefill={creationWorkshopPrefill}
+        />
+      )}
+      {workshopTab === "stewardship" && (
+        <StewardshipWorkshopPanel
+          fullAvatarCatalog={fullAvatarCatalog}
+          situationContext={situationContext}
+          patchSituationContext={patchSituationContext}
         />
       )}
     </div>

@@ -31,6 +31,8 @@ export type ToolTelemetryAggregateRow = {
   errorCode: string | null;
   successCount: number;
   failureCount: number;
+  /** Newest event time in this aggregate bucket. */
+  lastEventAt?: number;
   lastSuccessAt?: number;
   lastFailureAt?: number;
   /** Latest non-empty resultPreview or argsPreview in this bucket (by event time). */

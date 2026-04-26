@@ -7,7 +7,11 @@ import {
   beforeAll,
   afterAll,
 } from "vitest";
-import { __resetPlatformStoreForTests, getPlatformStore } from "./platform/store";
+import {
+  __resetPlatformStoreForTests,
+  getPlatformStore,
+  upsertProject,
+} from "./platform/store";
 import { ensureProjectTaskForAvatar } from "./projectAvatarLink";
 import * as store from "./worldMetadata/store";
 import * as lt from "./longTermTasks";
@@ -144,5 +148,37 @@ describe("ensureProjectTaskForAvatar", () => {
       ownerAvatarId: "muse",
     });
     expect(getPlatformStore().projects.p1?.summary).toBeUndefined();
+  });
+
+  it("assigns platform-only projects that are missing from world metadata", () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal(
+      "window",
+      { dispatchEvent } as unknown as Window & typeof globalThis
+    );
+    vi.spyOn(store, "getWorldMetadata").mockReturnValue({
+      schemaVersion: 2,
+      people: {},
+      projects: {},
+      userProfile: { updatedAt: 1 },
+    });
+    upsertProject({
+      id: "platform_only",
+      title: "Existing platform project",
+      summary: "Already in platform store",
+      actor: "user",
+    });
+
+    const task = ensureProjectTaskForAvatar("muse", "platform_only");
+
+    expect(task).toMatchObject({
+      avatarId: "muse",
+      title: "Existing platform project",
+      description: "Already in platform store",
+      projectId: "platform_only",
+      status: "active",
+    });
+    expect(getPlatformStore().projects.platform_only?.ownerAvatarId).toBe("muse");
+    expect(dispatchEvent).toHaveBeenCalled();
   });
 });

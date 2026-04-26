@@ -34,6 +34,8 @@ export function AppOverlays() {
         clearPortrait={m.clearPortrait}
         portraitFileError={m.portraitFileError}
         avatarPortraitSrcById={m.situationContext.avatarPortraitSrcById}
+        avatarPortraitPositionById={m.situationContext.avatarPortraitPositionById}
+        avatarPortraitScaleById={m.situationContext.avatarPortraitScaleById}
       />
     </>
   );

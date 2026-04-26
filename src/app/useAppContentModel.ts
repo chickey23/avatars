@@ -71,6 +71,10 @@ import {
   getWorldMetadata,
   patchUserProfile,
 } from "../services/worldMetadata";
+import {
+  getPlatformStore,
+  subscribePlatformStore,
+} from "../services/platform/store";
 import { patchWorldMetadataProjectsForExecution } from "../services/projectSync";
 import { loadWorldviewAudit } from "../services/worldviewAudit";
 import {
@@ -87,6 +91,9 @@ import { isDefaultAvatarId } from "../store/avatarCatalog";
 import {
   readPortraitFileAsDataUrl,
   MAX_PORTRAIT_FILE_BYTES,
+  normalizeAvatarPortraitPosition,
+  normalizeAvatarPortraitScale,
+  type AvatarPortraitPosition,
 } from "../services/avatarPortrait";
 import { getAvatarVizColor } from "../services/avatarVizColor";
 import { loadEmailInsightsDoc } from "../services/emailInsights";
@@ -106,6 +113,9 @@ import {
   resolveUserChromeColorForSkin,
   serializeUserChromeColorBySkin,
 } from "./appChromeConstants";
+
+export type AvatarDetailTabId = "match" | "bio" | "rules";
+
 export function useAppContentModel() {
   const {
     avatars,
@@ -324,10 +334,10 @@ export function useAppContentModel() {
   );
 
   const [inputValue, setInputValue] = useState("");
-  /** Selected world-metadata project id for “Assign task” (dropdown). */
+  /** Selected project id for the Assign project dropdown. */
   const [taskProjectId, setTaskProjectId] = useState("");
   /**
-   * Transient status line for the Assign-task widget: surfaces a confirmation
+   * Transient status line for the Assign project widget: surfaces a confirmation
    * after a successful add and a diagnostic when the handler would otherwise
    * silently return (no avatar selected, picked project vanished, placeholder
    * title, etc.). Clears after ~4s so the widget doesn't accumulate chatter.
@@ -372,8 +382,16 @@ export function useAppContentModel() {
       avatar: Avatar;
       rosterScore: number;
       seedPortraitDataUrl?: string | null;
+      portraitPosition?: AvatarPortraitPosition;
+      portraitScale?: number;
     }) => {
-      const { avatar, rosterScore, seedPortraitDataUrl } = payload;
+      const {
+        avatar,
+        rosterScore,
+        seedPortraitDataUrl,
+        portraitPosition,
+        portraitScale,
+      } = payload;
       const nextScores = {
         ...(situationContext.avatarRosterPriorityScoreById ?? {}),
       };
@@ -390,12 +408,32 @@ export function useAppContentModel() {
               },
             }
           : {};
+      const portraitPositionCtx =
+        portraitPosition != null
+          ? {
+              avatarPortraitPositionById: {
+                ...(situationContext.avatarPortraitPositionById ?? {}),
+                [avatar.id]: normalizeAvatarPortraitPosition(portraitPosition),
+              },
+            }
+          : {};
+      const portraitScaleCtx =
+        portraitScale != null
+          ? {
+              avatarPortraitScaleById: {
+                ...(situationContext.avatarPortraitScaleById ?? {}),
+                [avatar.id]: normalizeAvatarPortraitScale(portraitScale),
+              },
+            }
+          : {};
       if (isDefaultAvatarId(avatar.id)) {
         const prev = situationContext.builtinAvatarEdits ?? {};
         patchSituationContext({
           builtinAvatarEdits: { ...prev, [avatar.id]: avatar },
           avatarRosterPriorityScoreById: nextScores,
           ...portraitCtx,
+          ...portraitPositionCtx,
+          ...portraitScaleCtx,
         });
         return;
       }
@@ -408,12 +446,16 @@ export function useAppContentModel() {
           userAvatars: next,
           avatarRosterPriorityScoreById: nextScores,
           ...portraitCtx,
+          ...portraitPositionCtx,
+          ...portraitScaleCtx,
         });
       } else {
         patchSituationContext({
           userAvatars: [...userPrev, avatar],
           avatarRosterPriorityScoreById: nextScores,
           ...portraitCtx,
+          ...portraitPositionCtx,
+          ...portraitScaleCtx,
         });
       }
     },
@@ -422,6 +464,8 @@ export function useAppContentModel() {
       situationContext.builtinAvatarEdits,
       situationContext.avatarRosterPriorityScoreById,
       situationContext.avatarPortraitSrcById,
+      situationContext.avatarPortraitPositionById,
+      situationContext.avatarPortraitScaleById,
       patchSituationContext,
     ]
   );
@@ -593,7 +637,13 @@ export function useAppContentModel() {
   }, [focus, patchSituationContext, situationContext.recentEvents]);
   const [chatViewMode, setChatViewMode] = useState<ChatViewMode>("chat");
   const WORKSHOP_TAB_STORAGE_KEY = "avatars_workshop_subtab";
-  type WorkshopTab = "tool" | "unmet" | "source" | "projects" | "creation";
+  type WorkshopTab =
+    | "tool"
+    | "unmet"
+    | "source"
+    | "projects"
+    | "creation"
+    | "stewardship";
   const [mainSurface, setMainSurface] = useState<"chat" | "workshops">("chat");
   const [workshopTab, setWorkshopTabState] = useState<WorkshopTab>(() => {
     try {
@@ -603,7 +653,8 @@ export function useAppContentModel() {
         s === "unmet" ||
         s === "source" ||
         s === "projects" ||
-        s === "creation"
+        s === "creation" ||
+        s === "stewardship"
       )
         return s;
     } catch {
@@ -705,29 +756,61 @@ export function useAppContentModel() {
           ...(situationContext.avatarPortraitSrcById ?? {}),
           [avatarId]: dataUrl,
         },
+        avatarPortraitPositionById: {
+          ...(situationContext.avatarPortraitPositionById ?? {}),
+          [avatarId]: { x: 50, y: 50 },
+        },
+        avatarPortraitScaleById: {
+          ...(situationContext.avatarPortraitScaleById ?? {}),
+          [avatarId]: 1,
+        },
       });
     },
-    [patchSituationContext, situationContext.avatarPortraitSrcById]
+    [
+      patchSituationContext,
+      situationContext.avatarPortraitSrcById,
+      situationContext.avatarPortraitPositionById,
+      situationContext.avatarPortraitScaleById,
+    ]
   );
 
   const clearPortrait = useCallback(
     (avatarId: string) => {
       setPortraitFileError(null);
       const prev = situationContext.avatarPortraitSrcById ?? {};
-      if (!(avatarId in prev)) return;
+      const prevPosition = situationContext.avatarPortraitPositionById ?? {};
+      const prevScale = situationContext.avatarPortraitScaleById ?? {};
+      if (!(avatarId in prev) && !(avatarId in prevPosition) && !(avatarId in prevScale))
+        return;
       const next = { ...prev };
       delete next[avatarId];
+      const nextPosition = { ...prevPosition };
+      delete nextPosition[avatarId];
+      const nextScale = { ...prevScale };
+      delete nextScale[avatarId];
       patchSituationContext({
         avatarPortraitSrcById: Object.keys(next).length > 0 ? next : undefined,
+        avatarPortraitPositionById:
+          Object.keys(nextPosition).length > 0 ? nextPosition : undefined,
+        avatarPortraitScaleById:
+          Object.keys(nextScale).length > 0 ? nextScale : undefined,
       });
     },
-    [patchSituationContext, situationContext.avatarPortraitSrcById]
+    [
+      patchSituationContext,
+      situationContext.avatarPortraitSrcById,
+      situationContext.avatarPortraitPositionById,
+      situationContext.avatarPortraitScaleById,
+    ]
   );
 
-  /** Sidebar: which avatar shows description + traits (magnifier) */
+  /** Sidebar: which avatar shows the magnifier detail panel. */
   const [avatarDetailExpandedId, setAvatarDetailExpandedId] = useState<string | null>(
     null
   );
+  /** Shared tab selection for all avatar detail panels. */
+  const [avatarDetailActiveTab, setAvatarDetailActiveTab] =
+    useState<AvatarDetailTabId>("match");
   /** Sidebar: which avatar shows full pending topic list (badge) */
   const [avatarPendingListOpenId, setAvatarPendingListOpenId] = useState<string | null>(
     null
@@ -810,11 +893,26 @@ export function useAppContentModel() {
 
   const projectsList = useMemo(() => {
     void projectsRefresh;
-    const p = getWorldMetadata().projects;
-    return Object.entries(p).sort((a, b) =>
+    const merged = new Map<string, { title: string; summary?: string }>();
+    for (const [id, p] of Object.entries(getPlatformStore().projects)) {
+      if (!p.title?.trim() || p.status === "archived") continue;
+      merged.set(id, { title: p.title, summary: p.summary });
+    }
+    for (const [id, p] of Object.entries(getWorldMetadata().projects)) {
+      if (!p.title?.trim()) continue;
+      merged.set(id, {
+        title: p.title,
+        summary: p.summary ?? merged.get(id)?.summary,
+      });
+    }
+    return [...merged.entries()].sort((a, b) =>
       a[1].title.localeCompare(b[1].title, undefined, { sensitivity: "base" })
     );
   }, [projectsRefresh]);
+
+  useEffect(() => {
+    return subscribePlatformStore(() => setProjectsRefresh((n) => n + 1));
+  }, []);
 
   useEffect(() => {
     void userProfileRefresh;
@@ -1280,14 +1378,16 @@ export function useAppContentModel() {
     }
     /**
      * Re-read straight from the store in case seeding/pruning or another tab
-     * mutated `world_metadata.projects` after `projectsList` was memoized.
+     * mutated platform/world projects after `projectsList` was memoized.
      */
-    const projects = getWorldMetadata().projects;
-    const proj = projects[taskProjectId];
+    const worldProjects = getWorldMetadata().projects;
+    const platformProjects = getPlatformStore().projects;
+    const proj = worldProjects[taskProjectId] ?? platformProjects[taskProjectId];
     if (!proj) {
-      console.warn("[assign-task] selected project id missing from store", {
+      console.warn("[assign-project] selected project id missing from store", {
         taskProjectId,
-        knownIds: Object.keys(projects),
+        knownWorldIds: Object.keys(worldProjects),
+        knownPlatformIds: Object.keys(platformProjects),
       });
       setTaskAssignStatus({
         kind: "warn",
@@ -1299,7 +1399,7 @@ export function useAppContentModel() {
     }
     const title = proj.title?.trim();
     if (!title) {
-      console.warn("[assign-task] project has empty title", { taskProjectId, proj });
+      console.warn("[assign-project] project has empty title", { taskProjectId, proj });
       setTaskAssignStatus({
         kind: "warn",
         text: "That project has no title; edit it under Workshops → Projects.",
@@ -1310,7 +1410,7 @@ export function useAppContentModel() {
     if (!task) {
       setTaskAssignStatus({
         kind: "warn",
-        text: "Could not link that project (missing title or not in Workshops).",
+        text: "Could not link that project (missing title or not in storage).",
       });
       return;
     }
@@ -1364,6 +1464,7 @@ export function useAppContentModel() {
     archivedTurnCount,
     avatarBuilderInitial,
     avatarBuilderOpen,
+    avatarDetailActiveTab,
     avatarDetailExpandedId,
     avatarPendingListOpenId,
     avatars,
@@ -1468,6 +1569,7 @@ export function useAppContentModel() {
     sessionLogOpen,
     setAvatarBuilderInitial,
     setAvatarBuilderOpen,
+    setAvatarDetailActiveTab,
     setAvatarDetailExpandedId,
     setAvatarPendingListOpenId,
     setBehaviorPanelOpen,

@@ -3,6 +3,8 @@
  * Avatars can be assigned tasks; background agents may manage completion.
  */
 
+import { getPlatformStore } from "./platform/store";
+
 const TASKS_KEY = "avatars_long_term_tasks";
 
 export interface LongTermTask {
@@ -70,8 +72,44 @@ export function updateTaskStatus(
   }
 }
 
+export function getProjectAssignmentsForAvatar(
+  avatarId: string,
+  assignedTaskIds: string[] = []
+): LongTermTask[] {
+  const assigned = new Set(assignedTaskIds);
+  const candidates: LongTermTask[] = loadTasks().filter(
+    (t) =>
+      t.status === "active" &&
+      (t.avatarId === avatarId || assigned.has(t.id))
+  );
+  for (const p of Object.values(getPlatformStore().projects)) {
+    if (p.status === "archived" || p.ownerAvatarId !== avatarId) continue;
+    candidates.push({
+      id: `platform-project:${p.id}`,
+      avatarId,
+      title: p.title,
+      description: p.summary,
+      projectId: p.id,
+      status: "active",
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    });
+  }
+  const byProject = new Map<string, LongTermTask>();
+  for (const t of candidates) {
+    const key = t.projectId ?? t.id;
+    const existing = byProject.get(key);
+    if (!existing || t.updatedAt > existing.updatedAt) {
+      byProject.set(key, t);
+    }
+  }
+  return [...byProject.values()].sort((a, b) =>
+    a.title.localeCompare(b.title, undefined, { sensitivity: "base" })
+  );
+}
+
 export function getTasksForAvatar(avatarId: string): LongTermTask[] {
-  return loadTasks().filter((t) => t.avatarId === avatarId && t.status === "active");
+  return getProjectAssignmentsForAvatar(avatarId);
 }
 
 /**

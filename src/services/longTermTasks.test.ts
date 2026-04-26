@@ -12,8 +12,14 @@ import {
   assignTask,
   completeActiveTasksForProjectExcept,
   dedupeActiveTasksForAvatarProject,
+  getProjectAssignmentsForAvatar,
   loadTasks,
 } from "./longTermTasks";
+import {
+  __resetPlatformStoreForTests,
+  ensurePlatformStoreLoadedSync,
+  upsertProject,
+} from "./platform/store";
 
 const lsStore = new Map<string, string>();
 
@@ -50,6 +56,8 @@ describe("longTermTasks stewardship helpers", () => {
 
   beforeEach(() => {
     lsStore.clear();
+    __resetPlatformStoreForTests();
+    ensurePlatformStoreLoadedSync();
   });
 
   it("activeProjectIdsFromLongTermTasks collects active rows with projectId", () => {
@@ -82,5 +90,42 @@ describe("longTermTasks stewardship helpers", () => {
     const after = loadTasks().filter((t) => t.status === "active");
     expect(after).toHaveLength(1);
     expect(after[0]!.id).toBe(t2.id);
+  });
+
+  it("lists unique assigned projects from avatar id and persisted assigned task ids", () => {
+    const t1 = assignTask("muse", "Alpha old", undefined, "p1");
+    const t2 = assignTask("muse", "Alpha new", undefined, "p1");
+    const t3 = assignTask("other", "Beta", undefined, "p2");
+    const tasks = loadTasks();
+    tasks.find((t) => t.id === t1.id)!.updatedAt = 10;
+    tasks.find((t) => t.id === t2.id)!.updatedAt = 20;
+    tasks.find((t) => t.id === t3.id)!.updatedAt = 30;
+    localStorage.setItem("avatars_long_term_tasks", JSON.stringify(tasks));
+
+    const assignments = getProjectAssignmentsForAvatar("muse", [t3.id]);
+
+    expect(assignments.map((t) => t.projectId)).toEqual(["p1", "p2"]);
+    expect(assignments.find((t) => t.projectId === "p1")?.id).toBe(t2.id);
+  });
+
+  it("includes active platform projects stewarded by the avatar", () => {
+    upsertProject({
+      id: "p1",
+      title: "Tool-created project",
+      summary: "Visible from platform ownership.",
+      ownerAvatarId: "muse",
+      actor: "muse",
+    });
+
+    const assignments = getProjectAssignmentsForAvatar("muse");
+
+    expect(assignments).toHaveLength(1);
+    expect(assignments[0]).toMatchObject({
+      avatarId: "muse",
+      title: "Tool-created project",
+      description: "Visible from platform ownership.",
+      projectId: "p1",
+      status: "active",
+    });
   });
 });

@@ -133,7 +133,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const fullAvatarCatalog = useMemo(
     () => getFullAvatarCatalog(state.situationContext),
-    [state.situationContext.userAvatars]
+    [
+      state.situationContext.userAvatars,
+      state.situationContext.builtinAvatarEdits,
+    ]
   );
   const rosterScoresKey = JSON.stringify(
     state.situationContext.avatarRosterPriorityScoreById ?? {}
