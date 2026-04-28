@@ -48,13 +48,18 @@
 
 **Goal:** Let avatars handle complex user requests by splitting them into executable tasks, routing each task to the right capability owner, and surfacing progress without forcing a single avatar/tool call to do everything at once.
 
+Use the operating grammar in [STYLEGUIDE.md](STYLEGUIDE.md): descriptors, instructions, capabilities, stewardships, plan steps, and tool calls are separate. Instructions should describe success conditions; capabilities and approvals should gate execution. Avoid making negative commands the main control surface when eligibility checks can define the valid path.
+
+**Complex Task Monitor pattern:** The preferred first layer is deterministic orchestration, not a mandatory Ollama prepass. Complex requests should produce a user-reviewable monitor card, modeled on `monitor:unassigned_projects`, that can show the discovered plan, candidate items, missing requirements, and next actions before tasks or model/tool calls are created.
+
 1. Treat the **Project** as the narrative container: user goal, rationale, constraints, source links, and progress history.
 2. Treat **Tasks** as the execution grain: one clear action, owner avatar or required capability, status/workflow state, blocker/approval fields, and completion evidence.
-3. Add a task-splitting step for complex requests. Example: “create three named avatars” becomes one project plus three avatar-creation tasks, each with its own research/form-fill/approval path.
-4. Route tasks by capability and stewardship (`tool_owner:*`, `allowedAgenticToolIds`, `monitor:*`) before model prompting so the wrong avatar is not asked to use the wrong tool.
-5. Use tool telemetry and parse diagnostics as feedback, but do not treat repeated tool misuse as only a parser problem. Escalate it into task decomposition, missing capability, or waiting-for-user state.
-6. Bridge `assignedTasks`, platform Project/Task records, and `activeTask` for prompts and routing.
-7. Later: Active Task / Focus Watcher agents per SPEC.
+3. Add a typed task-splitting step for complex requests. Example: “create three named avatars” becomes one project plus three avatar-creation tasks, each with its own research/form-fill/approval path. “Create avatars for the main crew of Firefly” first discovers and reviews the crew list, then repeats avatar creation for accepted members.
+4. Surface review-card actions such as **Create tasks**, **Edit list**, **Search members**, **Ask avatars to suggest plan**, and **Skip** before mutating durable task state.
+5. Route tasks by capability and stewardship (`tool_owner:*`, `allowedAgenticToolIds`, `monitor:*`) before model prompting so the wrong avatar is not asked to use the wrong tool.
+6. Use tool telemetry and parse diagnostics as feedback, but do not treat repeated tool misuse as only a parser problem. Escalate it into task decomposition, missing capability, or waiting-for-user state.
+7. Bridge `assignedTasks`, platform Project/Task records, and `activeTask` for prompts and routing.
+8. Later: Active Task / Focus Watcher agents per SPEC.
 
 ---
 
@@ -106,3 +111,4 @@ SPEC / PROGRESS / HANDOFF now prioritize **complex task handling / project execu
 - Visualization: accessibility (`prefers-reduced-motion`), SPEC layout consult.
 - Bench path: must not balloon latency or token use; cap bench participation.
 - Popularity: avoid surprising reordering—clear UI copy and optional pins.
+- GUI language: current labels such as **No JSON tools**, **Permission denied**, **Unhelpful reply**, **Dismiss**, and **Skip** should be revisited opportunistically so the product emphasizes missing success conditions, gates, and next actions rather than negative commands.

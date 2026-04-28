@@ -726,6 +726,33 @@ export function ChatMainPanel() {
                             )}
                           </>
                         )}
+                      {msg.role === "avatar" &&
+                        msg.synthetic &&
+                        msg.monitorTag &&
+                        (m.chatViewMode === "chat_routing" ||
+                          m.chatViewMode === "routing_log") && (
+                          <>
+                            <div
+                              className="chat-turn-meta chat-turn-meta--monitor"
+                              title={`Synthetic monitor card: ${msg.monitorTag}`}
+                            >
+                              Monitor card · {msg.monitorTag}
+                              {msg.syntheticActions?.length
+                                ? ` · actions: ${msg.syntheticActions
+                                    .map((a) => a.label)
+                                    .join(", ")}`
+                                : ""}
+                            </div>
+                            {m.chatViewMode === "routing_log" && (
+                              <div className="chat-turn-log-detail chat-turn-log-detail--monitor">
+                                <div className="chat-turn-log-line">
+                                  Synthetic review card posted without an Ollama routing
+                                  turn.
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
                     </div>
                   );
                 })

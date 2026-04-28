@@ -655,7 +655,7 @@ pub fn fetch_contacts(app: AppHandle, limit: u32) -> Result<Vec<Contact>, String
     let url = format!(
         "{}?personFields=names,emailAddresses,birthdays&pageSize={}",
         PEOPLE_API_BASE,
-        limit.min(100)
+        limit.clamp(1, 1000)
     );
 
     let client = reqwest::blocking::Client::new();

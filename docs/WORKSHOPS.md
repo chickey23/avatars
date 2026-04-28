@@ -17,6 +17,8 @@ The **Workshops** surface (header checkbox) replaces the older single **Tool Wor
 
 The Creation tab supports the app objective that Avatars are extensible individuals, including named historical, fictional, or public-reference characters. The next quality pass should make search-result-driven form completion dependable instead of merely convenient.
 
+Creation search should line up with the typed complex-task plan vocabulary. Requests such as “create avatars for the main crew of Firefly” first need a `discover_set` pass for the candidate roster, a `review_candidates` checkpoint before durable tasks are created, and then per-member `research_item` work before each `fill_avatar_form` draft. Requests that already name every target can skip discovery and go straight to `repeat_for_each` plus evidence-backed form fill.
+
 Planned improvements:
 
 - Field-specific searches should use stronger entity disambiguation, aliases, and source-family hints rather than only broad terms such as “personality” or “backstory.”
@@ -40,6 +42,17 @@ Individual Tool Allowlists are grouped by mode:
 - **The Privileged** — avatars with custom `allowedAgenticToolIds`; each tool can be toggled.
 - **The Chorus** — avatars using **Default general tools** (`allowedAgenticToolIds` omitted). This includes registered non-group tools; grouped tools still require the matching Capability owner above.
 - **The Workers** — avatars with **No JSON tools** (`allowedAgenticToolIds: []`).
+
+### GUI language alignment
+
+The current labels above are implemented UI, but some lean negative or role-essentializing rather than qualification-based. As convenient, revise UI copy toward success conditions and gates:
+
+- **The Workers** / **No JSON tools** could become language such as **Awaiting tool eligibility**, **Tool-gated**, or **Chat-only until qualified**.
+- **Permission denied** indicators in Tool Workshop / Waves should keep machine codes available for debugging, while the visible copy can emphasize the missing gate: “Requires avatar_creation capability,” “Needs Gmail body access,” or “Awaiting user approval.”
+- **Unhelpful reply** feedback could become outcome-focused, such as “Didn’t help” or “Lower priority for this kind of task,” depending on whether the action affects quality feedback or roster ordering.
+- **Dismiss** / **Skip** actions should be reviewed case by case. When the user intent is delay rather than rejection, prefer **Not now**, **Hold**, **Already handled**, or **Keep for later**.
+
+This is not a blocker for the current documentation pass; it is a UI polish backlog tied to the operating grammar in [STYLEGUIDE.md](./STYLEGUIDE.md).
 
 ## Telemetry previews
 

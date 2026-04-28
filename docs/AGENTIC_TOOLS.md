@@ -25,7 +25,7 @@ Debug: [`OllamaPromptDebug`](../src/types/index.ts) may include `recentTranscrip
 
 ## Tool profiles
 
-[`resolveToolProfile(avatar, turnIntent)`](../src/services/agenticTools/toolProtocol.ts) picks a **`ToolProfileId`**: `creation` | `patch_facts` | `gmail_fetch` | `general` | **`none`**. **`none`** applies when `allowedAgenticToolIds` is an explicit empty array `[]` (stewards that must not emit JSON tools). [`detectTurnToolIntent`](../src/services/turnToolIntent.ts) classifies the latest user message (`creation`, `fact_save`, `email_fetch`, `none`) for profile resolution, closing text, repair gating, and telemetry.
+[`resolveToolProfile(avatar, turnIntent)`](../src/services/agenticTools/toolProtocol.ts) picks a **`ToolProfileId`**: `creation` | `patch_facts` | `gmail_fetch` | `general` | **`none`**. **`none`** is the machine profile for an avatar whose current eligibility gates do not include JSON tool execution, commonly because `allowedAgenticToolIds` is an explicit empty array `[]`. [`detectTurnToolIntent`](../src/services/turnToolIntent.ts) classifies the latest user message (`creation`, `fact_save`, `email_fetch`, `none`) for profile resolution, closing text, repair gating, and telemetry.
 
 ## Parsing, repair, and diagnostics
 
@@ -52,15 +52,15 @@ Durable draft records are stored by [`../src/services/platform/drafts.ts`](../sr
 
 Execution is implemented in [`execute.ts`](../src/services/worldviewTools/execute.ts). Permission groups are user-facing **Capabilities**: draft tools are gated by **`tool_owner:drafts`**; workshop open_draft by **`tool_owner:avatar_creation`** on [`Avatar.systemTags`](../src/types/index.ts) (see `TOOL_GROUPS` in [`registry.ts`](../src/services/agenticTools/registry.ts)). Monitor ownership uses separate **Stewardships** (`monitor:*`) and is managed with capabilities in **Workshops → Stewardship**.
 
-## Permissions
+## Eligibility gates
 
 On each [Avatar](../src/types/index.ts), optional **`allowedAgenticToolIds`**: string array of tool ids this avatar may execute.
 
-- **Omit** (undefined) = **Default general tools**: all registered **non–group-owned** tools allowed (subject to `tool_owner:*` tags for group tools). In **Workshops → Stewardship**, these avatars are grouped under **The Chorus**.
-- **Empty array `[]`** = no JSON agentic tools for that avatar (explicit opt-out); group-owned tools still require the matching `tool_owner:<group>` tag.
-- **Non-empty array** = custom allowlist; in **Workshops → Stewardship**, these avatars are grouped under **The Privileged**.
+- **Omit** (undefined) = **Default general tools**: all registered **non–group-owned** tools are eligible, subject to `tool_owner:*` tags for group tools. In **Workshops → Stewardship**, these avatars are grouped under **The Chorus**.
+- **Empty array `[]`** = JSON execution is withheld until a future allowlist or owner gate qualifies the avatar; group-owned tools still require the matching `tool_owner:<group>` tag.
+- **Non-empty array** = custom eligibility list; in **Workshops → Stewardship**, these avatars are grouped under **The Privileged**.
 
-Denied tools return `permission_denied` in [executeWorldviewTools](../src/services/worldviewTools/execute.ts) and Gmail fetch execution.
+Machine diagnostics still return stable error codes such as `permission_denied` in [executeWorldviewTools](../src/services/worldviewTools/execute.ts) and Gmail fetch execution. User-facing docs and future UI should frame those states as **missing eligibility** or **requirements to satisfy** rather than as the primary product language.
 
 **Telemetry:** successful tool rows may record `turnIntent` and `correctToolForIntent` (heuristic match vs [turnToolIntent.ts](../src/services/turnToolIntent.ts)). The Tool Workshop **Overview** shows a global intent-match summary and an **Intent match by avatar** table when data exists ([`computeToolIntentCorrectness`](../src/services/toolTelemetry/store.ts), [`computeToolIntentCorrectnessByAvatar`](../src/services/toolTelemetry/store.ts)).
 
@@ -69,6 +69,10 @@ Denied tools return `permission_denied` in [executeWorldviewTools](../src/servic
 Tool telemetry is a signal, not the whole solution. When a request requires several coordinated outcomes, the system should prefer project/task decomposition over asking one avatar to emit a large or repeated tool payload.
 
 Example: “create three named avatars” should become a project-level goal plus one task per avatar. Each task can name the required capability (`tool_owner:avatar_creation`), track research/form-fill/review state, and record whether failure came from bad tool syntax, missing permission, missing source evidence, or user approval needs. Parser repair and prompt addenda are still useful, but repeated misuse should also update task state or capability assignment.
+
+Prefer small typed plan steps as the caller of tools: `discover_set`, `review_candidates`, `repeat_for_each`, `research_item`, `fill_avatar_form`, and `await_user_approval`. A tool call should be a bounded operation attached to one step with satisfied eligibility gates, source evidence, and approval state, not one oversized steward-generated payload that tries to discover, decide, and mutate everything at once.
+
+Prefer success-condition language for instructions and tool prompts: a step proceeds when the plan step, source evidence, required capability, and approval state are satisfied. Avoid making the prompt depend on a list of negative commands when a gate can express the valid path.
 
 ## Routing: single-wave + no-comment + preflight
 

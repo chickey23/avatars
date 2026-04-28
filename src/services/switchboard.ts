@@ -14,6 +14,7 @@ import type {
   ReplySource,
   RulesSkipReason,
   WorldviewActivityAction,
+  WorldviewToolResolutionFailure,
 } from "../types";
 import type { WavesSystemCommandStatus } from "./switchboardWavesQueue";
 
@@ -314,6 +315,10 @@ export async function distributeAndRespond(
     rulesSkipReason?: RulesSkipReason;
     suppressUserMessage?: boolean;
     preflightSkip?: { score: number; threshold: number };
+    worldviewParseDiagnosis?: AvatarAgentResult["worldviewParseDiagnosis"];
+    toolResolutionFailures?: WorldviewToolResolutionFailure[];
+    postTurnUi?: AvatarAgentResult["postTurnUi"];
+    postTurnUiReason?: string;
   }>;
   trace: SwitchboardTraceStep[];
 }> {
@@ -326,6 +331,10 @@ export async function distributeAndRespond(
     rulesSkipReason?: RulesSkipReason;
     suppressUserMessage?: boolean;
     preflightSkip?: { score: number; threshold: number };
+    worldviewParseDiagnosis?: AvatarAgentResult["worldviewParseDiagnosis"];
+    toolResolutionFailures?: WorldviewToolResolutionFailure[];
+    postTurnUi?: AvatarAgentResult["postTurnUi"];
+    postTurnUiReason?: string;
   }> = [];
   const trace: SwitchboardTraceStep[] = [];
   let currentCtx = { ...ctx };
@@ -511,6 +520,10 @@ export async function distributeAndRespond(
         rulesSkipReason: result.rulesSkipReason,
         suppressUserMessage: result.suppressUserMessage,
         preflightSkip: result.preflightSkip,
+        worldviewParseDiagnosis: result.worldviewParseDiagnosis,
+        toolResolutionFailures: result.toolResolutionFailures,
+        postTurnUi: result.postTurnUi,
+        postTurnUiReason: result.postTurnUiReason,
       });
 
       if (!result.suppressUserMessage) {

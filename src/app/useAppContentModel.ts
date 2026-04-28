@@ -116,6 +116,8 @@ import {
 
 export type AvatarDetailTabId = "match" | "bio" | "rules";
 
+const CONTACTS_PANEL_FETCH_LIMIT = 1000;
+
 export function useAppContentModel() {
   const {
     avatars,
@@ -1252,7 +1254,9 @@ export function useAppContentModel() {
     if (contextTab === "contacts" && gmailConnected) {
       setContactsLoading(true);
       setContactsError(null);
-      fetchContacts(contextEntryBudgets.contactsFetchLimit)
+      fetchContacts(
+        Math.max(contextEntryBudgets.contactsFetchLimit, CONTACTS_PANEL_FETCH_LIMIT)
+      )
         .then((c) => {
           setContacts(c);
           setContactsError(null);

@@ -18,6 +18,7 @@
 4. **Layout and visual choices**: Consult the user on **new** layout and visual work (major structural changes, new surfaces, or departures from existing patterns). **Shipped UI** to date is treated as approved as a whole; small iterations that stay consistent with those patterns do not require a separate sign-off each time. Detail: **docs/STYLEGUIDE.md** § UI approval.
 5. **Framework explanations**: Explain test frameworks and tooling briefly as introduced.
 6. **Signature phrase**: At end of each Agent-mode response, include the phrase returned by `scripts/signature.ps1` (or equivalent). Phrase and styling are configurable via `scripts/signature-config.json`. This workflow is **in active use**; agents should follow it unless the user says otherwise.
+7. **Success-condition framing**: For avatar behavior, task planning, tool execution, and user-facing copy, prefer qualification gates and success conditions over negative command lists. Capabilities, evidence, ownership, and approval state should define when a step may proceed. See **docs/STYLEGUIDE.md** § Avatar operating grammar.
 
 ---
 

@@ -48,6 +48,13 @@ export {
   __resetUnassignedProjectsForTests,
 } from "./unassignedProjects";
 export {
+  COMPLEX_TASK_PLANNER_MONITOR_NAME,
+  COMPLEX_TASK_PLANNER_FALLBACK_AVATAR_ID,
+  COMPLEX_TASK_PLANNER_TAG,
+  complexTaskPlannerMonitor,
+  installComplexTaskPlannerDynamicActions,
+} from "./complexTaskPlanner";
+export {
   installDefaultMonitors,
   __resetDefaultMonitorsForTests,
 } from "./bootstrap";

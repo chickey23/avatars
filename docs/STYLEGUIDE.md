@@ -41,7 +41,35 @@ This project overloads **agent** in several domains. Use the definitions below i
 
 ---
 
-## 4. Capitalization quick rules
+## 4. Avatar operating grammar
+
+Use separate terms for separate execution roles. Avoid collapsing personality, prompt guidance, permissions, monitor ownership, plan state, and tool execution into one “tags/rules/tools” bucket.
+
+| Category | Answers | Examples |
+|----------|---------|----------|
+| **Descriptors** | “Who is this Avatar like?” | interests, traits, persona notes, biography, portrait/voice identity |
+| **Instructions** | “What success conditions shape this Avatar’s contribution?” | tone, response style, role-specific contribution criteria, review standards |
+| **Capabilities** | “What qualifies this Avatar or step to execute?” | `tool_owner:*`, `allowedAgenticToolIds`, required source access, approval gates |
+| **Stewardships** | “What does this Avatar watch or maintain?” | `monitor:unassigned_projects`, source runners, due/snoozed scheduler |
+| **Plan steps** | “What should happen next?” | `discover_set`, `review_candidates`, `repeat_for_each`, `research_item`, `fill_avatar_form`, `await_user_approval` |
+| **Tool calls** | “What bounded operation is being executed?” | fetch Gmail body, open avatar draft, patch metadata, targeted search |
+
+### Success conditions over negative commands
+
+Prefer **qualification gates** and **success conditions** over “do / don’t” behavioral guidance. Negative commands can bias prompts and UI toward recognizing a single failure criterion; gates describe the conditions that make action valid.
+
+Use phrasing like:
+
+- “Proceed when required capability, source evidence, and approval are present.”
+- “Show missing requirements as task state.”
+- “Route this step to an Avatar with `tool_owner:avatar_creation`.”
+- “Hold for user approval when external side effects are requested.”
+
+Avoid making negative copy the primary product language. Machine error codes may remain stable for diagnostics, but user-facing docs and future UI should translate them into missing eligibility or next-step language.
+
+---
+
+## 5. Capitalization quick rules
 
 - **Avatar** — capitalize when meaning the product concept or a named avatar; “avatar” lowercase only in generic phrases (“avatar bubble”).
 - **Agent** — capitalize when referring to SPEC architecture or a named agent (“Active Task Agent”). Use **background agents** (lowercase) for the general category in running text.
@@ -49,7 +77,7 @@ This project overloads **agent** in several domains. Use the definitions below i
 
 ---
 
-## 5. Parallel development (Cursor and humans)
+## 6. Parallel development (Cursor and humans)
 
 Features can advance **in parallel** when workstreams touch different files or clearly separated layers.
 
@@ -71,7 +99,7 @@ Features can advance **in parallel** when workstreams touch different files or c
 
 ---
 
-## 6. Where this guide applies
+## 7. Where this guide applies
 
 - User-visible strings and `title` / `aria-label` attributes.
 - File-top comments in `src/services/*` that describe architecture.
@@ -85,13 +113,13 @@ Comments in [`wellOfSoulsPrompt.ts`](../src/services/wellOfSoulsPrompt.ts), [`de
 
 ---
 
-## 7. UI approval (layout and visual choices)
+## 8. UI approval (layout and visual choices)
 
 Aligned with **SPEC.md** § Behavioral Instructions (layout). **Shipped** UI in the repo is treated as **collectively approved**. **New** work that changes layout structure, adds major surfaces, or departs from established patterns should involve the user. Iterative tweaks that stay consistent with existing patterns do not require a separate sign-off each time.
 
 ---
 
-## 8. Session log category namespaces
+## 9. Session log category namespaces
 
 Two families appear in the in-app log:
 
@@ -111,6 +139,6 @@ Two families appear in the in-app log:
 
 ---
 
-## 9. Platform durable identifiers
+## 10. Platform durable identifiers
 
 On-disk paths, Tauri `invoke` names, `localStorage` keys, the platform log prefix, and the default system avatar id for attribution are **listed in one place** in [`PLATFORM_PERSISTENCE.md`](./PLATFORM_PERSISTENCE.md) and in [`src/services/platform/constants.ts`](../src/services/platform/constants.ts). Prefer updating those when renaming persistence, rather than scattering ad hoc strings in call sites.

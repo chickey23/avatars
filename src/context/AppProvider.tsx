@@ -91,6 +91,11 @@ import {
   evaluateAutoRefinerTrigger,
   runToolWorkshopRefiner,
 } from "../services/toolWorkshop";
+import {
+  installAvatarCreationOfferActions,
+  postAvatarCreationWorkshopOffer,
+  setAvatarCreationOfferOpenHandler,
+} from "../services/avatarCreationOffer";
 
 export type { SendMessageOptions } from "./app-context";
 
@@ -101,6 +106,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const registerAvatarCreationWorkshopIntentHandler = useCallback(
     (fn: ((intent: AvatarCreationWorkshopIntent) => void) | null) => {
       avatarCreationWorkshopIntentHandlerRef.current = fn;
+      setAvatarCreationOfferOpenHandler(fn);
     },
     []
   );
@@ -261,6 +267,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * post will warn the user via whichever avatar still carries `system`.
    */
   useEffect(() => {
+    installAvatarCreationOfferActions();
     installDefaultMonitors();
   }, []);
 
@@ -485,6 +492,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return next;
       });
       setPendingTurnCount((n) => n + 1);
+      void runMonitorsAndPost("user_turn", fullCatalogRef.current, {
+        latestUserMessage: {
+          id: userMsg.id,
+          content: userMsg.content,
+          timestamp: userMsg.timestamp,
+        },
+      });
       queueRef.current.push({
         userMsgId: userMsg.id,
         content: content.trim(),
@@ -638,8 +652,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     return next;
                   });
                 },
-                onAvatarCreationWorkshopIntent: (intent) => {
-                  avatarCreationWorkshopIntentHandlerRef.current?.(intent);
+                onAvatarCreationWorkshopIntent: ({
+                  avatarId,
+                  intent,
+                  sourceMessage,
+                }) => {
+                  postAvatarCreationWorkshopOffer({
+                    avatarId,
+                    intent,
+                    sourceMessage,
+                  });
                 },
               }
             );

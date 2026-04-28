@@ -1408,6 +1408,10 @@ button.env-tag.session-log-open-btn {
   white-space: nowrap;
 }
 
+.chat-turn-meta--monitor {
+  color: rgba(212, 175, 55, 0.72);
+}
+
 .chat-turn-log-detail {
   font-size: 0.65rem;
   line-height: 1.35;
@@ -1420,6 +1424,10 @@ button.env-tag.session-log-open-btn {
   overflow-y: auto;
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.2);
+}
+
+.chat-turn-log-detail--monitor {
+  border-color: rgba(212, 175, 55, 0.22);
 }
 
 .chat-turn-log-line {

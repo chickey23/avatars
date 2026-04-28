@@ -30,7 +30,25 @@ SQLite/Tauri on-disk persistence for metadata is **out of scope** until SPEC/Tec
 
 **Complex task handling priority:** The next project-execution step is task splitting. A broad user request should create or update a **Project** that captures the goal and then produce one or more execution **Tasks** with owners, required capabilities, and completion criteria. For example, “create three named avatars” should become one avatar-creation project plus three per-avatar tasks. Each task can run research, form-fill, review, and save steps independently. This keeps the **Project** as the durable context while the **Task** is the unit that an avatar, steward, or future background agent can actually complete.
 
-Tool misuse should feed this loop. If a steward avatar emits the wrong tool shape or tries to use a capability it does not own, record the failure via tool telemetry, then decide whether the issue is (1) bad prompt/tool instructions, (2) missing capability assignment, (3) a request that needs decomposition, or (4) a step that must wait for the user. The fix should not be limited to parser repair when the user intent is genuinely multi-step.
+**Complex Task Monitor:** Before durable tasks are created, complex requests can produce monitor-style review cards, using `monitor:unassigned_projects` as the UI model. The card should expose the proposed plan graph, discovered candidates, requirements that are not yet satisfied, and user actions such as **Create tasks**, **Edit list**, **Search members**, **Ask avatars to suggest plan**, and **Skip**. The default path is deterministic orchestration; Ollama can enrich fuzzy planning or avatar suggestions, but it should not be the required gate before lexical splits, candidate review, or task creation.
+
+**Typed plan vocabulary:** Keep the first plan graph small and inspectable:
+
+- `discover_set` — identify a bounded candidate set from a phrase or source query.
+- `review_candidates` — show candidates for user acceptance, removal, or correction.
+- `repeat_for_each` — run the same child sequence for each accepted item.
+- `research_item` — gather supporting source evidence for one accepted item.
+- `fill_avatar_form` — populate one avatar-creation draft from evidence and defaults.
+- `await_user_approval` — stop before durable mutations or external side effects that need explicit consent.
+
+Examples:
+
+- “Create avatars named A, B, C” can use a direct lexical split and `repeat_for_each` without model planning.
+- “Create avatars for the main crew of Firefly” should use `discover_set`, `review_candidates`, then `repeat_for_each` with per-member `research_item` and `fill_avatar_form` steps.
+
+Tool misuse should feed this loop. If a steward avatar emits the wrong tool shape or tries to use a capability it does not currently qualify for, record the telemetry, then decide whether the next success condition is (1) clearer prompt/tool eligibility, (2) capability assignment, (3) request decomposition, or (4) user approval / input. The fix should not be limited to parser repair when the user intent is genuinely multi-step.
+
+**Gating language:** The preprocessor / monitor layer should express valid execution paths as success conditions. A plan step proceeds when the required project context, task owner, capability, source evidence, and approval state are present. Missing requirements become task state and review-card copy. This avoids making negative commands the main control mechanism and makes the user-facing path easier to inspect.
 
 ```mermaid
 flowchart LR

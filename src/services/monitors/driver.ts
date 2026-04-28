@@ -12,7 +12,7 @@
 
 import type { Avatar } from "../../types";
 import { postMonitorPost, postSyntheticMessage } from "./postSynthetic";
-import { pollAll, type MonitorTrigger } from "./registry";
+import { pollAll, type MonitorRunContext, type MonitorTrigger } from "./registry";
 import {
   buildUnclaimedContractsWarning,
   UNCLAIMED_CONTRACTS_MONITOR_NAME,
@@ -20,9 +20,10 @@ import {
 
 export async function runMonitorsAndPost(
   reason: MonitorTrigger,
-  catalog: readonly Avatar[]
+  catalog: readonly Avatar[],
+  options: Pick<MonitorRunContext, "latestUserMessage"> = {}
 ): Promise<void> {
-  const result = await pollAll(reason, catalog);
+  const result = await pollAll(reason, catalog, options);
 
   for (const { name, posts } of result.postsByMonitor) {
     for (const post of posts) {

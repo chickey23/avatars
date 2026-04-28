@@ -325,7 +325,11 @@ export type ProcessUserTurnUiHooks = {
     sourceEmailId?: string;
   }) => void;
   /** After an avatar reply, when `postTurnUi.navigateAvatarCreationWorkshop` is set. */
-  onAvatarCreationWorkshopIntent?: (intent: AvatarCreationWorkshopIntent) => void;
+  onAvatarCreationWorkshopIntent?: (args: {
+    avatarId: string;
+    intent: AvatarCreationWorkshopIntent;
+    sourceMessage?: ConversationMessage;
+  }) => void;
 };
 
 /**
@@ -657,7 +661,11 @@ export async function processUserTurn(
           wIntent &&
           (wIntent.seedText?.trim() || wIntent.wikiQuery?.trim())
         ) {
-          turnUi?.onAvatarCreationWorkshopIntent?.(wIntent);
+          turnUi?.onAvatarCreationWorkshopIntent?.({
+            avatarId,
+            intent: wIntent,
+            sourceMessage: avatarMsg,
+          });
         }
         onProgress?.(stripEphemeralFields(updatedContext));
       },

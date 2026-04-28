@@ -4,9 +4,77 @@ import { appendSessionLog } from "../services/sessionLog";
 import { peekEmailInsight } from "../services/emailInsights";
 import { applyWorldviewAuditRevert } from "../services/worldviewAudit";
 import { internetContextLineDisplayTitle } from "../services/internetContextLines";
+import type { Contact } from "../connectors/types";
+
+const BIRTHDAY_RE = /^(?:(\d{4})-)?(\d{2})-(\d{2})$/;
+
+function isValidMonthDay(year: number, month: number, day: number): boolean {
+  const d = new Date(year, month - 1, day);
+  return (
+    d.getFullYear() === year &&
+    d.getMonth() === month - 1 &&
+    d.getDate() === day
+  );
+}
+
+function nextBirthdayTime(
+  birthday: string | undefined,
+  today = new Date()
+): number | null {
+  if (!birthday) return null;
+  const match = BIRTHDAY_RE.exec(birthday.trim());
+  if (!match) return null;
+
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const startOfToday = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  for (
+    let year = today.getFullYear();
+    year <= today.getFullYear() + 4;
+    year += 1
+  ) {
+    if (!isValidMonthDay(year, month, day)) continue;
+    const candidate = new Date(year, month - 1, day);
+    if (candidate >= startOfToday) return candidate.getTime();
+  }
+
+  return null;
+}
+
+function byName(a: Contact, b: Contact): number {
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
+function byNextBirthday(a: Contact, b: Contact, today: Date): number {
+  const aNext = nextBirthdayTime(a.birthday, today);
+  const bNext = nextBirthdayTime(b.birthday, today);
+  const nameOrder = byName(a, b);
+
+  if (aNext == null && bNext == null) return nameOrder;
+  if (aNext == null) return 1;
+  if (bNext == null) return -1;
+  return aNext - bNext || nameOrder;
+}
+
+function sortContactsByNextBirthday(contacts: Contact[]): Contact[] {
+  const today = new Date();
+  return [...contacts].sort((a, b) => byNextBirthday(a, b, today));
+}
+
+function hasKnownBirthday(contact: Contact): boolean {
+  return nextBirthdayTime(contact.birthday) != null;
+}
 
 export function ContextPanel() {
   const m = useAppContentView();
+  const contactsByBirthday = sortContactsByNextBirthday(m.contacts);
+  const contactsHaveKnownBirthday = m.contacts.some(hasKnownBirthday);
 
   return (
       <aside className="context-panel">
@@ -514,33 +582,40 @@ export function ContextPanel() {
               ) : m.contacts.length === 0 ? (
                 <p className="context-empty">No m.contacts.</p>
               ) : (
-                <ul className="contact-list">
-                  {m.contacts.map((c) => (
-                    <li
-                      key={c.id}
-                      className={`contact-item ${m.focus.contact?.id === c.id ? "focused" : ""}`}
-                    >
-                      <button
-                        type="button"
-                        className="contact-item-btn"
-                        onClick={() =>
-                          m.setFocus((f) => ({
-                            ...f,
-                            contact: { id: c.id, title: c.name || "(No name)" },
-                          }))
-                        }
+                <>
+                  {!contactsHaveKnownBirthday && (
+                    <p className="context-empty">
+                      No birthdays found in fetched contacts.
+                    </p>
+                  )}
+                  <ul className="contact-list">
+                    {contactsByBirthday.map((c) => (
+                      <li
+                        key={c.id}
+                        className={`contact-item ${m.focus.contact?.id === c.id ? "focused" : ""}`}
                       >
-                        <span className="contact-name">{c.name}</span>
-                        {c.email && (
-                          <span className="contact-email">{c.email}</span>
-                        )}
-                        {c.birthday && (
-                          <span className="contact-birthday">{c.birthday}</span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                        <button
+                          type="button"
+                          className="contact-item-btn"
+                          onClick={() =>
+                            m.setFocus((f) => ({
+                              ...f,
+                              contact: { id: c.id, title: c.name || "(No name)" },
+                            }))
+                          }
+                        >
+                          <span className="contact-name">{c.name}</span>
+                          {c.email && (
+                            <span className="contact-email">{c.email}</span>
+                          )}
+                          {c.birthday && (
+                            <span className="contact-birthday">{c.birthday}</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </div>
           )}

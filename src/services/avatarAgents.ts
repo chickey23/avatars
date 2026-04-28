@@ -261,6 +261,93 @@ function postTurnUiFromOpenDraftTools(
   return last;
 }
 
+function extractAvatarCreationQuery(userContent: string): string {
+  const normalized = userContent.replace(/\s+/g, " ").trim();
+  const patterns = [
+    /\b(?:for|about)\s+(.+?)(?:[.?!]|$)/i,
+    /\b(?:named|called)\s+(.+?)(?:[.?!]|$)/i,
+    /\b(?:avatar|persona|character)\s+(?:of|for)?\s*(.+?)(?:[.?!]|$)/i,
+  ];
+  for (const re of patterns) {
+    const match = normalized.match(re);
+    const raw = match?.[1]?.trim();
+    if (!raw) continue;
+    const cleaned = raw
+      .replace(/\b(?:please|thanks|thank you|using the workshop)\b.*$/i, "")
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .trim();
+    if (cleaned.length >= 2) return cleaned.slice(0, 500);
+  }
+  return normalized.slice(0, 500);
+}
+
+function isWorkshopOpeningQuestion(visible: string): boolean {
+  const t = visible.toLowerCase();
+  return (
+    t.includes("workshop") &&
+    (t.includes("?") ||
+      /\b(would you like|should i|shall i|want me to|do you want)\b/.test(t))
+  );
+}
+
+function isGenericAvatarCreationReply(visible: string): boolean {
+  const t = visible.trim().toLowerCase();
+  if (!t) return true;
+  if (t.length > 220) return false;
+  return (
+    /\b(i can|i'd be happy to|happy to|sure|of course|let's)\b/.test(t) &&
+    /\b(help|create|make|build|design|work on|start)\b/.test(t) &&
+    /\b(avatar|persona|character)\b/.test(t)
+  );
+}
+
+function fallbackPostTurnUiForCreationOffer(args: {
+  avatar: Avatar;
+  userContent: string;
+  visible: string;
+  turnIntent: TurnToolIntent;
+  postTurnUi: PostTurnAvatarUi | undefined;
+}): {
+  finalVisible: string;
+  postTurnUi: PostTurnAvatarUi | undefined;
+  postTurnUiReason?: string;
+} {
+  if (args.postTurnUi?.navigateAvatarCreationWorkshop) {
+    return {
+      finalVisible: args.visible,
+      postTurnUi: args.postTurnUi,
+      postTurnUiReason: "open_draft_tool",
+    };
+  }
+  if (args.turnIntent !== "creation") {
+    return { finalVisible: args.visible, postTurnUi: args.postTurnUi };
+  }
+  if (!avatarMayUseAgenticTool(args.avatar, "avatars.workshop.open_draft")) {
+    return { finalVisible: args.visible, postTurnUi: args.postTurnUi };
+  }
+  const wikiQuery = extractAvatarCreationQuery(args.userContent);
+  const generic = isGenericAvatarCreationReply(args.visible);
+  const asksToOpen = isWorkshopOpeningQuestion(args.visible);
+  const reason = generic
+    ? "creation_generic_reply_fallback"
+    : asksToOpen
+      ? "creation_open_question_fallback"
+      : "creation_auto_offer";
+  return {
+    finalVisible:
+      generic || asksToOpen
+        ? "I prepared an avatar creation draft offer below."
+        : args.visible,
+    postTurnUi: {
+      navigateAvatarCreationWorkshop: {
+        wikiQuery,
+        seedText: args.userContent.trim().slice(0, 2000),
+      },
+    },
+    postTurnUiReason: reason,
+  };
+}
+
 function summarizeFetchToolLine(messageId: string, ok: boolean, err?: string): string {
   const id =
     messageId.length > 28 ? `${messageId.slice(0, 25)}…` : messageId;
@@ -764,6 +851,7 @@ export async function runAvatarAgent(
         finalSplit.envelope?.tools
       );
       debug.rawModelReply = rawModelReply;
+      debug.turnToolIntent = turnIntent;
       debug.worldviewParsedToolIntentNames = mergedFinal.map((t) => t.name);
       debug.worldviewExecutedToolNames =
         worldviewActivity?.names ?? worldviewToolSummary?.names ?? [];
@@ -788,6 +876,17 @@ export async function runAvatarAgent(
             failuresToLegacyErrorStrings(toolResolutionFailures)
           )
         : undefined;
+
+      const offerFallback = fallbackPostTurnUiForCreationOffer({
+        avatar,
+        userContent,
+        visible: finalVisible,
+        turnIntent,
+        postTurnUi,
+      });
+      finalVisible = offerFallback.finalVisible;
+      postTurnUi = offerFallback.postTurnUi;
+      const postTurnUiReason = offerFallback.postTurnUiReason;
 
       const suppressUserMessage = isAvatarsNoCommentOnly(finalVisible);
 
@@ -825,6 +924,7 @@ export async function runAvatarAgent(
         worldviewParseDiagnosis,
         suppressUserMessage,
         postTurnUi,
+        postTurnUiReason,
       };
     }
     appendSessionLog(

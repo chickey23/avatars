@@ -48,7 +48,7 @@ export type WorldviewToolResolutionFailure = {
   argsPreview?: string;
 };
 
-/** Payload from `avatars.workshop.open_draft` → UI opens Workshops → Creation. */
+/** Payload from `avatars.workshop.open_draft` → chat offer → Workshops → Creation. */
 export type AvatarCreationWorkshopIntent = {
   seedText?: string;
   wikiQuery?: string;
@@ -93,6 +93,8 @@ export interface AvatarAgentResult {
   preflightSkip?: { score: number; threshold: number };
   /** Workshop / modals: applied via `ProcessUserTurnUiHooks`, not written to persisted context. */
   postTurnUi?: PostTurnAvatarUi;
+  /** Surface-safe reason for post-turn UI decisions. */
+  postTurnUiReason?: string;
 }
 
 /** Debug payload shown in the expandable prompt panel (Ollama path). */
@@ -120,6 +122,8 @@ export interface OllamaPromptDebug {
   /** When envelope missing, heuristic parse mismatch hints. */
   worldviewParseHints?: string[];
   worldviewParseReason?: string | null;
+  /** Deterministic tool-intent hint detected from the user turn. */
+  turnToolIntent?: "creation" | "fact_save" | "email_fetch" | "none";
   /** When Ollama was not called because routing score was below the turn threshold. */
   preflightSkip?: { score: number; threshold: number };
 }
@@ -499,6 +503,27 @@ export interface ReplySummaryEntry {
   preview?: string;
 }
 
+/** Surface-safe per-avatar decision details for routing/log chat views. */
+export interface ReplyRoutingDiagnostic {
+  avatarId: string;
+  replySource: ReplySource;
+  rulesSkipReason?: RulesSkipReason;
+  ruleBlockIds?: string[];
+  detectedToolIntent?: "creation" | "fact_save" | "email_fetch" | "none";
+  expectedToolNames?: string[];
+  parsedToolNames?: string[];
+  executedToolNames?: string[];
+  parseHints?: string[];
+  parseReason?: string | null;
+  toolFailures?: WorldviewToolResolutionFailure[];
+  postTurnUi?: {
+    kind: "avatar_creation_offer";
+    seedText?: string;
+    wikiQuery?: string;
+    reason?: string;
+  };
+}
+
 /** Tri-state chat column: messages only, + inline routing, + expanded per-turn log */
 export type ChatViewMode = "chat" | "chat_routing" | "routing_log";
 
@@ -528,4 +553,6 @@ export interface CompactTurnRecord {
   forcedResponderIds?: string[];
   switchboardTrace: SwitchboardTraceStep[];
   replySummary: ReplySummaryEntry[];
+  /** Surface-safe routing/tool diagnostics for inline debug views. */
+  replyDiagnostics?: ReplyRoutingDiagnostic[];
 }

@@ -6,8 +6,10 @@ import type {
   Avatar,
   CompactTurnRecord,
   EmailFocusArtifacts,
+  ReplyRoutingDiagnostic,
   SituationFocus,
   SwitchboardTraceStep,
+  WorldviewToolResolutionFailure,
 } from "../types";
 
 export const TURN_ARCHIVE_KEY = "avatars_turn_archive";
@@ -50,6 +52,26 @@ function replyPreview(content: string): string {
   return t.slice(0, REPLY_PREVIEW_MAX) + "…";
 }
 
+function compactList(values: string[] | undefined, max = 4): string[] | undefined {
+  if (!values?.length) return undefined;
+  const out = values
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .slice(0, max);
+  return out.length ? out : undefined;
+}
+
+function compactFailures(
+  failures: WorldviewToolResolutionFailure[] | undefined
+): WorldviewToolResolutionFailure[] | undefined {
+  if (!failures?.length) return undefined;
+  return failures.slice(0, 3).map((f) => ({
+    tool: f.tool.slice(0, 120),
+    error: f.error.slice(0, 120),
+    argsPreview: f.argsPreview?.slice(0, 180),
+  }));
+}
+
 /** One-line routing summary for inline UI */
 export function formatTraceOneLine(trace: SwitchboardTraceStep[]): string {
   return trace
@@ -73,6 +95,15 @@ export function formatTurnMetaLine(turn: CompactTurnRecord): string {
     parts.push(
       `emailPrep:${a.relevance}${a.cacheHit ? ":cache" : ":fresh"}`
     );
+  }
+  if (turn.replyDiagnostics?.some((d) => d.postTurnUi?.kind === "avatar_creation_offer")) {
+    parts.push("ui:avatar_creation_offer");
+  } else if (
+    turn.replyDiagnostics?.some(
+      (d) => (d.parsedToolNames?.length ?? 0) > 0 || (d.executedToolNames?.length ?? 0) > 0
+    )
+  ) {
+    parts.push("tools");
   }
   parts.push(formatTraceOneLine(turn.switchboardTrace));
   return parts.join(" · ");
@@ -126,6 +157,33 @@ export function getTurnLogDetailLines(
       avatars.find((a) => a.id === r.avatarId)?.givenName ?? r.avatarId;
     lines.push(`${name}: ${r.preview ?? ""}`);
   }
+  for (const d of turn.replyDiagnostics ?? []) {
+    const name = avatars.find((a) => a.id === d.avatarId)?.givenName ?? d.avatarId;
+    const intent = d.detectedToolIntent ?? "none";
+    const expected = d.expectedToolNames?.length
+      ? ` -> expected ${d.expectedToolNames.join(", ")}`
+      : "";
+    lines.push(`${name} logic: source ${d.replySource} · intent ${intent}${expected}`);
+    if (d.rulesSkipReason) lines.push(`${name} rules: ${d.rulesSkipReason}`);
+    if (d.ruleBlockIds?.length) lines.push(`${name} rule blocks: ${d.ruleBlockIds.join(", ")}`);
+    const parsed = d.parsedToolNames?.length ? d.parsedToolNames.join(", ") : "none";
+    const executed = d.executedToolNames?.length ? d.executedToolNames.join(", ") : "none";
+    lines.push(`${name} tools: parsed ${parsed}; executed ${executed}`);
+    if (d.parseHints?.length) {
+      lines.push(`${name} parse hints: ${d.parseHints.join(" | ")}`);
+    }
+    for (const f of d.toolFailures ?? []) {
+      lines.push(`${name} tool failure: ${f.tool}: ${f.error}`);
+    }
+    if (d.postTurnUi?.kind === "avatar_creation_offer") {
+      const bits = [
+        d.postTurnUi.wikiQuery ? `wikiQuery=${d.postTurnUi.wikiQuery}` : "",
+        d.postTurnUi.seedText ? "seedText" : "",
+        d.postTurnUi.reason ? `reason=${d.postTurnUi.reason}` : "",
+      ].filter(Boolean);
+      lines.push(`${name} post-turn UI: avatar creation offer${bits.length ? ` · ${bits.join(" · ")}` : ""}`);
+    }
+  }
   return lines;
 }
 
@@ -138,6 +196,28 @@ export function buildCompactTurnRecord(
   responses: Array<{
     avatarId: string;
     content: string;
+    replySource?: ReplyRoutingDiagnostic["replySource"];
+    rulesSkipReason?: ReplyRoutingDiagnostic["rulesSkipReason"];
+    promptDebug?: {
+      ruleBlockIds?: string[];
+      turnToolIntent?: ReplyRoutingDiagnostic["detectedToolIntent"];
+      worldviewParsedToolIntentNames?: string[];
+      worldviewExecutedToolNames?: string[];
+      worldviewParseHints?: string[];
+      worldviewParseReason?: string | null;
+    };
+    worldviewParseDiagnosis?: {
+      hints: string[];
+      reason: string | null;
+    };
+    toolResolutionFailures?: WorldviewToolResolutionFailure[];
+    postTurnUi?: {
+      navigateAvatarCreationWorkshop?: {
+        seedText?: string;
+        wikiQuery?: string;
+      };
+    };
+    postTurnUiReason?: string;
     suppressUserMessage?: boolean;
   }>,
   emailFocusArtifacts?: EmailFocusArtifacts
@@ -175,5 +255,36 @@ export function buildCompactTurnRecord(
         avatarId: r.avatarId,
         preview: replyPreview(r.content),
       })),
+    replyDiagnostics: responses.map((r) => {
+      const detectedToolIntent = r.promptDebug?.turnToolIntent;
+      const postTurnIntent = r.postTurnUi?.navigateAvatarCreationWorkshop;
+      const expectedToolNames =
+        detectedToolIntent === "creation" ? ["avatars.workshop.open_draft"] : undefined;
+      return {
+        avatarId: r.avatarId,
+        replySource: r.replySource ?? "other",
+        rulesSkipReason: r.rulesSkipReason,
+        ruleBlockIds: compactList(r.promptDebug?.ruleBlockIds, 8),
+        detectedToolIntent,
+        expectedToolNames,
+        parsedToolNames: compactList(r.promptDebug?.worldviewParsedToolIntentNames),
+        executedToolNames: compactList(r.promptDebug?.worldviewExecutedToolNames),
+        parseHints: compactList(
+          r.worldviewParseDiagnosis?.hints ?? r.promptDebug?.worldviewParseHints,
+          3
+        ),
+        parseReason:
+          r.worldviewParseDiagnosis?.reason ?? r.promptDebug?.worldviewParseReason,
+        toolFailures: compactFailures(r.toolResolutionFailures),
+        postTurnUi: postTurnIntent
+          ? {
+              kind: "avatar_creation_offer",
+              seedText: postTurnIntent.seedText?.slice(0, 160),
+              wikiQuery: postTurnIntent.wikiQuery?.slice(0, 160),
+              reason: r.postTurnUiReason,
+            }
+          : undefined,
+      } satisfies ReplyRoutingDiagnostic;
+    }),
   };
 }

@@ -63,4 +63,56 @@ describe("runAvatarAgent structured tools", () => {
     expect(ollama.generateWithOllama).toHaveBeenCalledTimes(2);
     expect(r.postTurnUi?.navigateAvatarCreationWorkshop?.wikiQuery).toBe("Ada");
   });
+
+  it("converts workshop-opening questions into a draft offer", async () => {
+    const exc = defaultAvatars.find((a) => a.id === "blessed_exchequer")!;
+    vi.mocked(ollama.generateWithOllama).mockResolvedValue({
+      ok: true,
+      text: "Would you like me to open the avatar creation workshop for Neo?",
+    });
+
+    const r = await runAvatarAgent(exc, ctxWithUser("create an avatar for Neo"));
+
+    expect(r.content).toBe("I prepared an avatar creation draft offer below.");
+    expect(r.postTurnUi?.navigateAvatarCreationWorkshop?.wikiQuery).toBe("Neo");
+    expect(r.postTurnUi?.navigateAvatarCreationWorkshop?.seedText).toContain(
+      "create an avatar for Neo"
+    );
+  });
+
+  it("converts generic avatar-creation help into a draft offer", async () => {
+    const exc = defaultAvatars.find((a) => a.id === "blessed_exchequer")!;
+    vi.mocked(ollama.generateWithOllama).mockResolvedValue({
+      ok: true,
+      text: "I can help you with creating an avatar for Belanna Torres.",
+    });
+
+    const r = await runAvatarAgent(
+      exc,
+      ctxWithUser("please create an avatar for belanna torres")
+    );
+
+    expect(r.content).toBe("I prepared an avatar creation draft offer below.");
+    expect(r.postTurnUi?.navigateAvatarCreationWorkshop?.wikiQuery).toBe(
+      "belanna torres"
+    );
+  });
+
+  it("preserves substantive creation notes while still offering the draft", async () => {
+    const exc = defaultAvatars.find((a) => a.id === "blessed_exchequer")!;
+    vi.mocked(ollama.generateWithOllama).mockResolvedValue({
+      ok: true,
+      text: "Belanna Torres is a half-Klingon engineer from Star Trek: Voyager; emphasize discipline, volatility, and technical mastery.",
+    });
+
+    const r = await runAvatarAgent(
+      exc,
+      ctxWithUser("please create an avatar for belanna torres")
+    );
+
+    expect(r.content).toContain("half-Klingon engineer");
+    expect(r.postTurnUi?.navigateAvatarCreationWorkshop?.wikiQuery).toBe(
+      "belanna torres"
+    );
+  });
 });
