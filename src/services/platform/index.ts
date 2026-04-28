@@ -48,7 +48,10 @@ export {
   publishPlatformEvent,
   diffTopK,
 } from "./bus";
-export type { PlatformBusEvent } from "./bus";
+export type {
+  PlatformBusEvent,
+  AvatarCreationTaskSatisfiedEvent,
+} from "./bus";
 export { startPlatformRunners } from "./runners";
 export type {
   PlatformRunnerBundle,

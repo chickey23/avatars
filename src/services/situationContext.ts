@@ -113,6 +113,7 @@ export function mergeSituationFocus(
       jobFocus.calendar !== undefined ? jobFocus.calendar : base.calendar,
     contact: jobFocus.contact !== undefined ? jobFocus.contact : base.contact,
     project: jobFocus.project !== undefined ? jobFocus.project : base.project,
+    task: jobFocus.task !== undefined ? jobFocus.task : base.task,
   };
 }
 
@@ -130,6 +131,9 @@ export function focusToRelevanceStrings(focus: SituationFocus): string[] {
   }
   if (focus.project) {
     out.push(`focus: project [${focus.project.id}] ${focus.project.title}`);
+  }
+  if (focus.task) {
+    out.push(`focus: task [${focus.task.id}] ${focus.task.title}`);
   }
   return out;
 }

@@ -56,6 +56,19 @@ function handlePlatformEvent(
       );
       break;
     }
+    case "avatar_creation_task_satisfied": {
+      const avatar = getAvatarById(evt.matchedAvatarId);
+      enqueueVoiceSnippet(
+        AUDIO_SNIPPET_IDS.avatarCreationTaskDone,
+        voiceProfileIdForAvatar(avatar),
+        {
+          anchor: "storage",
+          avatarId: evt.matchedAvatarId,
+          cueId: AUDIO_SNIPPET_IDS.avatarCreationTaskDone,
+        }
+      );
+      break;
+    }
     default:
       break;
   }

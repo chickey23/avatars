@@ -36,7 +36,9 @@ import {
   migrateProjectsFromWorldMetadata,
   syncWorldMetadataProjectsAdditive,
   prunePlatformPlaceholderProjects,
+  PLATFORM_SCHEDULER_INTERVAL_MS,
 } from "../services/platform";
+import { scanAvatarCreationTaskFulfillment } from "../services/avatarCreationTaskFulfillment";
 import {
   getWorldMetadata,
   pruneWorldMetadataPlaceholderProjects,
@@ -210,6 +212,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fullCatalogRef.current = fullAvatarCatalog;
   }, [fullAvatarCatalog]);
+
+  const userAvatarsFulfillmentKey = useMemo(
+    () =>
+      JSON.stringify(
+        (state.situationContext.userAvatars ?? []).map((a) => ({
+          id: a.id,
+          g: a.givenName,
+        }))
+      ),
+    [state.situationContext.userAvatars]
+  );
+
+  /**
+   * Close avatar_creation platform tasks when a user avatar's `givenName`
+   * matches the task's expected name; poll on roster changes and on the same
+   * cadence as the platform scheduler.
+   */
+  useEffect(() => {
+    const run = () =>
+      scanAvatarCreationTaskFulfillment(
+        situationContextRef.current.userAvatars ?? []
+      );
+    run();
+    const id = window.setInterval(run, PLATFORM_SCHEDULER_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [userAvatarsFulfillmentKey]);
 
   /**
    * Synthetic-post sink: monitor-authored `ConversationMessage`s are appended

@@ -282,6 +282,8 @@ export interface SituationFocus {
   contact?: FocusItem;
   /** World-metadata project (local id + display title). */
   project?: FocusItem;
+  /** Platform task (local id + display title). */
+  task?: FocusItem;
 }
 
 /** Proactive notification urgency (SPEC § Proactive notifications) */

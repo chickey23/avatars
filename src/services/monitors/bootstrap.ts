@@ -15,6 +15,7 @@ import {
 } from "./unassignedProjects";
 import { dueAndSnoozedItemsMonitor } from "./dueAndSnoozedItems";
 import { complexTaskPlannerMonitor } from "./complexTaskPlanner";
+import { avatarCreationTaskRunnerMonitor } from "./avatarCreationTaskRunner";
 import { sourceRunnerMonitors } from "./sourceRunners";
 import { registerStubMonitors } from "./stubs";
 
@@ -26,6 +27,7 @@ export function installDefaultMonitors(): void {
   registerMonitor(unassignedProjectsMonitor);
   registerMonitor(dueAndSnoozedItemsMonitor);
   registerMonitor(complexTaskPlannerMonitor);
+  registerMonitor(avatarCreationTaskRunnerMonitor);
   for (const m of sourceRunnerMonitors) registerMonitor(m);
   installUnassignedProjectsActions();
   registerStubMonitors();

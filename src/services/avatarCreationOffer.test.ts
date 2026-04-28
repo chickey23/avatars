@@ -15,9 +15,37 @@ import {
   __resetSyntheticPostForTests,
   setSyntheticPostSink,
 } from "./monitors/postSynthetic";
+import {
+  __resetPlatformStoreForTests,
+  ensurePlatformStoreLoadedSync,
+  getPlatformStore,
+  upsertProject,
+  upsertTask,
+} from "./platform/store";
+
+function installMemoryLocalStorage(): void {
+  const data = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => data.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        data.set(key, String(value));
+      },
+      removeItem: (key: string) => {
+        data.delete(key);
+      },
+      clear: () => data.clear(),
+    },
+  });
+}
 
 describe("avatar creation offer", () => {
   beforeEach(() => {
+    installMemoryLocalStorage();
+    localStorage.clear();
+    __resetPlatformStoreForTests();
+    ensurePlatformStoreLoadedSync();
     __resetSyntheticActionsForTests();
     __resetSyntheticPostForTests();
     __resetAvatarCreationOfferForTests();
@@ -59,5 +87,32 @@ describe("avatar creation offer", () => {
     await runSyntheticAction(prompt, open);
 
     expect(opened).toEqual([{ seedText: "Create Ada", wikiQuery: "Ada" }]);
+  });
+
+  it('cancels a linked platform task when "Not now" is clicked', async () => {
+    const posted: ConversationMessage[] = [];
+    setSyntheticPostSink(({ message }) => posted.push(message));
+    installAvatarCreationOfferActions();
+
+    const project = upsertProject({ title: "Q", actor: "test" });
+    const task = upsertTask({
+      projectId: project.id,
+      title: "Create avatar: Bea",
+      actor: "test",
+      workflowStatus: "waiting_for_user",
+      requiredCapability: { id: "avatar_creation", kind: "tool" },
+    });
+
+    postAvatarCreationWorkshopOffer({
+      avatarId: "creator",
+      intent: { wikiQuery: "Bea", seedText: "Create Bea" },
+      linkedPlatformTaskId: task.id,
+    });
+
+    const prompt = posted[0]!;
+    const notNow = prompt.syntheticActions!.find((a) => a.label === "Not now")!;
+    await runSyntheticAction(prompt, notNow);
+
+    expect(getPlatformStore().tasks[task.id]?.workflowStatus).toBe("cancelled");
   });
 });

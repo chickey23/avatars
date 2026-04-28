@@ -74,9 +74,11 @@ import {
 import {
   getPlatformStore,
   subscribePlatformStore,
+  updateTaskWorkflow,
 } from "../services/platform/store";
 import { patchWorldMetadataProjectsForExecution } from "../services/projectSync";
 import { loadWorldviewAudit } from "../services/worldviewAudit";
+import { executeAvatarCreationTaskById } from "../services/avatarCreationTaskExecution";
 import {
   applyScoreDeltaWithCap,
   listPopInAvatarIdsForProjectFocus,
@@ -491,6 +493,7 @@ export function useAppContentModel() {
     | "calendar"
     | "contacts"
     | "internet"
+    | "tasks"
     | "user"
     | "worldview"
   >("email");
@@ -911,6 +914,67 @@ export function useAppContentModel() {
       a[1].title.localeCompare(b[1].title, undefined, { sensitivity: "base" })
     );
   }, [projectsRefresh]);
+
+  const contextTasks = useMemo(() => {
+    void projectsRefresh;
+    const store = getPlatformStore();
+    return Object.values(store.tasks)
+      .filter((t) => t.status !== "done" && t.status !== "cancelled")
+      .sort((a, b) => {
+        const aProject = store.projects[a.projectId]?.title ?? "";
+        const bProject = store.projects[b.projectId]?.title ?? "";
+        return (
+          aProject.localeCompare(bProject, undefined, { sensitivity: "base" }) ||
+          b.updatedAt - a.updatedAt ||
+          a.title.localeCompare(b.title, undefined, { sensitivity: "base" })
+        );
+      });
+  }, [projectsRefresh]);
+
+  const contextProjectTitleById = useMemo(() => {
+    void projectsRefresh;
+    const store = getPlatformStore();
+    return Object.fromEntries(
+      Object.entries(store.projects).map(([id, p]) => [id, p.title])
+    );
+  }, [projectsRefresh]);
+
+  const focusPlatformTask = useCallback((taskId: string) => {
+    const store = getPlatformStore();
+    const task = store.tasks[taskId];
+    if (!task) return;
+    const project = store.projects[task.projectId];
+    setFocus((f) => ({
+      ...f,
+      project: project ? { id: project.id, title: project.title } : f.project,
+      task: { id: task.id, title: task.title },
+    }));
+  }, []);
+
+  const cancelPlatformTask = useCallback((taskId: string) => {
+    const task = getPlatformStore().tasks[taskId];
+    if (!task) return;
+    updateTaskWorkflow({
+      taskId,
+      actor: "user",
+      workflowStatus: "cancelled",
+      nextActor: null,
+      detail: "cancelled from Context Tasks tab",
+    });
+    setFocus((f) =>
+      f.task?.id === taskId ? { ...f, task: undefined } : f
+    );
+    setProjectsRefresh((n) => n + 1);
+  }, []);
+
+  const executePlatformTask = useCallback((taskId: string): boolean => {
+    const ok = executeAvatarCreationTaskById(taskId);
+    if (ok) {
+      focusPlatformTask(taskId);
+      setProjectsRefresh((n) => n + 1);
+    }
+    return ok;
+  }, [focusPlatformTask]);
 
   useEffect(() => {
     return subscribePlatformStore(() => setProjectsRefresh((n) => n + 1));
@@ -1488,7 +1552,9 @@ export function useAppContentModel() {
     contactsError,
     contactsLoading,
     contextEntryBudgets,
+    contextProjectTitleById,
     contextTab,
+    contextTasks,
     creationWorkshopPrefill,
     effectivePrimarySlots,
     emailError,
@@ -1498,6 +1564,7 @@ export function useAppContentModel() {
     expandedPromptId,
     firstSelectedId,
     focus,
+    focusPlatformTask,
     focusWatcherBoot,
     fullAvatarCatalog,
     getAvatarVizColorForSwitchboard,
@@ -1639,6 +1706,8 @@ export function useAppContentModel() {
     taskAssignStatus,
     taskProjectId,
     tasks,
+    cancelPlatformTask,
+    executePlatformTask,
     toggleAvatarSelection,
     turnByUserId,
     upcomingEvents,

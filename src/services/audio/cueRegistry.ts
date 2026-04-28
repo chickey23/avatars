@@ -16,6 +16,8 @@ export const AUDIO_SNIPPET_IDS = {
   timerDue: "timer_due",
   schedulerBlip: "scheduler_blip",
   waveSettled: "wave_settled",
+  /** Avatar-creation platform task satisfied (roster name match); voice-bus queue */
+  avatarCreationTaskDone: "avatar_creation_task_done",
 } as const;
 
 export type AudioSnippetId =

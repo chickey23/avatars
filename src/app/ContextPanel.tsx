@@ -113,6 +113,7 @@ export function ContextPanel() {
           m.focus.calendar ||
           m.focus.contact ||
           m.focus.project ||
+          m.focus.task ||
           (m.situationContext.userInternetContextLines?.length ?? 0) > 0) && (
           <div className="context-focus">
             <div className="focus-header">
@@ -182,6 +183,19 @@ export function ContextPanel() {
                   </button>
                 </li>
               )}
+              {m.focus.task && (
+                <li className="focus-item">
+                  <span className="focus-label">Task:</span>{" "}
+                  <button
+                    type="button"
+                    className="focus-title"
+                    onClick={() => m.setFocus((f) => ({ ...f, task: undefined }))}
+                    title="Clear focus"
+                  >
+                    {m.focus.task.title}
+                  </button>
+                </li>
+              )}
               {(m.situationContext.userInternetContextLines ?? []).map(
                 (webLine, idx) => (
                   <li key={`web-${idx}`} className="focus-item">
@@ -236,6 +250,14 @@ export function ContextPanel() {
             title="Web/wiki search; pin results into chat context"
           >
             Internet
+          </button>
+          <button
+            type="button"
+            className={`context-tab ${m.contextTab === "tasks" ? "active" : ""}`}
+            onClick={() => m.setContextTab("tasks")}
+            title="Incomplete platform tasks and queued work"
+          >
+            Tasks
           </button>
           <button
             type="button"
@@ -383,6 +405,91 @@ export function ContextPanel() {
                       </button>
                     </li>
                   ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {m.contextTab === "tasks" && (
+            <div className="context-tasks">
+              <p className="context-projects-hint">
+                Incomplete platform tasks. Focus a task to include it in the next
+                chat turn; Execute currently supports avatar-creation tasks.
+              </p>
+              {m.contextTasks.length === 0 ? (
+                <p className="context-empty">No incomplete tasks.</p>
+              ) : (
+                <ul className="context-task-list">
+                  {m.contextTasks.map((t) => {
+                    const focused = m.focus.task?.id === t.id;
+                    const canExecute = t.requiredCapability?.id === "avatar_creation";
+                    const projectTitle =
+                      m.contextProjectTitleById[t.projectId] ?? t.projectId;
+                    return (
+                      <li
+                        key={t.id}
+                        className={`context-task-item ${focused ? "focused" : ""}`}
+                      >
+                        <div className="context-task-main">
+                          <button
+                            type="button"
+                            className="context-task-title"
+                            onClick={() => m.focusPlatformTask(t.id)}
+                          >
+                            {t.title}
+                          </button>
+                          <span className="context-task-meta">
+                            {projectTitle} · {t.workflowStatus ?? t.status}
+                            {t.requiredCapability
+                              ? ` · needs ${t.requiredCapability.id}`
+                              : ""}
+                            {t.approval
+                              ? ` · approval ${t.approval.status}`
+                              : ""}
+                          </span>
+                          {t.notes && (
+                            <span className="context-task-notes">
+                              {t.notes.replace(/\s+/g, " ").slice(0, 160)}
+                              {t.notes.length > 160 ? "…" : ""}
+                            </span>
+                          )}
+                        </div>
+                        <div className="context-task-actions">
+                          <button
+                            type="button"
+                            onClick={() => m.focusPlatformTask(t.id)}
+                          >
+                            Focus
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!canExecute}
+                            title={
+                              canExecute
+                                ? "Post the avatar creation offer for this task"
+                                : "No executor yet for this task type"
+                            }
+                            onClick={() => m.executePlatformTask(t.id)}
+                          >
+                            Execute
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Cancel task "${t.title}"?`
+                                )
+                              ) {
+                                m.cancelPlatformTask(t.id);
+                              }
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

@@ -7,6 +7,12 @@
 import type { SourceCacheKind, SourceCacheSnapshot } from "./sourceCache";
 import type { SchedulerFireEvent } from "./scheduler";
 
+export type AvatarCreationTaskSatisfiedEvent = {
+  type: "avatar_creation_task_satisfied";
+  taskId: string;
+  matchedAvatarId: string;
+};
+
 export type PlatformBusEvent =
   | {
       type: "source_cache_updated";
@@ -27,6 +33,7 @@ export type PlatformBusEvent =
       durationMs: number;
       itemCount: number;
     }
+  | AvatarCreationTaskSatisfiedEvent
   | SchedulerFireEvent;
 
 type Listener = (e: PlatformBusEvent) => void;
