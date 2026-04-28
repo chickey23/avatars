@@ -1,7 +1,8 @@
 /**
  * Snippet keys for bundled voice clips and SFX resolution.
  * Phase 1: files under `public/audio/cues/<snippet>/<voiceProfileId>.opus`
- * (or .ogg). Missing files fall back to synthetic cues where applicable.
+ * (or .ogg). If a file is missing, the voice queue plays a very quiet synthetic
+ * cymbal on the cue bus and optional visual (`voice_snippet:missing`) instead of silence.
  */
 
 import type { Avatar } from "../../types";

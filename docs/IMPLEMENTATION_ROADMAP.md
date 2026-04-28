@@ -63,6 +63,27 @@ Use the operating grammar in [STYLEGUIDE.md](STYLEGUIDE.md): descriptors, instru
 
 ---
 
+## Phase D1 — Targeted tool-error self-repair (missing requirements first)
+
+**Goal:** Reduce predictable tool-call failures by adding a focused post-validation repair lane for missing required arguments. Frame failures as **missing requirements to satisfy** whenever possible.
+
+1. Add a **single-attempt targeted repair** path for deterministic missing-arg failures after normal execution validation.
+2. Keep strict guardrails: same tool id only, no capability escalation, no permission bypass, no cross-tool substitution, and no retries beyond configured cap.
+3. Feed the focused repair call with: user message context, tool id, non-secret args preview, structured error code, and required-field list.
+4. Prefer trusted context values only; if required values are unavailable, stop retrying and surface unmet requirements as task/monitor state.
+5. Persist attempt lineage (`initial`, `repair_missing_args`, `final_status`) and per-tool repair outcomes for telemetry and workshop review.
+6. Keep parser repair behavior intact; this is an additional lane for schema-valid but incomplete calls.
+7. Seed deterministic missing-arg patterns from execution validators (`drafts.tasks`, `drafts.calendar_event`, `drafts.email_reply`, `avatars.workshop.open_draft`) and expand only from observed telemetry.
+
+**Acceptance criteria**
+
+- Recurrence of known missing-arg errors drops for targeted tools.
+- No increase in permission/capability bypass incidents.
+- Waves/workshop surfaces unmet requirements clearly when repair cannot proceed.
+- Tests cover: successful repair, no-context fallback to requirement state, and retry-cap stop.
+
+---
+
 ## Phase E — Lightweight “bench” responders (non-primary)
 
 **Goal:** Avatars **not** in the current primary strip can still reply when the user message is a **very specific** match—keep this path **cheap** (latency + tokens).

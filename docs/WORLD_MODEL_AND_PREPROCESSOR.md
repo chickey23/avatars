@@ -50,6 +50,19 @@ Tool misuse should feed this loop. If a steward avatar emits the wrong tool shap
 
 **Gating language:** The preprocessor / monitor layer should express valid execution paths as success conditions. A plan step proceeds when the required project context, task owner, capability, source evidence, and approval state are present. Missing requirements become task state and review-card copy. This avoids making negative commands the main control mechanism and makes the user-facing path easier to inspect.
 
+### Targeted tool-error self-repair (missing requirements)
+
+For predictable, schema-valid tool failures caused by missing required arguments, add a narrow post-validation repair lane:
+
+1. Classify failures into `missing_required_args` vs parse/capability/other.
+2. Allow one focused repair attempt only when the tool id is known, required fields are known, and no capability/permission denial applies.
+3. Constrain repair to the same tool id and only missing required fields; preserve already valid args.
+4. Populate missing values only from trusted context (turn data, validated ids, explicit user input). Never guess privileged identifiers.
+5. If values are unavailable, do not loop; emit unmet requirements into task/monitor state and user-facing copy.
+6. Record attempt lineage (`initial`, `repair_missing_args`, `final_status`) for telemetry and visualizer diagnostics.
+
+This complements existing parse-repair behavior and aligns with the requirement-first language: unresolved failures should be presented as missing prerequisites, not generic rule violations.
+
 ```mermaid
 flowchart LR
   subgraph wm [WorldMetadata]

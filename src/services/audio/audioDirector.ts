@@ -42,6 +42,8 @@ const voiceQueue: VoiceQueueItem[] = [];
 
 let softTickBuffer: AudioBuffer | null = null;
 let blipBuffer: AudioBuffer | null = null;
+/** Very quiet metallic wash when a queued voice clip asset is missing (see `drainVoiceQueue`). */
+let voiceSnippetMissBuffer: AudioBuffer | null = null;
 
 function ensureGraph(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -137,11 +139,72 @@ function makeImpulseBuffer(c: BaseAudioContext, freq: number, duration: number, 
   return buf;
 }
 
+function makeQuietCymbalBuffer(c: BaseAudioContext): AudioBuffer {
+  const duration = 0.26;
+  const sampleRate = c.sampleRate;
+  const n = Math.max(1, Math.floor(sampleRate * duration));
+  const buf = c.createBuffer(1, n, sampleRate);
+  const d = buf.getChannelData(0);
+  const partials: { f: number; a: number }[] = [
+    { f: 4156, a: 0.88 },
+    { f: 5831, a: 0.52 },
+    { f: 7120, a: 0.32 },
+    { f: 9340, a: 0.18 },
+    { f: 11200, a: 0.11 },
+  ];
+  for (let i = 0; i < n; i++) {
+    const t = i / sampleRate;
+    const env = Math.exp(-t * 30);
+    let sample = 0;
+    for (let p = 0; p < partials.length; p++) {
+      sample += partials[p].a * Math.sin(2 * Math.PI * partials[p].f * t + p * 0.71);
+    }
+    const air = Math.sin(i * 0.073) * Math.cos(i * 0.019) * env * 0.12;
+    d[i] = (sample * 0.014 + air) * env;
+  }
+  return buf;
+}
+
 function ensureSyntheticBuffers(): void {
   const c = ctx;
   if (!c) return;
   if (!softTickBuffer) softTickBuffer = makeImpulseBuffer(c, 920, 0.075, 0.12);
   if (!blipBuffer) blipBuffer = makeImpulseBuffer(c, 1320, 0.055, 0.1);
+}
+
+function ensureVoiceSnippetMissBuffer(): void {
+  const c = ctx;
+  if (!c) return;
+  if (!voiceSnippetMissBuffer) voiceSnippetMissBuffer = makeQuietCymbalBuffer(c);
+}
+
+/**
+ * Plays on the cue bus when a bundled voice clip URL 404s — same checks as other one-shots.
+ */
+function playVoiceSnippetMissFallback(visual?: AudioVisualEmitOpts): void {
+  if (!settings.enabled || settings.focusMode) return;
+  if (settings.respectReducedMotion && prefersReducedMotion()) return;
+  const c = ensureGraph();
+  if (!c || !cueGain) return;
+  ensureVoiceSnippetMissBuffer();
+  const buf = voiceSnippetMissBuffer;
+  if (!buf) return;
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const g = c.createGain();
+  g.gain.value = 0.42;
+  src.connect(g);
+  g.connect(cueGain);
+  const now = c.currentTime;
+  src.start(now);
+  src.stop(now + buf.duration + 0.02);
+  if (visual) {
+    emitAudioVisualCue({
+      anchor: visual.anchor,
+      avatarId: visual.avatarId,
+      cueId: visual.cueId ?? "voice_snippet:missing",
+    });
+  }
 }
 
 export type SyntheticCueKind = "soft_tick" | "blip" | "shimmer";
@@ -311,6 +374,7 @@ function drainVoiceQueue(): void {
   void (async () => {
     const buf = await loadSnippetBuffer(next.snippetId, next.voiceProfileId);
     if (!buf) {
+      playVoiceSnippetMissFallback(next.visual);
       voiceBusy = false;
       drainVoiceQueue();
       return;
@@ -357,6 +421,7 @@ export function __resetAudioDirectorForTests(): void {
   bufferCache.clear();
   softTickBuffer = null;
   blipBuffer = null;
+  voiceSnippetMissBuffer = null;
   if (ctx) {
     try {
       void ctx.close();
