@@ -160,8 +160,8 @@ export function ChatMainPanel() {
                     aria-pressed={m.mainSurface === "workshops"}
                     aria-label={
                       m.mainSurface === "workshops"
-                        ? "Hide workshops panel below chat"
-                        : "Show workshops panel below chat"
+                        ? "Switch to chat mode"
+                        : "Switch to workshop mode"
                     }
                     onClick={() =>
                       m.setMainSurface(
@@ -170,8 +170,8 @@ export function ChatMainPanel() {
                     }
                     title={
                       m.mainSurface === "workshops"
-                        ? "Hide workshops"
-                        : "Show workshops"
+                        ? "Switch to chat mode"
+                        : "Switch to workshop mode"
                     }
                   >
                     {m.mainSurface === "workshops" ? "W|C" : "C|W"}
@@ -246,29 +246,30 @@ export function ChatMainPanel() {
               </>
             )}
             <div className="chat-center-column">
-            <div
-              ref={m.chatMessagesRef}
-              className={`chat-messages chat-skin--${m.chatSkin}`}
-            >
-              {m.messages.length === 0 ? (
-                <div className="empty-state">
-                  <p>
-                    {m.selectedAvatarIds.length === 0
-                      ? "Send a message; well-matched avatars will reply."
-                      : m.selectedAvatarIds.length === 1
-                        ? `Start a conversation with ${m.chatSelectionLabel}.`
-                        : "Send a message to solicit replies from the selected avatars."}
-                  </p>
-                  {(m.chatViewMode === "chat_routing" ||
-                    m.chatViewMode === "routing_log") &&
-                    m.archivedTurnCount > 0 && (
-                    <p className="archive-empty-hint">
-                      {m.archivedTurnCount} past turn(s) in archive (conversation cleared).
+            {m.mainSurface !== "workshops" && (
+              <div
+                ref={m.chatMessagesRef}
+                className={`chat-messages chat-skin--${m.chatSkin}`}
+              >
+                {m.messages.length === 0 ? (
+                  <div className="empty-state">
+                    <p>
+                      {m.selectedAvatarIds.length === 0
+                        ? "Send a message; well-matched avatars will reply."
+                        : m.selectedAvatarIds.length === 1
+                          ? `Start a conversation with ${m.chatSelectionLabel}.`
+                          : "Send a message to solicit replies from the selected avatars."}
                     </p>
-                  )}
-                </div>
-              ) : (
-                m.messages.map((msg) => {
+                    {(m.chatViewMode === "chat_routing" ||
+                      m.chatViewMode === "routing_log") &&
+                      m.archivedTurnCount > 0 && (
+                      <p className="archive-empty-hint">
+                        {m.archivedTurnCount} past turn(s) in archive (conversation cleared).
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  m.messages.map((msg) => {
                   const turn = msg.role === "user" ? m.turnByUserId.get(msg.id) : undefined;
                   const fromAvatar =
                     msg.role === "avatar" && msg.avatarId
@@ -777,11 +778,18 @@ export function ChatMainPanel() {
                         )}
                     </div>
                   );
-                })
-              )}
-            </div>
+                  })
+                )}
+              </div>
+            )}
             {m.mainSurface === "workshops" && (
-              <div className="chat-workshops-embed chat-body-row--tool-workshop">
+              <div
+                className={`chat-workshops-embed chat-body-row--tool-workshop${
+                  m.mainSurface === "workshops"
+                    ? " chat-workshops-embed--full-height"
+                    : ""
+                }`}
+              >
                 <WorkshopsPanel
                   workshopTab={m.workshopTab}
                   ollamaPresence={m.ollamaPresence}

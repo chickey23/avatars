@@ -3730,6 +3730,12 @@ label.email-item-btn.internet-hit-pick-label {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.chat-workshops-embed--full-height {
+  flex: 1 1 auto;
+  max-height: none;
+  border-top: none;
+}
+
 .chat-talk-tray-chrome {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
