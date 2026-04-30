@@ -79,6 +79,7 @@ Use the operating grammar in [STYLEGUIDE.md](STYLEGUIDE.md): descriptors, instru
 5. Persist attempt lineage (`initial`, `repair_missing_args`, `final_status`) and per-tool repair outcomes for telemetry and workshop review.
 6. Keep parser repair behavior intact; this is an additional lane for schema-valid but incomplete calls.
 7. Seed deterministic missing-arg patterns from execution validators (`drafts.tasks`, `drafts.calendar_event`, `drafts.email_reply`, `avatars.workshop.open_draft`) and expand only from observed telemetry.
+8. **Deferred follow-on (stewarded Waves error role):** add a steward that reads Waves/tool-parse errors into chat/workflow context, opens a workshop repair task for the failing call, and tracks repair/retry outcomes as durable evidence.
 
 **Acceptance criteria**
 

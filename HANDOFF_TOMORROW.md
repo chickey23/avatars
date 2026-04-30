@@ -66,6 +66,7 @@
 - **Archive segment, log cap, compression:** SPEC § Conversation archive; PROGRESS § Deferred; TECHSPEC § 12.7.
 - **Stewarded portrait sourcing (new deferred):** for avatars missing images, add a stewarded suggestion flow that infers style from existing avatars, prefers local generative sources (slow acceptable for small images), supports online sources with license checks, and prefers wiki/public repositories where suitable.
 - **Stewarded audio-sample sourcing (new deferred):** for avatars missing audio samples, add a stewarded suggestion/generation flow that infers style from existing avatars, prefers local generative sources (slow acceptable for short samples), supports online sources with license checks, and prefers wiki/public repositories where suitable.
+- **Stewarded Waves error reporting/repair role (new deferred):** read Waves tool-call errors into chat/workflow context and steward them into a workshop repair flow for the failing call, then track repair/retry outcomes.
 
 ---
 
