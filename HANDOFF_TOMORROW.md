@@ -64,6 +64,16 @@
 
 - **Switchboard / cue sound:** keep **non-critical** or decorative sounds secondary to visualization and text; **primary** user-facing cues should still pair **audible** feedback with a **visible** pulse (or a documented, accessible alternative). Accessibility controls (including reduced motion) if expanded.
 - **Archive segment, log cap, compression:** SPEC § Conversation archive; PROGRESS § Deferred; TECHSPEC § 12.7.
+- **Stewarded portrait sourcing (new deferred):** for avatars missing images, add a stewarded suggestion flow that infers style from existing avatars, prefers local generative sources (slow acceptable for small images), supports online sources with license checks, and prefers wiki/public repositories where suitable.
+- **Stewarded audio-sample sourcing (new deferred):** for avatars missing audio samples, add a stewarded suggestion/generation flow that infers style from existing avatars, prefers local generative sources (slow acceptable for short samples), supports online sources with license checks, and prefers wiki/public repositories where suitable.
+
+---
+
+## Reported issues (watch until fixed)
+
+See [PROGRESS.md](PROGRESS.md) § **Reported issues (open)** for the canonical table.
+
+- **R1 — Avatar creation from chat:** creation-capable avatar should offer opening the **avatar creation** workflow from chat (not only Q&A + garbled tool-looking prose). Regression check: [docs/TEST_PLAN.md](docs/TEST_PLAN.md) **A14**.
 
 ---
 
@@ -86,6 +96,7 @@
 - [ ] **Assign Project write-through:** Select an avatar, assign an existing project, reload, and confirm the project remains stewarded (`ownerAvatarId`), duplicate active tasks for the same avatar/project are not shown, and focus on that project produces a relevant-data project block.
 - [ ] **Complex task split:** Ask for several named avatars in one request. Confirm the system creates or proposes one project plus separate tasks per avatar, assigns/requests the avatar-creation capability, and records tool misuse as task state or telemetry instead of silently failing.
 - [ ] **Creation search quality:** In **Workshops → Creation**, use a named character/person. Confirm each builder field shows useful evidence or a clear missing/low-confidence state; empty fields should prompt narrower follow-up searches rather than being treated as complete.
+- [ ] **Avatar creation from chat (optional; R1):** Ask a creation-capable avatar in **chat** to create a new avatar with intentionally vague fields. Confirm an in-thread affordance opens the **avatar creation** workflow (not only Q&A ending in garbled tool prose). See [docs/TEST_PLAN.md](docs/TEST_PLAN.md) A14 and [PROGRESS.md](PROGRESS.md) § Reported issues (open).
 - [ ] **WV revert:** Use **Revert bad patches** on a row that applied metadata; data rolls back; reverted row marked in log.
 - [ ] **Single-wave / no-comment:** With multiple avatars selected, only one routing wave runs (no cascade); session log may contain `switchboard_single_wave`. A suppressed reply logs `avatar_reply_suppressed` / `preflight_skip`.
 - [ ] **Lexical tools (optional):** In Ollama reply, use `AVATARS_MEM: note` and/or `AVATARS_TOOL name=gmail.fetch_message_body messageId=…` — confirm profile/Gmail behavior matches [AGENTIC_TOOLS.md](docs/AGENTIC_TOOLS.md).

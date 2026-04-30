@@ -158,6 +158,8 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 | Wikipedia | Reference | Supplemental material for avatar/persona construction (deferred) |
 | Wookieepedia | Reference | Star Wars wiki; supplemental for avatar creation (deferred) |
 | Memory Alpha | Reference | Star Trek wiki; supplemental for avatar creation (deferred) |
+| Wikimedia Commons / public repositories | Reference | Prefer for avatar portrait sourcing when licensing is clear (deferred) |
+| Freesound / public audio repositories | Reference | Prefer for avatar sample sourcing when licensing is clear (deferred) |
 | GitHub | Repos | Watching |
 | Weather | Weather | No account yet; free API |
 | Boing Boing | RSS | Public feed |
@@ -170,6 +172,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 - **Structure**: `data/connections/enabled/<source>/` and `data/connections/disabled/<source>/` — move folder to enable/disable
 - **Desktop apps**: May use an app-specific path (e.g. `%APPDATA%\com.avatars.app\data\connections\enabled\<source>\` on Windows) instead of project-relative `data/`
 - **Reference wikis / social (deferred)** — Wikipedia, Wookieepedia, Memory Alpha, Reddit (see § Target Sources): intended as **read-only supplemental** inputs during avatar creation and persona research; not required for core chat flows.
+- **Licensing for sourced media** — For external avatar portraits, reference images, and audio samples, preserve source attribution and respect license terms. Public-domain / permissive assets are preferred where possible.
 
 ---
 
@@ -196,6 +199,11 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 2. **Project agents** — Lesson Plan, Fitness Plan, Android Project, etc.
 3. **Security Agent** — After connectors in place
 4. **The Sleeper** — User-mimic agent; after stable system and conversation history
+5. **Stewarded avatar portrait sourcing pipeline** — Deferred process to suggest images for avatars missing portraits. Expectations: (a) run as a **stewarded** flow (monitor/task based), (b) infer preferred visual style from existing avatar portraits, (c) prefer **local** generative art sources when available even if slower (minutes per image; small outputs), (d) allow online sources with license checks, and (e) prioritize wiki/public-reference imagery (Wikipedia-family wikis, Wikimedia Commons, and similar public repositories) when suitable.
+6. **Stewarded avatar audio-sample sourcing pipeline** — Deferred process to suggest or generate samples for avatars missing voice/cue snippets. Expectations: (a) run as a **stewarded** flow (monitor/task based), (b) infer preferred style from existing avatar audio/voice profile patterns, (c) prefer **local** generative audio sources when available even if slower (minutes per sample; short outputs), (d) allow online sources with license checks, and (e) prioritize wiki/public-reference or public repositories when suitable.
+7. **Stewarded avatar prompt-refinement pipeline** — Deferred process to iteratively refine base avatar prompts. Expectations: (a) run as a **stewarded** flow (monitor/task based), (b) compare prompt revisions against explicit success conditions and guardrails, (c) require review checkpoints before durable prompt updates, and (d) track rationale and outcomes as task evidence.
+8. **Stewarded personality/history prompt compression pipeline** — Deferred process to improve personality/history prompts by adding sourced detail while reducing memory footprint. Expectations: (a) run as a **stewarded** flow (monitor/task based), (b) pull source-backed detail with attribution where feasible, (c) condense long prompt/context memory usage without losing key identity constraints, and (d) surface confidence and unresolved gaps for user review.
+9. **Stewarded project/task/interest refinement and comparison pipeline** — Deferred process where avatars are tasked to refine and compare their assigned projects, tasks, and interests. Expectations: (a) run as a **stewarded** flow (monitor/task based), (b) produce explicit compare outputs (overlap, conflicts, priority shifts, missing ownership), (c) align recommendations to capabilities/stewardship gates before execution, and (d) preserve decision history as project/task evidence.
 
 ---
 

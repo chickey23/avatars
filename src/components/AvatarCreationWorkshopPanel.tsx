@@ -8,10 +8,7 @@ import {
   createInitialWellOfSoulsTraits,
 } from "../services/wellOfSoulsRandomInit";
 import type { AvatarBuilderInitial } from "./AvatarBuilderModal";
-import {
-  hostnamesFromSearchHits,
-  runSectionSearchesForAvatarBuilder,
-} from "../services/avatarCreationWorkshopSectionSearch";
+import { runAvatarCreationWorkshopInternetApply } from "../services/avatarCreationFromWikiSources";
 
 function orderedRuleBlockIdsFromSet(selected: Set<string>): string[] {
   return AI_RULE_BLOCKS.filter((b) => selected.has(b.id)).map((b) => b.id);
@@ -115,10 +112,11 @@ export function AvatarCreationWorkshopPanel({
             <>
               Search wikis → Wikipedia → Tavily (if configured) → Google CSE. Use{" "}
               <strong>Context depth → Internet</strong> in the Context column to cap
-              hits per run.               <strong>Add selected to context</strong> pins lines for
-              all turns; <strong>Use selected in new avatar</strong> runs one targeted
-              search per builder section (scoped to the hosts you checked) and opens the
-              avatar builder with grouped references for this creation only.
+              hits per run. <strong>Add selected to context</strong> pins lines for all
+              turns. <strong>Use selected in new avatar</strong> fetches Wikipedia /
+              configured wiki intros once per selected URL, runs a single local Ollama pass
+              to pre-fill the builder when possible, then falls back to one targeted search
+              per builder section for non-wiki URLs or when extraction is unavailable.
             </>
           }
           secondaryAction={{
@@ -135,17 +133,16 @@ export function AvatarCreationWorkshopPanel({
                 wikiPrefill?.trim() ||
                 internetQuery.trim() ||
                 "";
-              const hostnames = hostnamesFromSearchHits(pickedHits);
-              const { bySection, mergedNotices } =
-                await runSectionSearchesForAvatarBuilder({
-                  baseText,
-                  hostnames,
-                  internetSearchMaxResults,
-                });
-              const wikiSearchNotices = [
-                ...discoveryNotices.map((n) => `[discovery] ${n}`),
-                ...mergedNotices,
-              ];
+              const {
+                seedFieldPrefill,
+                internetReferencesBySection,
+                wikiSearchNotices,
+              } = await runAvatarCreationWorkshopInternetApply({
+                pickedHits,
+                baseText,
+                internetSearchMaxResults,
+                discoveryNotices,
+              });
               onOpenAvatarBuilderFromInternet({
                 initial: {
                   kind: "seed",
@@ -153,9 +150,9 @@ export function AvatarCreationWorkshopPanel({
                   traitIds: [...traitSet],
                   ruleBlockIds: orderedRuleBlockIdsFromSet(ruleSet),
                   supplementalRules: "",
-                  internetReferencesBySection: bySection,
-                  wikiSearchNotices:
-                    wikiSearchNotices.length > 0 ? wikiSearchNotices : undefined,
+                  internetReferencesBySection,
+                  wikiSearchNotices,
+                  seedFieldPrefill,
                 },
               });
             },

@@ -35,6 +35,7 @@ pub fn run() {
             platform_cache::platform_cache_write,
             platform_cache::platform_cache_dir_display,
             targeted_search::targeted_search_query,
+            targeted_search::wiki_extract_batch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running avatars application");

@@ -17,6 +17,7 @@ import {
 import { PERSONALITY_TRAITS, type PersonalityTraitId } from "../theme/designTokens";
 import { AI_RULE_BLOCKS, AI_RULE_SETS } from "../data/aiRulesLibrary";
 import type { AvatarBuilderInternetSectionRefs } from "../services/avatarCreationWorkshopSectionSearch";
+import type { AvatarBuilderSeedFieldPrefill } from "../services/avatarBuilderSeedPrefill";
 import { getAvatarOperationalRoles } from "../services/avatarOperations";
 
 export type AvatarBuilderInitial =
@@ -32,6 +33,8 @@ export type AvatarBuilderInitial =
       internetReferencesBySection?: AvatarBuilderInternetSectionRefs[];
       /** Provider notices from the search run that produced the references. */
       wikiSearchNotices?: string[];
+      /** Wiki extract + Ollama JSON when opening from Creation workshop. */
+      seedFieldPrefill?: AvatarBuilderSeedFieldPrefill;
     }
   | { kind: "edit"; avatar: Avatar };
 
@@ -183,22 +186,30 @@ export function AvatarBuilderModal({
     if (!open || !initial) return;
     setSaveError(null);
     if (initial.kind === "seed") {
-      setGivenName("");
-      setAppellation("");
+      const p = initial.seedFieldPrefill;
+      setGivenName(p?.givenName?.trim() ?? "");
+      setAppellation(p?.appellation?.trim() ?? "");
       setDescription(
-        initial.seed.trim() ||
+        p?.description?.trim() ||
+          initial.seed.trim() ||
           (seedShowInternetBlock(initial)
             ? "Review internet references below; edit to describe this avatar."
             : "")
       );
-      setPersonality("");
-      setTagsStr("");
-      setInterestsStr("");
+      setPersonality(p?.personality?.trim() ?? "");
+      setTagsStr(
+        p?.tags?.length ? p.tags.join(", ") : ""
+      );
+      setInterestsStr(
+        p?.interests?.length ? p.interests.join(", ") : ""
+      );
       setTraits(new Set(initial.traitIds));
       setRuleBlocks(new Set(initial.ruleBlockIds));
       setSupplementalRules(initial.supplementalRules.trim());
       setRosterScore(DEFAULT_ROSTER_SCORE);
-      setAccentColor(DEFAULT_SIGNATURE_COLOR);
+      setAccentColor(
+        normalizeHex6(p?.accentColor) ?? DEFAULT_SIGNATURE_COLOR
+      );
       setPortraitPosition({ x: 50, y: 50 });
       setPortraitScale(DEFAULT_AVATAR_PORTRAIT_SCALE);
     } else {

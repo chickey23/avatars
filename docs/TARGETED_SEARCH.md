@@ -68,8 +68,10 @@ Sign up at [Tavily](https://tavily.com/), paste `apiKey` under `tavily`, and adj
 
 See [EXTENDING_TRAITS_AND_RULES.md](./EXTENDING_TRAITS_AND_RULES.md) for the stable **`Internet context`** prefix used when formatting hits ([`internetContextLines.ts`](../src/services/internetContextLines.ts)).
 
-## Tauri command
+## Tauri commands
 
 - `targeted_search_query` — arguments: `query` (string), `max_results` (optional number, 1–20). Returns `{ hits, providersTried, notices }` (camelCase JSON in the response body).
 
-The frontend wrapper is [`src/services/targetedSearch/invoke.ts`](../src/services/targetedSearch/invoke.ts).
+- `wiki_extract_batch` — argument: `urls` (string array). Fetches **one** MediaWiki intro extract per URL via `action=query&prop=extracts&exintro=1&explaintext=1` (same HTTP client / user-agent as search). Only **Wikipedia** (`*.wikipedia.org` / `*.m.wikipedia.org` article URLs) and hosts listed under **`wikiBases`** in `targeted_search_config.json` are supported; other URLs return an item with `wiki_url_not_supported`. De-duplicates URLs, processes at most **5** unique URLs, truncates each extract to **80,000** Unicode scalars (notice `wiki_extract_truncated` when applied). Returns `{ extracts: [{ url, title, text, notices }] }`. Used by **Workshops → Creation → Use selected in new avatar** before a single Ollama JSON extraction; see [`avatarCreationFromWikiSources.ts`](../src/services/avatarCreationFromWikiSources.ts). Frontend: [`src/services/targetedSearch/wikiExtractInvoke.ts`](../src/services/targetedSearch/wikiExtractInvoke.ts).
+
+The frontend wrapper for search is [`src/services/targetedSearch/invoke.ts`](../src/services/targetedSearch/invoke.ts).

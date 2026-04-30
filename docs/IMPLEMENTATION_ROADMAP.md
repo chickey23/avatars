@@ -33,6 +33,10 @@
 3. Add confidence and missing-field reporting: every builder field should show whether it was filled from evidence, guessed from weak evidence, or left for the user.
 4. Iterate searches when a field is empty: run narrower follow-up queries for missing fields instead of accepting sparse first-pass results.
 5. Keep connector boundaries read-only. Reference sources (Wikipedia, Wookieepedia, Memory Alpha, etc.) remain supplemental inputs for avatar/persona construction, not core chat dependencies.
+6. **Deferred follow-on (stewarded):** add a portrait-suggestion pipeline for avatars missing images. Infer style from existing avatars, prefer local generative sources (slow is acceptable for small images), allow online sources with explicit licensing checks, and prioritize wiki/public repositories when they fit.
+7. **Deferred follow-on (stewarded audio):** add an audio-sample suggestion/generation pipeline for avatars missing voice/cue assets. Infer style from existing avatars' audio patterns, prefer local generative sources (slow is acceptable for short samples), allow online sources with explicit licensing checks, and prioritize wiki/public repositories when they fit.
+8. **Deferred follow-on (stewarded prompt refinement):** add a monitor/task pipeline to iteratively refine avatar base prompts against explicit success conditions and guardrails, with review checkpoints before durable updates.
+9. **Deferred follow-on (stewarded personality/history condensation):** add a pipeline that injects source-backed personality/history detail while condensing prompt memory footprint; include attribution where feasible plus confidence/missing-gap reporting.
 
 ---
 
@@ -60,6 +64,7 @@ Use the operating grammar in [STYLEGUIDE.md](STYLEGUIDE.md): descriptors, instru
 6. Use tool telemetry and parse diagnostics as feedback, but do not treat repeated tool misuse as only a parser problem. Escalate it into task decomposition, missing capability, or waiting-for-user state.
 7. Bridge `assignedTasks`, platform Project/Task records, and `activeTask` for prompts and routing.
 8. Later: Active Task / Focus Watcher agents per SPEC.
+9. **Deferred follow-on (stewarded comparison/refinement):** task avatars to refine and compare their assigned projects, tasks, and interests; generate overlap/conflict/priority recommendations, then gate execution through capability and stewardship checks.
 
 ---
 

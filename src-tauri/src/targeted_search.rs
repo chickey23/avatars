@@ -582,6 +582,215 @@ pub fn targeted_search_query(
     })
 }
 
+// --- Wiki page extract (one API read per URL; workshop / avatar builder) --------
+
+const WIKI_EXTRACT_MAX_URLS: usize = 5;
+const WIKI_EXTRACT_MAX_CHARS: usize = 80_000;
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiExtractItem {
+    pub url: String,
+    pub title: String,
+    pub text: String,
+    pub notices: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiExtractBatchResponse {
+    pub extracts: Vec<WikiExtractItem>,
+}
+
+/// Wikipedia `*.wikipedia.org` or `*.m.wikipedia.org`, or a host matching `wikiBases` in config.
+fn wiki_base_and_title_from_page_url(
+    page_url: &str,
+    cfg: &TargetedSearchConfig,
+) -> Option<(String, String)> {
+    let u = url::Url::parse(page_url.trim()).ok()?;
+    let host = u.host_str()?.to_lowercase();
+    let path = u.path();
+
+    let wiki_base = if host.ends_with(".m.wikipedia.org") {
+        let lang = host.split('.').next()?;
+        if lang.is_empty() || lang == "www" {
+            return None;
+        }
+        format!("https://{}.wikipedia.org", lang)
+    } else if host.ends_with(".wikipedia.org") {
+        let lang = host.split('.').next()?;
+        if lang.is_empty() || lang == "www" {
+            return None;
+        }
+        format!("https://{}.wikipedia.org", lang)
+    } else {
+        let mut matched: Option<String> = None;
+        for base in &cfg.wiki_bases {
+            let btrim = base.trim().trim_end_matches('/');
+            if btrim.is_empty() {
+                continue;
+            }
+            let bu = url::Url::parse(btrim).ok()?;
+            let bh = bu.host_str()?.to_lowercase();
+            if host == bh {
+                matched = Some(btrim.to_string());
+                break;
+            }
+        }
+        matched?
+    };
+
+    let raw_title = if path.starts_with("/wiki/") {
+        path.trim_start_matches("/wiki/").to_string()
+    } else if path.ends_with("index.php") {
+        u.query_pairs()
+            .find(|(k, _)| k == "title")
+            .map(|(_, v)| v.into_owned())?
+    } else {
+        return None;
+    };
+
+    if raw_title.is_empty() {
+        return None;
+    }
+
+    let decoded = urlencoding::decode(&raw_title).ok()?;
+    let title = decoded.replace('_', " ").trim().to_string();
+    if title.is_empty() {
+        return None;
+    }
+    Some((wiki_base, title))
+}
+
+fn fetch_wiki_extract_via_api(
+    client: &reqwest::blocking::Client,
+    wiki_base: &str,
+    page_title: &str,
+) -> Result<(String, String), String> {
+    let api = mediawiki_api_endpoint(wiki_base).ok_or_else(|| "bad_wiki_base".to_string())?;
+    let resp = client
+        .get(&api)
+        .query(&[
+            ("action", "query"),
+            ("prop", "extracts"),
+            ("titles", page_title),
+            ("exintro", "1"),
+            ("explaintext", "1"),
+            ("format", "json"),
+        ])
+        .send()
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("mediawiki HTTP {}", resp.status()));
+    }
+    let v: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
+    if let Some(err) = v.get("error").and_then(|e| e.get("info")).and_then(|i| i.as_str()) {
+        return Err(err.to_string());
+    }
+    let pages = v
+        .get("query")
+        .and_then(|q| q.get("pages"))
+        .and_then(|p| p.as_object());
+    let Some(pages) = pages else {
+        return Err("no_pages_in_response".to_string());
+    };
+    let mut title_out = String::new();
+    let mut extract_out = String::new();
+    for (_id, page) in pages {
+        if page.get("missing").is_some() {
+            return Err("page_missing".to_string());
+        }
+        let t = page
+            .get("title")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        if !t.is_empty() {
+            title_out = t;
+        }
+        let ex = page
+            .get("extract")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        if !ex.is_empty() {
+            extract_out = ex;
+            break;
+        }
+    }
+    if extract_out.is_empty() {
+        return Err("empty_extract".to_string());
+    }
+    Ok((title_out, extract_out))
+}
+
+#[tauri::command]
+pub fn wiki_extract_batch(urls: Vec<String>) -> Result<WikiExtractBatchResponse, String> {
+    let cfg = load_config();
+    let client = http_client()?;
+    let mut seen = std::collections::HashSet::<String>::new();
+    let mut ordered: Vec<String> = Vec::new();
+    for raw in urls {
+        let u = raw.trim().to_string();
+        if u.is_empty() || seen.contains(&u) {
+            continue;
+        }
+        if ordered.len() >= WIKI_EXTRACT_MAX_URLS {
+            break;
+        }
+        seen.insert(u.clone());
+        ordered.push(u);
+    }
+
+    let mut extracts: Vec<WikiExtractItem> = Vec::new();
+
+    for u in ordered {
+        let mut notices: Vec<String> = Vec::new();
+        let resolved = wiki_base_and_title_from_page_url(&u, &cfg);
+        let Some((wiki_base, page_title)) = resolved else {
+            extracts.push(WikiExtractItem {
+                url: u,
+                title: String::new(),
+                text: String::new(),
+                notices: vec!["wiki_url_not_supported".to_string()],
+            });
+            continue;
+        };
+
+        match fetch_wiki_extract_via_api(&client, &wiki_base, &page_title) {
+            Ok((api_title, mut text)) => {
+                if text.chars().count() > WIKI_EXTRACT_MAX_CHARS {
+                    let truncated: String = text.chars().take(WIKI_EXTRACT_MAX_CHARS).collect();
+                    text = truncated;
+                    notices.push("wiki_extract_truncated".to_string());
+                }
+                let title = if api_title.is_empty() {
+                    page_title.clone()
+                } else {
+                    api_title
+                };
+                extracts.push(WikiExtractItem {
+                    url: u,
+                    title,
+                    text,
+                    notices,
+                });
+            }
+            Err(e) => {
+                notices.push(format!("wiki_extract_error:{e}"));
+                extracts.push(WikiExtractItem {
+                    url: u,
+                    title: page_title,
+                    text: String::new(),
+                    notices,
+                });
+            }
+        }
+    }
+
+    Ok(WikiExtractBatchResponse { extracts })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -635,5 +844,72 @@ mod tests {
             strip_html_tags("a<span>b</span>c"),
             "abc"
         );
+    }
+
+    #[test]
+    fn wiki_url_parse_wikipedia_en() {
+        let cfg = TargetedSearchConfig::default();
+        let (base, title) = wiki_base_and_title_from_page_url(
+            "https://en.wikipedia.org/wiki/Ada_Lovelace",
+            &cfg,
+        )
+        .expect("parse");
+        assert_eq!(base, "https://en.wikipedia.org");
+        assert_eq!(title, "Ada Lovelace");
+    }
+
+    #[test]
+    fn wiki_url_parse_wikipedia_percent_encoded() {
+        let cfg = TargetedSearchConfig::default();
+        let (_base, title) = wiki_base_and_title_from_page_url(
+            "https://en.wikipedia.org/wiki/Earth%28planet%29",
+            &cfg,
+        )
+        .expect("parse");
+        assert_eq!(title, "Earth(planet)");
+    }
+
+    #[test]
+    fn wiki_url_parse_wikipedia_mobile() {
+        let cfg = TargetedSearchConfig::default();
+        let (base, title) = wiki_base_and_title_from_page_url(
+            "https://en.m.wikipedia.org/wiki/Moon",
+            &cfg,
+        )
+        .expect("parse");
+        assert_eq!(base, "https://en.wikipedia.org");
+        assert_eq!(title, "Moon");
+    }
+
+    #[test]
+    fn wiki_url_parse_fandom_configured() {
+        let cfg = TargetedSearchConfig {
+            wiki_bases: vec!["https://starwars.fandom.com".to_string()],
+            ..Default::default()
+        };
+        let (base, title) = wiki_base_and_title_from_page_url(
+            "https://starwars.fandom.com/wiki/Luke_Skywalker",
+            &cfg,
+        )
+        .expect("parse");
+        assert_eq!(base, "https://starwars.fandom.com");
+        assert_eq!(title, "Luke Skywalker");
+    }
+
+    #[test]
+    fn wiki_url_parse_index_php_title() {
+        let cfg = TargetedSearchConfig::default();
+        let (_base, title) = wiki_base_and_title_from_page_url(
+            "https://en.wikipedia.org/w/index.php?title=Mars_(planet)&action=info",
+            &cfg,
+        )
+        .expect("parse");
+        assert_eq!(title, "Mars (planet)");
+    }
+
+    #[test]
+    fn wiki_url_rejects_unknown_host() {
+        let cfg = TargetedSearchConfig::default();
+        assert!(wiki_base_and_title_from_page_url("https://example.com/wiki/Foo", &cfg).is_none());
     }
 }

@@ -24,6 +24,7 @@ When a lot of code changes in the editor but the app is only opened occasionally
 | What to run before release or after large changes (detailed matrix) | [TEST_PLAN.md](TEST_PLAN.md) |
 | Structured Ollama tools, permissions, Tool Workshop | [AGENTIC_TOOLS.md](AGENTIC_TOOLS.md), [TOOL_WORKSHOP.md](TOOL_WORKSHOP.md) |
 | Status, shipped items, “what’s next” | [PROGRESS.md](../PROGRESS.md) |
+| Open user-reported regressions (not deferred roadmap) | [PROGRESS.md](../PROGRESS.md) § Reported issues (open); agent skill [avatars-reported-issues](../.cursor/skills/avatars-reported-issues/SKILL.md) |
 | Session snapshot, verification checklist, next-session TL;DR | [HANDOFF_TOMORROW.md](../HANDOFF_TOMORROW.md) |
 | Phased product roadmap (A–G) | [IMPLEMENTATION_ROADMAP.md](IMPLEMENTATION_ROADMAP.md) |
 | AI / Cursor **planning** tasks (separate from product spec) | [../.cursor/plans/](../.cursor/plans/) — see also SPEC “Document Roles” |

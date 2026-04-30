@@ -29,6 +29,7 @@ Or: `npm run test -- --run` if you only need Vitest. The verify script also cove
 | A11 | **Waves — denied / failed tool** (optional) | When the model returns tools but execution fails (e.g. `permission_denied`, `permission_denied_projects`), you can determine **which tool** and **why** via **Waves** tooltip, **Model reply / tools parse**, and/or **WV log**; after [PROGRESS.md](../PROGRESS.md) “Operability” work, the column should show **error code** and **non-secret arg preview** without relying on the session log alone. |
 | A12 | **Audio + visual cue** (optional) | A cue that plays sound also produces a **visible** pulse (e.g. `audio-visual-cue-active` on the main region or a column) unless **focus mode** / **reduced motion** / a documented exception applies. |
 | A13 | **User chrome color by window style** | Pick a **You** color in one **Window** style, switch to another style and pick a different color, then switch back and reload; each style keeps its own user-message / Chat Visualizer user marker color. Legacy `avatars_user_chrome_color` should seed the default fallback. |
+| A14 | **Avatar creation from chat** (Ollama) | With an avatar that has **avatar creation** / workshop creation capability, ask it to create a new avatar (intentionally leave name or traits vague). **Pass:** user can open the **avatar creation** flow from the thread (in-chat button or equivalent) without hunting Workshops only; partial tool args may evolve across turns, but **garbled tool prose** as the only outcome is **fail**. Use **Model reply / tools parse** + **WV log** if tools look wrong. Tracked as **R1** in [PROGRESS.md](../PROGRESS.md) § Reported issues (open). |
 
 ## 3. Structured tools & world metadata (Ollama required)
 
@@ -60,5 +61,6 @@ Or: `npm run test -- --run` if you only need Vitest. The verify script also cove
 4. A9 if you care about audit revert  
 5. A11 and/or A12 if you touched **Waves** / **permissions** / **audio** paths  
 6. A13 if you touched chat chrome or window-style persistence  
+7. A14 if you touched **avatar creation**, Creation workshop, tool prompts, or in-chat handoff to the builder  
 
-Full depth: run the checklist in [HANDOFF_TOMORROW.md](../HANDOFF_TOMORROW.md) **Verification checklist** plus rows **A6–A8** and (when relevant) **A11–A12** above.
+Full depth: run the checklist in [HANDOFF_TOMORROW.md](../HANDOFF_TOMORROW.md) **Verification checklist** plus rows **A6–A8** and (when relevant) **A11–A12** and **A14** above.
