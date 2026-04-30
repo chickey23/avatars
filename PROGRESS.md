@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-- **Canonical order:** [SPEC.md](SPEC.md) § Implementation Order (Active).
+- **Canonical order:** [SPEC.md](SPEC.md) `SPEC-IMPLEMENTATION-ORDER` (Implementation Order (Active)).
 - **Phased roadmap (A–G: viz, metadata, execution, bench, popularity, archive):** [docs/IMPLEMENTATION_ROADMAP.md](docs/IMPLEMENTATION_ROADMAP.md).
 - **Session handoff + checklist:** [HANDOFF_TOMORROW.md](HANDOFF_TOMORROW.md).
 - **Test plan:** [docs/TEST_PLAN.md](docs/TEST_PLAN.md). **Open regressions:** [§ Reported issues (open)](#reported-issues-open) below (not the same as **Deferred**). **Design / dev cycle (plan → use → reflect) + Cursor context:** [docs/DEVELOPMENT_CYCLE.md](docs/DEVELOPMENT_CYCLE.md). **Agentic tools:** [docs/AGENTIC_TOOLS.md](docs/AGENTIC_TOOLS.md) (JSON + lexical lines, permissions, single-wave routing).
@@ -38,7 +38,7 @@
 | Weather | ⚠️ Mock only | No real API yet |
 | Boing Boing RSS | ❌ Not started | Public feed |
 
-### Connector Rules (Spec § Data Sources)
+### Connector Rules (Spec Data Sources)
 
 | Rule | Status |
 |------|--------|
@@ -47,13 +47,13 @@
 | Credentials plain text local | ✅ `credentials.json` per source |
 | Path structure | ✅ (app data; see Conflicts §5) |
 
-### Switchboard Agent (Spec § Architecture)
+### Switchboard Agent (Spec Architecture + `SPEC-CONTEXT-SCORING` / `SPEC-PROACTIVE-NOTIFY`)
 
 | Function | Status |
 |----------|--------|
 | Data ingestion | ✅ `gatherDataFromSources()` |
 | Tag / cascade routing | ✅ `evaluateRelevance()` + opinion matrix; `getRoutingLastMessage()` |
-| Structured context scoring (per source) | ⚠️ MVP + roadmap | User-turn (+ proactive) paths match SPEC **MVP**; dedicated **background** runners and evolved mechanisms per SPEC § Context scoring agents |
+| Structured context scoring (per source) | ⚠️ MVP + roadmap | User-turn (+ proactive) paths match SPEC **MVP**; dedicated **background** runners and evolved mechanisms per `SPEC-CONTEXT-SCORING` |
 | Distribution (reactive) | ✅ Queued turns in `AppProvider` / `useApp()` |
 | Distribution (proactive) | ⚠️ MVP | `pendingNotifications.ts`, `userFocus`, interval + turn merge; per-avatar sidebar UI; token + **Discuss** forced release; pending cleared after released turn; **sequential release batch** polish **lower priority** (acceptable for now) |
 | Switchboard trace + turn archive | ✅ |
@@ -68,7 +68,7 @@
 | Reply provenance + errors | ✅ | `ReplySource`, `replyError`, `rulesSkipReason` |
 | Session log | ✅ | In-app + Tauri disk; zip at 100 files |
 
-### Context scoring agents (Spec § Context scoring agents)
+### Context scoring agents (Spec `SPEC-CONTEXT-SCORING`)
 
 Order: email → calendar → contacts → others.
 
@@ -93,7 +93,7 @@ Order: email → calendar → contacts → others.
 | Field | Status |
 |-------|--------|
 | Thread, recent events, relevant data, WoS opt-in | ✅ |
-| `pendingNotifications`, `userFocus`, release ids (ephemeral) | ⚠️ MVP | SPEC § Proactive notifications |
+| `pendingNotifications`, `userFocus`, release ids (ephemeral) | ⚠️ MVP | Spec `SPEC-PROACTIVE-NOTIFY` |
 | Active task / cues in types | ⚠️ UI partial; agents not wired per SPEC |
 | Ephemeral `replyToUserMessageId` | ✅ |
 
@@ -101,7 +101,7 @@ Order: email → calendar → contacts → others.
 
 | Spec | Status |
 |------|--------|
-| `data/metadata/` (People, Dates, Events, Projects) | ⚠️ Partial, projects advancing | People-style fields in **world metadata** v1 (`localStorage`); Projects now bridge into durable platform project/task state, assignment UX, focused relevant-data blocks, and stewardship ownership. SPEC path / Tauri file TBD; **migration** — review and move existing elements into new stores at cutover (SPEC § Shared Metadata) |
+| `data/metadata/` (People, Dates, Events, Projects) | ⚠️ Partial, projects advancing | People-style fields in **world metadata** v1 (`localStorage`); Projects now bridge into durable platform project/task state, assignment UX, focused relevant-data blocks, and stewardship ownership. SPEC path / Tauri file TBD; **migration** — review and move existing elements into new stores at cutover (Spec Shared Metadata + `SPEC-IMPLEMENTATION-ORDER`) |
 
 ### Avatar roster, workshops, and project execution
 
@@ -114,14 +114,14 @@ Order: email → calendar → contacts → others.
 | Complex task splitting | ❌ Next priority | Broad user goals should become a project plus executable child tasks routed by capability; tool misuse should update telemetry/task state, not only parser repair |
 | Search-assisted avatar creation | ⚠️ Needs quality pass | Existing section searches are broad; improve disambiguation, source-specific queries, missing-field retries, evidence, and confidence for builder form completion |
 
-### Behavioral Instructions for AI (Spec § Document Roles)
+### Behavioral Instructions for AI (Spec `SPEC-AI-INSTRUCTIONS`)
 
 | Instruction | Status |
 |-------------|--------|
 | Spec-first, response style | ✅ |
 | Tests | ⚠️ Vitest for email + pending helpers |
 | Layout: consult user | ✅ | Shipped UI collectively approved; **new** major layout/surfaces consult user; see **docs/STYLEGUIDE.md** § 7 |
-| Signature phrase | ✅ | Script + Agent-mode habit in active use (SPEC § Behavioral Instructions) |
+| Signature phrase | ✅ | Script + Agent-mode habit in active use (Spec `SPEC-AI-INSTRUCTIONS`) |
 
 ### Dev tooling
 
@@ -138,8 +138,8 @@ Order: email → calendar → contacts → others.
 
 1. **Focus vs Active Task** — Focus UI + `userFocus` for proactive; Active Task / Focus Watcher agents not implemented (SPEC).
 2. **Complex task execution** — Project/task state and stewardship assignment exist, but broad requests are not yet decomposed into child tasks with owners, blockers, approval, and completion evidence.
-3. **Shared metadata** — World metadata v1 in `localStorage` ([`worldMetadata/`](src/services/worldMetadata/)); SPEC `data/metadata/` path and Tauri file backend still open; plan to **review and migrate** into on-disk stores when implemented (SPEC § Shared Metadata).
-4. **Proactive distribution** — MVP live (pending queue + UI); timer/cue and high-urgency UX still open; **sequential batch** polish **deprioritized** per SPEC roadmap.
+3. **Shared metadata** — World metadata v1 in `localStorage` ([`worldMetadata/`](src/services/worldMetadata/)); SPEC `data/metadata/` path and Tauri file backend still open; plan to **review and migrate** into on-disk stores when implemented (Spec Shared Metadata + `SPEC-IMPLEMENTATION-ORDER`).
+4. **Proactive distribution** — MVP live (pending queue + UI); timer/cue and high-urgency UX still open; **sequential batch** polish **deprioritized** per Spec roadmap and `SPEC-PROACTIVE-NOTIFY`.
 5. **Credentials path** — Spec `data/connections/...` vs app data `%APPDATA%\com.avatars.app\...` (normal for desktop).
 6. **Chat Visualizer information density** — **Waves** tooltips and narrow column omit args and full denied-tool detail; **Model reply / tools parse**, **WV log**, and **session log** stay the deep drill-down until the column is enriched (see **Operability** in TL;DR above and [docs/TEST_PLAN.md](docs/TEST_PLAN.md) rows A11–A12).
 
@@ -149,7 +149,7 @@ Order: email → calendar → contacts → others.
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Archive segment / dismiss topic | ❌ | SPEC § Conversation archive |
+| Archive segment / dismiss topic | ❌ | Spec `SPEC-CONVO-ARCHIVE` |
 | Adjustable session-log cap | ❌ | Hard-coded 100; TECHSPEC § 12.7 |
 | Semantic compression | ❌ | Turn archive / logs |
 | Richer “essence” in records | ⚠️ Partial | Previews + trace |

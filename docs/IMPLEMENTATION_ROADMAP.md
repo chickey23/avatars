@@ -2,6 +2,8 @@
 
 **Non-normative companion to [SPEC.md](../SPEC.md).** Canonical requirements remain in SPEC; this file sequences work and records design intent.
 
+**Stable SPEC IDs for cross-reference:** `SPEC-IMPLEMENTATION-ORDER`, `SPEC-CONTEXT-SCORING`, `SPEC-PROACTIVE-NOTIFY`, `SPEC-CONVO-ARCHIVE`, `SPEC-VALIDATION-MAP`, `SPEC-AI-INSTRUCTIONS`.
+
 **Related:** [SWITCHBOARD_VISUALIZATION.md](SWITCHBOARD_VISUALIZATION.md), [PROGRESS.md](../PROGRESS.md), [HANDOFF_TOMORROW.md](../HANDOFF_TOMORROW.md).
 
 ---
@@ -11,7 +13,7 @@
 1. **Design checkpoint (blocking):** Placement, density, off-by-default vs toggle, `prefers-reduced-motion`; sound optional/secondary.
 2. **MVP:** Replay-from-`SwitchboardTraceStep` after `distributeAndRespond`; live sync via **`onWaveChatComplete`** (per cascade depth) plus `markWaveSettledForUserDepth`.
 3. **UI:** Component beside chat (`SwitchboardViz`); default Chat remains readable when the column is off.
-4. **Docs:** SPEC § Implemented UI / PROGRESS / this file updated.
+4. **Docs:** SPEC Implemented UI (Current), `SPEC-IMPLEMENTATION-ORDER`, PROGRESS, and this file updated.
 
 **Immediate next focus:** Phase **D** — complex task handling over project/task state — plus a focused Phase **B2** quality pass on search-assisted avatar creation. See [`WORLD_MODEL_AND_PREPROCESSOR.md`](WORLD_MODEL_AND_PREPROCESSOR.md).
 
@@ -42,7 +44,7 @@
 
 ## Phase C — Shared metadata (`data/metadata/`)
 
-1. Projects (and People/Events as needed); evolve world metadata or add on-disk/Tauri JSON per SPEC.
+1. Projects (and People/Events as needed); evolve world metadata or add on-disk/Tauri JSON per SPEC Shared Metadata and `SPEC-IMPLEMENTATION-ORDER`.
 2. UI / chat entry for projects and optional “current project” in situation context.
 3. Contact affinity wiring for scoring.
 
@@ -63,7 +65,7 @@ Use the operating grammar in [STYLEGUIDE.md](STYLEGUIDE.md): descriptors, instru
 5. Route tasks by capability and stewardship (`tool_owner:*`, `allowedAgenticToolIds`, `monitor:*`) before model prompting so the wrong avatar is not asked to use the wrong tool.
 6. Use tool telemetry and parse diagnostics as feedback, but do not treat repeated tool misuse as only a parser problem. Escalate it into task decomposition, missing capability, or waiting-for-user state.
 7. Bridge `assignedTasks`, platform Project/Task records, and `activeTask` for prompts and routing.
-8. Later: Active Task / Focus Watcher agents per SPEC.
+8. Later: Active Task / Focus Watcher agents per SPEC architecture and `SPEC-IMPLEMENTATION-ORDER`.
 9. **Deferred follow-on (stewarded comparison/refinement):** task avatars to refine and compare their assigned projects, tasks, and interests; generate overlap/conflict/priority recommendations, then gate execution through capability and stewardship checks.
 
 ---
@@ -80,6 +82,7 @@ Use the operating grammar in [STYLEGUIDE.md](STYLEGUIDE.md): descriptors, instru
 6. Keep parser repair behavior intact; this is an additional lane for schema-valid but incomplete calls.
 7. Seed deterministic missing-arg patterns from execution validators (`drafts.tasks`, `drafts.calendar_event`, `drafts.email_reply`, `avatars.workshop.open_draft`) and expand only from observed telemetry.
 8. **Deferred follow-on (stewarded Waves error role):** add a steward that reads Waves/tool-parse errors into chat/workflow context, opens a workshop repair task for the failing call, and tracks repair/retry outcomes as durable evidence.
+9. **Deferred follow-on (stewarded user-health role):** add a bedtime/tiredness steward that starts from system-time heuristics, introduces a tiredness slider beside the engagement slider, and feeds low-friction rest-aware suggestions into chat/workflow context.
 
 **Acceptance criteria**
 
@@ -123,7 +126,7 @@ Use the operating grammar in [STYLEGUIDE.md](STYLEGUIDE.md): descriptors, instru
 
 ## Connectors backlog (supplemental)
 
-Reddit, Wikipedia, Wookieepedia, Memory Alpha, etc. — read-only **supplemental** sources for avatar/persona construction; deferred until convenient. See SPEC § Data Sources.
+Reddit, Wikipedia, Wookieepedia, Memory Alpha, etc. — read-only **supplemental** sources for avatar/persona construction; deferred until convenient. See SPEC Data Sources and `SPEC-IMPLEMENTATION-ORDER`.
 
 ---
 
@@ -135,7 +138,7 @@ SPEC / PROGRESS / HANDOFF now prioritize **complex task handling / project execu
 
 ## Risks / constraints
 
-- Visualization: accessibility (`prefers-reduced-motion`), SPEC layout consult.
+- Visualization: accessibility (`prefers-reduced-motion`), SPEC layout consult per `SPEC-AI-INSTRUCTIONS`.
 - Bench path: must not balloon latency or token use; cap bench participation.
 - Popularity: avoid surprising reordering—clear UI copy and optional pins.
 - GUI language: current labels such as **No JSON tools**, **Permission denied**, **Unhelpful reply**, **Dismiss**, and **Skip** should be revisited opportunistically so the product emphasizes missing success conditions, gates, and next actions rather than negative commands.

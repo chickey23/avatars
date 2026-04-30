@@ -1,6 +1,32 @@
 # Avatar Interface System — Specification
 
+## Agent Quickstart (Cursor)
+
+**Intent:** Let a new Cursor session extract binding constraints and execution priority without scanning the full spec.
+
+- **Canonical order when docs conflict:** `SPEC.md` (this file) → `TECHSPEC.md` (implementation shape) → `docs/IMPLEMENTATION_ROADMAP.md` (phased sequence) → `PROGRESS.md` (status snapshot) → `docs/STYLEGUIDE.md` (terminology and copy alignment).
+- **Spec-first behavior:** If implementation diverges from this spec, propose a spec update (or explicit user approval) before locking in behavior.
+- **Normative vs status:** Treat sections labeled **Normative** as required behavior; treat **Current** and **Deferred** sections as status/sequence context.
+- **UI/layout consult gate:** Consult the user for new or materially changed layout surfaces; iterative pattern-consistent adjustments can proceed.
+- **Validation expectation:** Pair behavioral changes with verification evidence per **[SPEC-VALIDATION-MAP]**.
+- **Doc edit routing:** Update the right file for the change class per **[SPEC-CHANGE-PROTOCOL]** before widening scope.
+
+## Decision Index (Stable IDs)
+
+**Intent:** Provide durable handles for prompts, reviews, and cross-doc references.
+
+- **[SPEC-DOC-ROLES]** — Document authority and non-overrides.
+- **[SPEC-AI-INSTRUCTIONS]** — Binding AI behavior, testing, and response constraints.
+- **[SPEC-CONVO-ARCHIVE]** — Clear chat semantics, archive retention, and trace modes.
+- **[SPEC-CONTEXT-SCORING]** — Ranked relevance requirement and phased scoring mechanisms.
+- **[SPEC-PROACTIVE-NOTIFY]** — Pending notification intent, release rules, and urgency tiers.
+- **[SPEC-IMPLEMENTATION-ORDER]** — Active sequencing and implementation priorities.
+- **[SPEC-CHANGE-PROTOCOL]** — Where to edit SPEC vs roadmap vs progress docs.
+- **[SPEC-VALIDATION-MAP]** — Verification expectations by requirement area.
+
 ## Document Roles
+
+**[SPEC-DOC-ROLES] [Normative] Intent:** Define what this file governs and what supporting docs may clarify without overriding it.
 
 - **SPEC.md** (this file): Work product — canonical project specification. Version-controlled in repo.
 - **docs/STYLEGUIDE.md**: Terminology and writing — when to say **Agent** vs **Avatar** vs tools; parallel development notes; **UI approval** (layout). Does not override this spec; aligns UI and docs with it.
@@ -11,6 +37,8 @@
 ---
 
 ## Behavioral Instructions for AI
+
+**[SPEC-AI-INSTRUCTIONS] [Normative] Intent:** Set mandatory AI implementation and communication behavior for this repository.
 
 1. **Spec-first design**: Implement per spec. When a deviation is needed, propose spec changes for user approval before implementing.
 2. **Response style**: Keep explanations succinct. Identify pitfalls and alternatives.
@@ -24,6 +52,8 @@
 
 ## Architecture Overview
 
+**[Normative] Intent:** Define system layers and required behavior boundaries independent of current implementation details.
+
 ### Layers
 
 - **User** — interacts with Avatars
@@ -34,6 +64,8 @@
 
 ### Switchboard Agent Function
 
+**[Normative] Intent:** Define required ingest, scoring, and distribution responsibilities for Switchboard coordination.
+
 1. **Data ingestion**: Pulls from connectors (Gmail, calendar, contacts, etc.), background agents, timer/cue system.
 2. **Relevance scoring**: Evaluates items against Situation Context, tags, affinities.
 3. **Distribution (reactive)**: On user input, selects Avatar(s) to respond; orchestrates cascade.
@@ -42,17 +74,21 @@
 
 **Implementation note (reactive distribution):** User messages are processed in **serialized queued turns** so the user can send again while a prior turn is still generating. Each turn uses the **latest** conversation thread for prompts (including subsequent user lines) while **routing** and the primary “User just said” line target the **anchored** user message for that turn (`replyToUserMessageId`, ephemeral — not persisted). **Cascade** (avatar responding after another avatar) uses the **actual thread tail** when the last message is an avatar, so routing does not incorrectly stay on an older user anchor. See `TECHSPEC.md` data flow and `docs/STYLEGUIDE.md` for **Switchboard** terminology.
 
-### Conversation archive and Switchboard trace
+### [SPEC-CONVO-ARCHIVE] Conversation archive and Switchboard trace
 
-- **Purpose**: Append-only **compact turn records** for downstream processing (analytics, training, debugging, **reference and reprocessing**). Goal is **essence** (routing, previews, provenance where recorded)—**not** a complete verbatim transcript unless a separate feature adds that. Records may be **insufficient** for some workflows until extended (deferred implementation).
+**[Normative + Current + Deferred] Intent:** Preserve compact turn evidence and traceability while separating current UX behavior from deferred archive controls.
+
+- **Purpose (Normative):** Keep append-only **compact turn records** for downstream processing (analytics, training, debugging, reference/reprocessing). This is an essence archive, not guaranteed verbatim transcript capture.
 - **Per turn** (one user send and its cascade): one record linked to the **user message id** (`userMessageId`), with truncated user text preview, optional focus ids, primary avatar id at send time, ordered **Switchboard trace** (per wave: responder ids + selection reason: forced primary, tag/interest match, default primary, or cascade), and optional short reply previews per avatar.
 - **Storage**: Browser `localStorage` key `avatars_turn_archive` (capped list, separate from `avatars_situation_context`). Not in git.
-- **Clear chat** (implemented): Clears the **visible conversation thread**, trims **recent events**, and clears **queued pending turns**. Primary intent is a **readable / layout reset** (e.g. when the thread has grown enough to strain scroll or window space) and dropping ephemeral thread-bound UI state. It is **not** the canonical signal that a **chat topic is dismissed** or that agents should treat prior work as a closed “chapter.” The **turn archive** is **not** deleted; past turns remain for reference via **View** modes.
-- **Archive segment / dismiss topic** (deferred): A **separate** control (label and UX TBD; consult user on layout copy) for the user to mark a **conversation segment or topic** as intentionally closed while **retaining** and improving **reference material** in the archive and logs for later reprocessing. Distinct from Clear chat.
-- **Session logs on disk** (Tauri): Diagnostic lines under the app data path; see `TECHSPEC.md`. **Rotation / packaging:** when starting a new session log, if the number of `*.log` files in the session folder reaches **100** (current default constant), existing logs are **batched into a timestamped zip** under `archives/` and removed. This is **file-count rotation**, not summarization of log *content*. **Future:** make that threshold **user-adjustable** (app setting or config). **Semantic compression** (deferred, separate from zip): optional second phase to **summarize or merge** older turn-archive rows and/or log material for storage and retrieval—**when** it runs (aligned with the same threshold, on schedule, or manual) is **TBD**.
-- **UI**: **View** control with three modes (default **Chat**): (1) **Chat** — messages only; (2) **Chat + routing** — one inconspicuous line under each **user** message with routing summary; (3) **Routing + log** — same line plus a compact multi-line block per user turn (timestamp, previews, ids, trace steps, reply lines). When the thread is empty and a routing-related mode is selected, a short note may indicate how many past turns remain archived.
+- **Clear chat (Current behavior):** Clears the visible thread, recent events, and queued pending turns for readability reset. It does **not** dismiss a topic and does **not** delete the turn archive.
+- **Archive segment / dismiss topic (Deferred):** Separate control for intentionally closing a topic while retaining archive/log material for reprocessing.
+- **Session logs on disk (Current + Deferred):** Tauri logs rotate by file count (zip old logs at threshold). User-adjustable threshold and semantic compression remain deferred.
+- **UI view modes (Current):** Chat / Chat + routing / Routing + log; routing modes may show archive-presence hints when thread is empty.
 
 ### Situation Context
+
+**[Normative] Intent:** Define context fields that may be consumed by routing and avatar prompt generation.
 
 - **Conversation thread** — user and avatar messages (see archive § above).
 - **Recent events**
@@ -67,6 +103,8 @@
 Naming for agents vs avatars vs tools: **docs/STYLEGUIDE.md**.
 
 ### Active Task Agent
+
+**[Normative] Intent:** Define active-task ownership and continuity rules.
 
 The Active Task Agent manages what the active task is. He will be personified with an Avatar.
 
@@ -84,19 +122,25 @@ The Active Task Agent manages what the active task is. He will be personified wi
 
 ### Focus
 
+**[Normative] Intent:** Define user-selected context that should strongly influence interpretation and scoring.
+
 Focus is user-selected context (email, calendar event, or contact) that serves as input for the AIs to consider. As the user adds terms to Focus, they refine what the AIs should consider—either adding detail to an existing conversation or changing what is being worked on.
 
 ### Focus Watcher Agent
 
+**[Normative] Intent:** Define the role that interprets focus changes over time.
+
 The Focus Watcher Agent interprets changes to Focus. He will be personified with an Avatar. He learns how to respond to focus changes over time; this agent is trained incrementally.
 
-### Context scoring agents
+### [SPEC-CONTEXT-SCORING] Context scoring agents
 
-**North star (architecture):** Per–context-family agents that read **connector-backed context** (emails, calendar events, contacts, and later news, weather, social, etc.), **extract structured fields** suitable for assessment (e.g. for email: sender, subject, snippet or body; for calendar: title, time range, location; for contacts: name, identifiers), **score or rank items** against Situation Context (Focus, active task, tags/affinities, conversation thread as applicable), and **feed outputs into the Switchboard** so relevance is not only implied by flat string blobs in prompts. One logical agent (or small family) **per context family**, implemented incrementally. Dedicated **background** runners (continuous ingestion and ranking outside user turns) are **incremental**; they are part of this vision, not a contradiction of the MVP below.
+**[Normative + Current] Intent:** Require ranked relevance from structured connector fields while allowing scoring mechanics to evolve.
 
-**MVP (essential):** The product still requires **ranked relevance** early. The **current implementation** delivers that via **user-turn** scoring (and related paths such as proactive evaluation) wired into the Switchboard’s ingest — see `TECHSPEC.md` § 12.3 and `docs/CONTEXT_SCORING.md`. That slice is **required for MVP** and realizes the spec’s demand for **scored / ranked signal** from structured fields, not only raw concatenation.
+**North star (Normative):** Per-context-family scoring should extract structured fields, rank against Situation Context, and feed Switchboard with scored signal (not only flat concatenated strings).
 
-**Evolving mechanisms:** Concrete **scoring rules, where they run** (in-turn vs background), and **preprocessor / world-model** narrowing are **expected to change** as shared metadata, connectors, and preprocessors land. **Ranked relevance as a capability is not temporary**; only the **current mechanisms** are provisional.
+**Current MVP mechanism:** Ranked relevance currently runs in user-turn/proactive paths wired to Switchboard ingest. See `TECHSPEC.md` § 12.3 and `docs/CONTEXT_SCORING.md` for implementation details.
+
+**Mechanism evolution:** Where scoring executes (in-turn vs background) is expected to change; ranked relevance as a capability is not temporary.
 
 **Scope:** Outputs merge into paths the Switchboard already ingests (e.g. enriched `relevantData`, structured side-channels, or `recentEvents`) — exact shape is an implementation detail.
 
@@ -109,9 +153,11 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 
 **Dependency:** Scoring runs **after** usable connector data exists for that type; it complements **Active Task** and **Focus Watcher** (which interpret task and focus) rather than replace them.
 
-### Proactive notifications and pending reactions
+### [SPEC-PROACTIVE-NOTIFY] Proactive notifications and pending reactions
 
-**Purpose:** When **new or updated** connector-backed items arrive (email, calendar, contacts, etc.), the system may surface **optional** proactive interest from Avatars — e.g. a brief reaction to a notable message. **Most** ingestion passes produce **no** UI. This path is **separate** from user-turn `relevantData` scoring: it uses **per-avatar** relevance for the same underlying event.
+**[Normative + Current] Intent:** Surface optional, relevance-driven proactive offers without disrupting primary interaction flow.
+
+**Purpose (Normative):** New/updated connector items may create optional proactive avatar offers; most ingestion passes should produce no UI.
 
 **Non-blocking:** Ingestion and evaluation must not block the main UI; use async work, debouncing, and strict time budgets.
 
@@ -137,6 +183,8 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 
 ## Avatars
 
+**[Normative] Intent:** Define avatar individuality, extensibility, and notification queue role.
+
 - **Individuals**: Each Avatar is its own entity. Sets (Calliope/Mark Antony/Diogenes as default primaries, 3 Norns, 3 Fates) are for convenience; Avatars can be mixed and matched.
 - **Extensibility**: Avatars can be added individually or in sets; custom or from reference (historical, fictional).
 - **Target**: Recognizable likeness, voice, personality.
@@ -145,6 +193,8 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 ---
 
 ## Data Sources and Connectors
+
+**[Normative + Deferred] Intent:** Declare target source scope and connector policy constraints.
 
 ### Target Sources
 
@@ -178,6 +228,8 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 
 ## Shared Metadata
 
+**[Normative + Current] Intent:** Define shared metadata shape/path expectations and migration obligations.
+
 - **Format**: JSON
 - **Files**: By type, partition pattern — e.g. `People_Local.json`, `Events_past.json`, `Events_upcoming.json`
 - **Path**: Fixed — `data/metadata/`
@@ -188,12 +240,16 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 
 ## Security
 
+**[Normative + Deferred] Intent:** Define credential handling now and delayed security-agent scope.
+
 - **Credentials**: Excluded from git (see .gitignore)
 - **Security Agent** (deferred): Examines security vulnerabilities across connected systems; may extend to threat detection. Broad definition.
 
 ---
 
 ## Deferred Items (Ordered)
+
+**[Deferred] Intent:** Preserve ordered backlog items that are intentionally out of current implementation scope.
 
 1. **Alternate avatar sets** — 3 Norns, 3 Fates; config extension
 2. **Project agents** — Lesson Plan, Fitness Plan, Android Project, etc.
@@ -205,10 +261,13 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 8. **Stewarded personality/history prompt compression pipeline** — Deferred process to improve personality/history prompts by adding sourced detail while reducing memory footprint. Expectations: (a) run as a **stewarded** flow (monitor/task based), (b) pull source-backed detail with attribution where feasible, (c) condense long prompt/context memory usage without losing key identity constraints, and (d) surface confidence and unresolved gaps for user review.
 9. **Stewarded project/task/interest refinement and comparison pipeline** — Deferred process where avatars are tasked to refine and compare their assigned projects, tasks, and interests. Expectations: (a) run as a **stewarded** flow (monitor/task based), (b) produce explicit compare outputs (overlap, conflicts, priority shifts, missing ownership), (c) align recommendations to capabilities/stewardship gates before execution, and (d) preserve decision history as project/task evidence.
 10. **Stewarded Waves error-reporting and repair pipeline** — Deferred process for a dedicated steward role that reads tool-call errors surfaced in **Chat Visualizer (Waves)** into chat/workflow context and routes them into a workshop repair loop. Expectations: (a) run as a **stewarded** flow (monitor/task based), (b) carry error details from Waves/WV parse (tool id, error code, safe arg preview) into a repair task, (c) hand off to workshop repair for the bad call that produced the error, and (d) capture repair outcome and retry evidence in task history.
+11. **Stewarded user-health monitor (bedtime/tiredness) pipeline** — Deferred process for a dedicated steward role to monitor user-rest signals, starting with local system-time bedtime heuristics. Expectations: (a) run as a **stewarded** flow (monitor/task based), (b) use system-time windows as the initial signal for late-hour/bedtime nudges, (c) add a user-facing **tiredness slider** integrated next to the existing engagement slider, and (d) feed tiredness/bedtime state into suggestions without forcing interruptions.
 
 ---
 
 ## Signature Executable
+
+**[Current Operational] Intent:** Document the active signature workflow expected in Agent-mode responses.
 
 - **Location**: `scripts/signature.ps1` (or `.bat`)
 - **Output**: JSON — e.g. `{"phrase": "je me souviens", "style": {}}`
@@ -216,9 +275,11 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 
 ---
 
-## Implementation Order (Active)
+## [SPEC-IMPLEMENTATION-ORDER] Implementation Order (Active)
 
-**Completed relative to earlier drafts** (see § Implemented UI and `PROGRESS.md` for detail):
+**[Current + Normative sequencing] Intent:** Keep active build priority concise here and push detailed execution narratives to roadmap/tech docs.
+
+**Completed relative to earlier drafts** (summary only; see § Implemented UI and `PROGRESS.md` for full detail):
 
 1. **Focus in Situation Context** — Selected focus items are passed into `relevantData` for avatars.
 2. **Local LLM (Ollama) UX and diagnostics** — Tri-state presence in the UI (`no_server` / `no_models` / `ready`); reply provenance (`ReplySource`: Ollama, Rules, Fallback) with short errors and prompt panels; Rules-path sub-reasons when the template engine runs without generation; session log (in-app **Log** control; optional on-disk rotation under the app data path in Tauri). Well of Souls (**WoS**) in Context with optional merge into chat context.
@@ -239,11 +300,13 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 9. **Signature phrase** — Continue following § Behavioral Instructions; script and config under `scripts/`.
 10. (Deferred items as above)
 
-**Phased detail (non-normative):** See `docs/IMPLEMENTATION_ROADMAP.md` for the full sequence—including **bench responders** (cheap non-primary matches; see `routingDirectAddress`) and **usage-based primary ordering**—without duplicating normative requirements here.
+**Phased detail (non-normative):** See `docs/IMPLEMENTATION_ROADMAP.md` for full sequencing details (including bench responders and usage-based primary ordering).
 
 ---
 
 ## Implemented UI (Current)
+
+**[Current] Intent:** Snapshot shipped UI behavior; this section is status, not architecture authority.
 
 - **Context panel**: Email, Calendar, Contacts, **WoS** (Well of Souls) tabs; Connect/Reconnect Gmail.
 - **Focus**: User can select email, calendar event, or contact as focus; display shows titles; Clear button.
@@ -254,3 +317,38 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 - **Progress & spec review**: See `PROGRESS.md` for status, conflicts, and next steps.
 - **Technical specification**: See `TECHSPEC.md` for components and implementation details to rebuild the project.
 - **Proactive notifications (MVP)**: New mail evaluated into `pendingNotifications` (interval + each user turn). **Primary Avatars** sidebar: per-avatar **truncated topic line** (replaces trait row when pending); **numeric badge** opens full pending list for that avatar with **Discuss** / **Dismiss** per row; **magnifier (🔍)** toggles description + personality traits (hidden by default). **Full prompt** includes pending block per avatar when using Ollama. **Sequential multi-avatar release** batch: further UI polish is **lower priority**; current behavior is acceptable (see § Implementation Order roadmap note).
+
+---
+
+## [SPEC-CHANGE-PROTOCOL] Change Protocol (Docs Routing)
+
+**[Operational] Intent:** Keep future Cursor edits localized to the correct document and reduce cross-doc drift.
+
+- **Edit `SPEC.md`** for normative behavior, requirement gates, architecture responsibilities, and policy-level sequencing.
+- **Edit `docs/IMPLEMENTATION_ROADMAP.md`** for phased execution details, tactical breakdowns, and milestone decomposition.
+- **Edit `PROGRESS.md`** for current status, blockers, shipped deltas, and immediate next-session handoff detail.
+- **Edit `TECHSPEC.md`** for concrete data flow, interfaces, component contracts, and storage/runtime implementation shape.
+- **Edit `docs/STYLEGUIDE.md`** for vocabulary, capitalization, and user-facing copy conventions.
+- **When a change spans files:** update SPEC first (if policy changes), then roadmap/tech/status docs in that order.
+
+## [SPEC-VALIDATION-MAP] Validation Obligation Map
+
+**[Operational] Intent:** Translate spec changes into expected evidence so implementation and verification stay coupled.
+
+| Requirement Area | Minimum Verification Evidence |
+|---|---|
+| Switchboard routing and cascade behavior | Unit tests for selection/ordering logic + one manual multi-avatar turn smoke |
+| Conversation archive and view modes | Unit tests for archive record shape + manual check for Chat/View mode semantics |
+| Context scoring and relevance ranking | Unit tests for scoring helpers/rank ordering + fixture-based source examples |
+| Proactive pending notifications | Unit tests for enqueue/release/dismiss helpers + manual sidebar badge/discuss flow |
+| Shared metadata/project-task behavior | Unit tests for store/read/write and migration guards + manual persistence sanity check |
+| UI consult-gated layout changes | Explicit user approval noted in session/handoff + targeted manual UX smoke |
+
+## Last Reviewed With Related Docs
+
+**[Operational checklist] Intent:** Reduce long-lived drift between canonical and supporting docs.
+
+- `docs/STYLEGUIDE.md`
+- `docs/IMPLEMENTATION_ROADMAP.md`
+- `TECHSPEC.md`
+- `PROGRESS.md`
