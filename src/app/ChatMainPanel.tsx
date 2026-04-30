@@ -69,90 +69,94 @@ export function ChatMainPanel() {
                     : `Conversation with ${m.chatSelectionLabel}`}
               </h2>
               <div className="chat-header-actions">
-                <div className="chat-header-actions-main">
-                  <label className="chat-user-chrome-label">
-                    <input
-                      type="color"
-                      className="chat-user-chrome-swatch"
-                      value={m.userChromeColor}
-                      onChange={(e) => m.setUserChromeColor(e.target.value)}
-                      aria-label="You"
-                      title="You"
-                    />
-                  </label>
-                  <label className="chat-view-mode-label">
-                    <select
-                      className="chat-view-mode-select"
-                      aria-label="Chat view mode"
-                      title="View"
-                      value={m.chatViewMode}
-                      onChange={(e) =>
-                        m.setChatViewMode(e.target.value as ChatViewMode)
-                      }
-                    >
-                      <option value="chat">Chat</option>
-                      <option value="chat_routing">Chat + routing</option>
-                      <option value="routing_log">Routing + log</option>
-                    </select>
-                  </label>
-                  <label className="chat-skin-label">
-                    <select
-                      className="chat-view-mode-select"
-                      aria-label="Chat window style"
-                      title="Window"
-                      value={m.chatSkin}
-                      onChange={(e) =>
-                        m.setChatSkin(e.target.value as ChatWindowStyleId)
-                      }
-                    >
-                      {CHAT_WINDOW_STYLE_IDS.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    className="clear-chat-btn"
-                    onClick={m.clearChat}
-                    disabled={m.messages.length === 0}
-                    title="Clear conversation (archive kept)"
-                  >
-                    Clear chat
-                  </button>
-                  <button
-                    type="button"
-                    className="end-topic-segment-btn"
-                    onClick={m.handleEndTopicSegment}
-                    disabled={
-                      m.situationContext.conversationThread.filter(
-                        (row) => row.role === "user"
-                      )
-                        .length === 0
-                    }
-                    title="Mark this topic as ended (distinct from Clear chat; archive kept)"
-                  >
-                    End topic
-                  </button>
-                </div>
-                <nav
-                  className="chat-header-actions-main workshops-hub-tabs workshops-hub-tabs--header"
-                  aria-label="Workshops sections"
-                >
-                  {WORKSHOP_HEADER_TABS.map(([id, label]) => (
+                {m.mainSurface !== "workshops" && (
+                  <div className="chat-header-actions-main">
+                    <label className="chat-user-chrome-label">
+                      <input
+                        type="color"
+                        className="chat-user-chrome-swatch"
+                        value={m.userChromeColor}
+                        onChange={(e) => m.setUserChromeColor(e.target.value)}
+                        aria-label="You"
+                        title="You"
+                      />
+                    </label>
+                    <label className="chat-view-mode-label">
+                      <select
+                        className="chat-view-mode-select"
+                        aria-label="Chat view mode"
+                        title="View"
+                        value={m.chatViewMode}
+                        onChange={(e) =>
+                          m.setChatViewMode(e.target.value as ChatViewMode)
+                        }
+                      >
+                        <option value="chat">Chat</option>
+                        <option value="chat_routing">Chat + routing</option>
+                        <option value="routing_log">Routing + log</option>
+                      </select>
+                    </label>
+                    <label className="chat-skin-label">
+                      <select
+                        className="chat-view-mode-select"
+                        aria-label="Chat window style"
+                        title="Window"
+                        value={m.chatSkin}
+                        onChange={(e) =>
+                          m.setChatSkin(e.target.value as ChatWindowStyleId)
+                        }
+                      >
+                        {CHAT_WINDOW_STYLE_IDS.map((id) => (
+                          <option key={id} value={id}>
+                            {id}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <button
-                      key={id}
                       type="button"
-                      className={`workshops-hub-tab${
-                        m.workshopTab === id ? " is-active" : ""
-                      }`}
-                      onClick={() => m.setWorkshopTab(id)}
+                      className="clear-chat-btn"
+                      onClick={m.clearChat}
+                      disabled={m.messages.length === 0}
+                      title="Clear conversation (archive kept)"
                     >
-                      {label}
+                      Clear chat
                     </button>
-                  ))}
-                </nav>
+                    <button
+                      type="button"
+                      className="end-topic-segment-btn"
+                      onClick={m.handleEndTopicSegment}
+                      disabled={
+                        m.situationContext.conversationThread.filter(
+                          (row) => row.role === "user"
+                        )
+                          .length === 0
+                      }
+                      title="Mark this topic as ended (distinct from Clear chat; archive kept)"
+                    >
+                      End topic
+                    </button>
+                  </div>
+                )}
+                {m.mainSurface === "workshops" && (
+                  <nav
+                    className="chat-header-actions-main workshops-hub-tabs workshops-hub-tabs--header"
+                    aria-label="Workshops sections"
+                  >
+                    {WORKSHOP_HEADER_TABS.map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`workshops-hub-tab${
+                          m.workshopTab === id ? " is-active" : ""
+                        }`}
+                        onClick={() => m.setWorkshopTab(id)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </nav>
+                )}
                 <div className="chat-header-actions-toggles">
                   <button
                     type="button"
