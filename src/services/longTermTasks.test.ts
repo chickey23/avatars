@@ -128,4 +128,30 @@ describe("longTermTasks stewardship helpers", () => {
       status: "active",
     });
   });
+
+  it("excludes done and archived platform projects from assignments", () => {
+    upsertProject({
+      id: "active_project",
+      title: "Active project",
+      ownerAvatarId: "muse",
+      actor: "muse",
+    });
+    upsertProject({
+      id: "done_project",
+      title: "Done project",
+      ownerAvatarId: "muse",
+      status: "done",
+      actor: "muse",
+    });
+    upsertProject({
+      id: "archived_project",
+      title: "Archived project",
+      ownerAvatarId: "muse",
+      status: "archived",
+      actor: "muse",
+    });
+
+    const assignments = getProjectAssignmentsForAvatar("muse");
+    expect(assignments.map((t) => t.projectId)).toEqual(["active_project"]);
+  });
 });

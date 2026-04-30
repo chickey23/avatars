@@ -14,6 +14,7 @@ import {
   PLATFORM_DRAFTS_STORAGE_KEY,
 } from "./constants";
 import { platformLog } from "./platformLog";
+import { emitSessionChangeDelta } from "../sessionChangeTelemetry";
 
 export type PlatformDraftKind =
   | "task"
@@ -259,6 +260,7 @@ export function recordDraft(input: RecordDraftInput): PlatformDraftRecord {
     payload: input.payload,
   };
   doc = { ...doc, drafts: { ...doc.drafts, [id]: rec } };
+  emitSessionChangeDelta(1);
   platformLog("draft_recorded", `${input.kind} by ${input.requestedByAvatarId}`, {
     level: "info",
     detail: id,
@@ -283,6 +285,7 @@ export function setDraftStatus(
     updatedAt: Date.now(),
   };
   doc = { ...doc, drafts: { ...doc.drafts, [id]: updated } };
+  emitSessionChangeDelta(1);
   platformLog("draft_status", `${id} -> ${status} by ${actor}`, { level: "info" });
   schedulePersist();
   notify();

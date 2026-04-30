@@ -1063,6 +1063,10 @@ button.env-tag.session-log-open-btn {
   user-select: none;
 }
 
+.task-assign-summary--ineligible {
+  opacity: 0.4;
+}
+
 .task-assign-summary::-webkit-details-marker {
   display: none;
 }
@@ -1138,6 +1142,12 @@ button.env-tag.session-log-open-btn {
   cursor: not-allowed;
 }
 
+.task-input-row button.task-assign-add--ineligible,
+.task-input-row button.task-assign-add--ineligible:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
 .task-assign-status {
   font-size: 0.75rem;
   margin: 0.25rem 0 0;
@@ -1210,7 +1220,33 @@ button.env-tag.session-log-open-btn {
 .chat-header-actions {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 0.75rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.chat-header-actions-main {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.workshops-hub-tabs--header {
+  justify-content: flex-end;
+}
+
+.chat-header-actions-toggles {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .chat-view-mode-label {
@@ -1258,6 +1294,51 @@ button.env-tag.session-log-open-btn {
 .clear-chat-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* Chat / Workshops surface toggle (W|C / C|W) — high contrast vs muted header controls */
+.chat-surface-toggle-btn {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 0.42rem 0.72rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #f8fafc;
+  background: #020617;
+  border: 2px solid #f8fafc;
+  box-shadow:
+    0 0 0 1px rgba(233, 69, 96, 0.9),
+    0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.chat-surface-toggle-btn:hover {
+  color: #020617;
+  background: #f8fafc;
+  border-color: #e94560;
+  box-shadow:
+    0 0 0 2px #e94560,
+    0 2px 8px rgba(233, 69, 96, 0.35);
+}
+
+.chat-surface-toggle-btn:focus-visible {
+  outline: 2px solid #f8fafc;
+  outline-offset: 2px;
+}
+
+.chat-surface-toggle-btn[aria-pressed="true"] {
+  color: #fff;
+  background: #e94560;
+  border-color: #fff;
+  box-shadow:
+    0 0 0 2px #020617,
+    0 2px 10px rgba(233, 69, 96, 0.55);
+}
+
+.chat-surface-toggle-btn[aria-pressed="true"]:hover {
+  color: #020617;
+  background: #f8fafc;
+  border-color: #e94560;
 }
 
 .end-topic-segment-btn {
@@ -1513,29 +1594,22 @@ button.env-tag.session-log-open-btn {
   line-height: 1.5;
 }
 
-.chat-pending-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.45rem 1.5rem;
-  font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.75);
-  background: rgba(15, 52, 96, 0.55);
-  border-top: 1px solid rgba(26, 58, 92, 0.8);
-}
-
 .chat-pending-icon {
   font-size: 0.95rem;
   line-height: 1;
   animation: chat-pending-pulse 1.1s ease-in-out infinite;
+  flex-shrink: 0;
 }
 
 .chat-pending-text {
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .chat-viz-debug {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   font-family: ui-monospace, monospace;
   font-size: 0.68rem;
   line-height: 1.35;
@@ -1545,12 +1619,12 @@ button.env-tag.session-log-open-btn {
   text-overflow: ellipsis;
 }
 
-.chat-pending-bar .chat-viz-debug + .chat-pending-icon {
+.chat-talk-tray-chrome-left .chat-viz-debug + .chat-pending-icon {
   margin-left: 0.75rem;
 }
 
-.chat-pending-bar .chat-viz-debug + .chat-pending-icon,
-.chat-pending-bar .chat-viz-debug + .chat-pending-icon + .chat-pending-text {
+.chat-talk-tray-chrome-left .chat-viz-debug + .chat-pending-icon,
+.chat-talk-tray-chrome-left .chat-viz-debug + .chat-pending-icon + .chat-pending-text {
   flex: 0 0 auto;
 }
 
@@ -3640,6 +3714,75 @@ label.email-item-btn.internet-hit-pick-label {
   min-height: 0;
 }
 
+.chat-center-column {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-workshops-embed {
+  flex: 0 1 auto;
+  max-height: min(42vh, 28rem);
+  min-height: 0;
+  overflow: auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-talk-tray-chrome {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.45rem 1rem;
+  border-top: 1px solid rgba(15, 52, 96, 0.85);
+  background: rgba(10, 20, 40, 0.35);
+  flex-shrink: 0;
+  font-size: 0.78rem;
+}
+
+.chat-talk-tray-chrome-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  justify-self: start;
+}
+
+.chat-talk-tray-chrome-center {
+  display: flex;
+  justify-content: center;
+  justify-self: center;
+}
+
+.chat-talk-tray-chrome-right {
+  display: flex;
+  justify-content: flex-end;
+  justify-self: end;
+  min-width: 0;
+}
+
+.chat-talk-tray-toggle {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.55rem;
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.chat-talk-tray-toggle:hover {
+  background: #1a3a5c;
+}
+
+.chat-session-change-count {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+}
+
 .switchboard-viz-column {
   flex-shrink: 0;
   min-width: 0;
@@ -3649,6 +3792,44 @@ label.email-item-btn.internet-hit-pick-label {
   background: rgba(10, 20, 40, 0.35);
   display: flex;
   flex-direction: column;
+}
+
+.switchboard-viz-column--collapsed {
+  overflow: hidden;
+}
+
+.source-cache-viz-column--collapsed {
+  overflow: hidden;
+}
+
+.viz-column-titlebar {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(10, 20, 40, 0.65);
+  color: rgba(240, 249, 255, 0.9);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 0.32rem 0.45rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+.viz-column-titlebar:hover,
+.viz-column-titlebar:focus-visible {
+  background: rgba(18, 42, 78, 0.75);
+}
+
+.switchboard-viz-column--collapsed .viz-column-titlebar,
+.source-cache-viz-column--collapsed .viz-column-titlebar {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  border-bottom: none;
+  padding: 0.6rem 0.1rem;
+  min-height: 100%;
+  letter-spacing: 0.12em;
 }
 
 /* Audio-synchronized subtle pulse (see audioVisualBus + audioVisualPulseContext) */
@@ -4121,15 +4302,6 @@ label.email-item-btn.internet-hit-pick-label {
   align-items: stretch;
 }
 
-.source-cache-viz-heading {
-  font-size: 0.58rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  opacity: 0.65;
-  margin-bottom: 0.35rem;
-  text-align: center;
-}
-
 .source-cache-viz-code {
   font-size: 0.58rem;
   word-break: break-all;
@@ -4514,6 +4686,10 @@ label.email-item-btn.internet-hit-pick-label {
   flex-wrap: wrap;
   gap: 0.4rem;
   margin-bottom: 0.85rem;
+}
+
+.workshops-hub-tabs--header {
+  margin-bottom: 0;
 }
 
 .workshops-hub-tab {

@@ -36,7 +36,7 @@ The builder owns the editing controls. Other shell surfaces only render the save
 - `src/app/useAppContentModel.ts` - hidden edit-mode file input, `handlePortraitFileChange`, `clearPortrait`, and `handleAvatarBuilderSave` persistence.
 - `src/app/AppOverlays.tsx` - passes persisted portrait maps into `AvatarBuilderModal`.
 - `src/app/PrimaryAvatarSidebar.tsx` - primary roster and pop-in portrait rendering.
-- `src/app/ChatMainPanel.tsx` - chat message portrait and `Talk to` picker rendering.
+- `src/app/ChatMainPanel.tsx` - chat message portrait and `Talk to` picker rendering (`chat-avatar-picker` / `chat-avatar-picker-img`; the picker can be collapsed via the tray chrome row, `talkToTrayOpen` on the view model).
 - `src/types/index.ts` - `SituationContext` persisted fields.
 - `src/App.css` - portrait slot, chooser, slider, and reset-button styling.
 - `src/services/avatarPortrait.test.ts` - unit tests for portrait helper behavior.

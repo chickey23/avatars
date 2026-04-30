@@ -76,6 +76,11 @@ import {
   subscribePlatformStore,
   updateTaskWorkflow,
 } from "../services/platform/store";
+import {
+  emitSessionChangeDelta,
+  subscribeSessionChangeDelta,
+} from "../services/sessionChangeTelemetry";
+import { isSystemAvatarId } from "../services/platform/routing";
 import { patchWorldMetadataProjectsForExecution } from "../services/projectSync";
 import { loadWorldviewAudit } from "../services/worldviewAudit";
 import { executeAvatarCreationTaskById } from "../services/avatarCreationTaskExecution";
@@ -144,6 +149,11 @@ export function useAppContentModel() {
   );
 
   const reducedMotion = usePrefersReducedMotion();
+  /**
+   * Visualizer column expansion state:
+   * - true  => expanded panel
+   * - false => collapsed rail (still visible/toggleable when columns are enabled by viewport)
+   */
   const [showSwitchboardViz, setShowSwitchboardViz] = useState(() => {
     try {
       return localStorage.getItem(SWITCHBOARD_VIZ_STORAGE_KEY) === "1";
@@ -189,6 +199,11 @@ export function useAppContentModel() {
     }
   }, [chatVizWidthPx]);
 
+  /**
+   * Storage column expansion state:
+   * - true  => expanded panel
+   * - false => collapsed rail (still visible/toggleable when columns are enabled by viewport)
+   */
   const [showSourceCacheViz, setShowSourceCacheViz] = useState(() => {
     try {
       return localStorage.getItem(SOURCE_CACHE_VIZ_STORAGE_KEY) === "1";
@@ -338,11 +353,11 @@ export function useAppContentModel() {
   );
 
   const [inputValue, setInputValue] = useState("");
-  /** Selected project id for the Assign project dropdown. */
+  /** Selected project id for the ASSIGN PROJECT OWNER sidebar dropdown. */
   const [taskProjectId, setTaskProjectId] = useState("");
   /**
-   * Transient status line for the Assign project widget: surfaces a confirmation
-   * after a successful add and a diagnostic when the handler would otherwise
+   * Transient status line for the ASSIGN PROJECT OWNER widget: confirmation
+   * after a successful assign and diagnostics when the handler would otherwise
    * silently return (no avatar selected, picked project vanished, placeholder
    * title, etc.). Clears after ~4s so the widget doesn't accumulate chatter.
    */
@@ -462,6 +477,7 @@ export function useAppContentModel() {
           ...portraitScaleCtx,
         });
       }
+      emitSessionChangeDelta(1);
     },
     [
       situationContext.userAvatars,
@@ -650,6 +666,24 @@ export function useAppContentModel() {
     | "creation"
     | "stewardship";
   const [mainSurface, setMainSurface] = useState<"chat" | "workshops">("chat");
+  const [talkToTrayOpen, setTalkToTrayOpen] = useState(true);
+  const [sessionChangeCount, setSessionChangeCount] = useState(0);
+
+  const resetSessionChangeCount = useCallback(() => {
+    setSessionChangeCount(0);
+  }, []);
+
+  useEffect(() => {
+    return subscribeSessionChangeDelta((d) =>
+      setSessionChangeCount((c) => c + d)
+    );
+  }, []);
+
+  const clearChatAndResetSessionCounter = useCallback(() => {
+    resetSessionChangeCount();
+    clearChat();
+  }, [clearChat, resetSessionChangeCount]);
+
   const [workshopTab, setWorkshopTabState] = useState<WorkshopTab>(() => {
     try {
       const s = sessionStorage.getItem(WORKSHOP_TAB_STORAGE_KEY);
@@ -833,6 +867,11 @@ export function useAppContentModel() {
   const taskAssignAvatar = firstSelectedId
     ? avatars.find((a) => a.id === firstSelectedId)
     : undefined;
+  /** True when the selected primary avatar cannot hold `ownerAvatarId` (system-tagged). */
+  const assignProjectOwnerUiMuted = useMemo(
+    () => !!(firstSelectedId && isSystemAvatarId(firstSelectedId, fullAvatarCatalog)),
+    [firstSelectedId, fullAvatarCatalog]
+  );
   const chatSelectionLabel = useMemo(() => {
     if (selectedAvatarIds.length === 0) return "Switchboard";
     if (selectedAvatarIds.length === 1) {
@@ -913,6 +952,41 @@ export function useAppContentModel() {
     return [...merged.entries()].sort((a, b) =>
       a[1].title.localeCompare(b[1].title, undefined, { sensitivity: "base" })
     );
+  }, [projectsRefresh]);
+
+  /**
+   * Projects the user may assign as **project owner** (`ownerAvatarId`): active
+   * platform rows with no owner, plus world-metadata-only ids (no platform row).
+   * Does not use long-term task rows as a filter — eligibility is ownership only.
+   */
+  const assignableProjectsList = useMemo(() => {
+    void projectsRefresh;
+    const store = getPlatformStore();
+    const merged = new Map<string, { title: string; summary?: string }>();
+    for (const [id, p] of Object.entries(store.projects)) {
+      if (!p.title?.trim()) continue;
+      if (p.status !== "active") continue;
+      if (p.ownerAvatarId?.trim()) continue;
+      merged.set(id, { title: p.title, summary: p.summary });
+    }
+    for (const [id, p] of Object.entries(getWorldMetadata().projects)) {
+      if (!p.title?.trim()) continue;
+      if (store.projects[id]) continue;
+      merged.set(id, { title: p.title, summary: p.summary });
+    }
+    return [...merged.entries()].sort((a, b) =>
+      a[1].title.localeCompare(b[1].title, undefined, { sensitivity: "base" })
+    );
+  }, [projectsRefresh]);
+
+  const completedProjectsList = useMemo(() => {
+    void projectsRefresh;
+    return Object.entries(getPlatformStore().projects)
+      .filter(([, p]) => p.title?.trim() && (p.status === "done" || p.status === "archived"))
+      .map(([id, p]) => [id, { title: p.title, summary: p.summary }] as const)
+      .sort((a, b) =>
+        a[1].title.localeCompare(b[1].title, undefined, { sensitivity: "base" })
+      );
   }, [projectsRefresh]);
 
   const contextTasks = useMemo(() => {
@@ -1363,9 +1437,9 @@ export function useAppContentModel() {
 
   useEffect(() => {
     if (!taskProjectId) return;
-    const exists = projectsList.some(([id]) => id === taskProjectId);
+    const exists = assignableProjectsList.some(([id]) => id === taskProjectId);
     if (!exists) setTaskProjectId("");
-  }, [projectsList, taskProjectId]);
+  }, [assignableProjectsList, taskProjectId]);
 
   const mergeAssignedTaskIdOntoAvatar = useCallback(
     (avatarId: string, taskId: string) => {
@@ -1412,8 +1486,8 @@ export function useAppContentModel() {
     };
     /**
      * `AppProvider` emits this after startup hygiene (prune + seed) or any
-     * explicit rewrite of `world_metadata.projects` so the Assign-task memo
-     * drops stale ghost ids from its dropdown.
+     * explicit rewrite of `world_metadata.projects` so the project-ownership
+     * assignable list drops stale ghost ids.
      */
     const onWorldMetadataChanged = () => setProjectsRefresh((n) => n + 1);
     window.addEventListener("avatars:assigned-task", onAssigned);
@@ -1432,16 +1506,27 @@ export function useAppContentModel() {
 
   const handleAssignTask = useCallback(() => {
     /**
-     * Prior implementation silently early-returned on every failure, which made
-     * a no-op feel like "the dropdown is broken". Each branch now surfaces an
-     * inline status line (and logs to console) so the reason is visible.
+     * Assigns **project ownership** to the selected avatar (platform `ownerAvatarId`
+     * plus long-term task). Prior implementation silently early-returned on failures,
+     * which made a no-op feel broken; each branch surfaces an inline status line
+     * (and logs to console) so the reason is visible.
      */
     if (!firstSelectedId) {
       setTaskAssignStatus({ kind: "warn", text: "Select a primary avatar first." });
       return;
     }
+    if (isSystemAvatarId(firstSelectedId, fullAvatarCatalog)) {
+      setTaskAssignStatus({
+        kind: "warn",
+        text: "System avatars cannot be project owners. Pick a roster avatar.",
+      });
+      return;
+    }
     if (!taskProjectId) {
-      setTaskAssignStatus({ kind: "warn", text: "Pick a project from the dropdown." });
+      setTaskAssignStatus({
+        kind: "warn",
+        text: "Pick a project for ownership assignment.",
+      });
       return;
     }
     /**
@@ -1452,7 +1537,7 @@ export function useAppContentModel() {
     const platformProjects = getPlatformStore().projects;
     const proj = worldProjects[taskProjectId] ?? platformProjects[taskProjectId];
     if (!proj) {
-      console.warn("[assign-project] selected project id missing from store", {
+      console.warn("[assign-project-owner] selected project id missing from store", {
         taskProjectId,
         knownWorldIds: Object.keys(worldProjects),
         knownPlatformIds: Object.keys(platformProjects),
@@ -1467,7 +1552,7 @@ export function useAppContentModel() {
     }
     const title = proj.title?.trim();
     if (!title) {
-      console.warn("[assign-project] project has empty title", { taskProjectId, proj });
+      console.warn("[assign-project-owner] project has empty title", { taskProjectId, proj });
       setTaskAssignStatus({
         kind: "warn",
         text: "That project has no title; edit it under Workshops → Projects.",
@@ -1489,14 +1574,14 @@ export function useAppContentModel() {
       fullAvatarCatalog.find((a) => a.id === firstSelectedId)?.givenName ?? "avatar";
     setTaskAssignStatus({
       kind: "ok",
-      text: `Assigned “${title}” to ${avatarName}.`,
+      text: `Assigned project ownership of “${title}” to ${avatarName}.`,
     });
   }, [
     taskProjectId,
     firstSelectedId,
+    fullAvatarCatalog,
     refreshTasks,
     mergeAssignedTaskIdOntoAvatar,
-    fullAvatarCatalog,
   ]);
 
   /** Auto-clear the Assign-task status message so it doesn't linger. */
@@ -1512,8 +1597,9 @@ export function useAppContentModel() {
     );
     const last = users[users.length - 1];
     if (!last) return;
+    resetSessionChangeCount();
     appendTopicSegment(buildTopicSegmentRecord(last.id, focus));
-  }, [situationContext.conversationThread, focus]);
+  }, [situationContext.conversationThread, focus, resetSessionChangeCount]);
 
   const handleSend = useCallback(() => {
     if (!inputValue.trim()) return;
@@ -1546,7 +1632,7 @@ export function useAppContentModel() {
     chatViewMode,
     chatVizWidthPx,
     clearAvatarSelection,
-    clearChat,
+    clearChat: clearChatAndResetSessionCounter,
     clearPortrait,
     contacts,
     contactsError,
@@ -1555,6 +1641,7 @@ export function useAppContentModel() {
     contextProjectTitleById,
     contextTab,
     contextTasks,
+    completedProjectsList,
     creationWorkshopPrefill,
     effectivePrimarySlots,
     emailError,
@@ -1625,6 +1712,8 @@ export function useAppContentModel() {
     primaryCatalogLen,
     proactiveMinAffinity,
     proactiveMinCombined,
+    assignProjectOwnerUiMuted,
+    assignableProjectsList,
     projectsList,
     projectsRefresh,
     recentEmails,
@@ -1636,6 +1725,7 @@ export function useAppContentModel() {
     selectedAvatarIds,
     selectedIdsKey,
     sendMessage,
+    sessionChangeCount,
     sessionDiskInfo,
     sessionLogOpen,
     setAvatarBuilderInitial,
@@ -1682,6 +1772,7 @@ export function useAppContentModel() {
     setShowSourceCacheViz,
     setShowSwitchboardViz,
     setSourceCacheVizWidthPx,
+    setTalkToTrayOpen,
     setTaskAssignStatus,
     setTaskProjectId,
     setTasks,
@@ -1702,6 +1793,7 @@ export function useAppContentModel() {
     sourceCacheVizSnapshot,
     sourceCacheVizWidthPx,
     speech,
+    talkToTrayOpen,
     taskAssignAvatar,
     taskAssignStatus,
     taskProjectId,

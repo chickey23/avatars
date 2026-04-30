@@ -4,6 +4,7 @@
  */
 
 import { getPlatformStore } from "./platform/store";
+import { emitSessionChangeDelta } from "./sessionChangeTelemetry";
 
 const TASKS_KEY = "avatars_long_term_tasks";
 
@@ -31,7 +32,11 @@ export function loadTasks(): LongTermTask[] {
 
 export function saveTasks(tasks: LongTermTask[]): void {
   try {
-    localStorage.setItem(TASKS_KEY, JSON.stringify(tasks));
+    const next = JSON.stringify(tasks);
+    const prev = localStorage.getItem(TASKS_KEY);
+    if (prev === next) return;
+    localStorage.setItem(TASKS_KEY, next);
+    emitSessionChangeDelta(1);
   } catch {
     /* ignore */
   }
@@ -83,7 +88,13 @@ export function getProjectAssignmentsForAvatar(
       (t.avatarId === avatarId || assigned.has(t.id))
   );
   for (const p of Object.values(getPlatformStore().projects)) {
-    if (p.status === "archived" || p.ownerAvatarId !== avatarId) continue;
+    if (
+      p.status === "done" ||
+      p.status === "archived" ||
+      p.ownerAvatarId !== avatarId
+    ) {
+      continue;
+    }
     candidates.push({
       id: `platform-project:${p.id}`,
       avatarId,
@@ -113,9 +124,9 @@ export function getTasksForAvatar(avatarId: string): LongTermTask[] {
 }
 
 /**
- * Active long-term tasks with a `projectId` imply that project is stewarded in
- * the UI (Assign-task column) even when `ownerAvatarId` was never written in
- * the platform store — used to keep the unassigned-projects monitor in sync.
+ * Active long-term tasks with a `projectId` imply an avatar holds that project
+ * assignment in the UI even when `ownerAvatarId` was never written in the
+ * platform store — used to keep the unassigned-projects monitor in sync.
  */
 export function activeProjectIdsFromLongTermTasks(): Set<string> {
   const ids = new Set<string>();
@@ -127,7 +138,7 @@ export function activeProjectIdsFromLongTermTasks(): Set<string> {
 
 /**
  * When a project is assigned to avatar A, complete other avatars' active
- * tasks for the same project so only one steward remains.
+ * tasks for the same project so only one avatar remains responsible.
  */
 export function completeActiveTasksForProjectExcept(
   projectId: string,

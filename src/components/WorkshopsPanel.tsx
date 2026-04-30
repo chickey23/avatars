@@ -23,7 +23,6 @@ export type WorkshopTabId =
 
 export type WorkshopsPanelProps = {
   workshopTab: WorkshopTabId;
-  setWorkshopTab: (t: WorkshopTabId) => void;
   ollamaPresence: "checking" | OllamaPresence;
   onRefreshOllama: () => void;
   messages: ConversationMessage[];
@@ -46,7 +45,6 @@ export type WorkshopsPanelProps = {
 
 export function WorkshopsPanel({
   workshopTab,
-  setWorkshopTab,
   ollamaPresence,
   onRefreshOllama,
   messages,
@@ -72,28 +70,6 @@ export function WorkshopsPanel({
 
   return (
     <div className="workshops-panel">
-      <nav className="workshops-hub-tabs" aria-label="Workshops sections">
-        {(
-          [
-            ["tool", "Tool"],
-            ["unmet", "Unmet Needs"],
-            ["source", "Source"],
-            ["projects", "Projects"],
-            ["creation", "Creation"],
-            ["stewardship", "Stewardship"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            className={`workshops-hub-tab${workshopTab === id ? " is-active" : ""}`}
-            onClick={() => setWorkshopTab(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-
       {workshopTab === "tool" && (
         <ToolWorkshopPanel
           ollamaPresence={ollamaPresence}

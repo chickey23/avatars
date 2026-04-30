@@ -17,13 +17,25 @@ import {
 } from "../services/avatarPortrait";
 import { useAppContentView } from "./appContentViewContext";
 import { useAudioVisualPulse } from "./audioVisualPulseContext";
-import { WorkshopsPanel } from "../components/WorkshopsPanel";
+import { WorkshopsPanel, type WorkshopTabId } from "../components/WorkshopsPanel";
+
+const WORKSHOP_HEADER_TABS: ReadonlyArray<readonly [WorkshopTabId, string]> = [
+  ["tool", "Tool"],
+  ["unmet", "Unmet Needs"],
+  ["source", "Source"],
+  ["projects", "Projects"],
+  ["creation", "Creation"],
+  ["stewardship", "Stewardship"],
+];
 
 export function ChatMainPanel() {
   const m = useAppContentView();
   const pulse = useAudioVisualPulse();
-  const switchboardColVisible = m.showSwitchboardViz && m.wavesColumnVisible;
-  const storageColVisible = m.showSourceCacheViz && m.wavesColumnVisible;
+  const switchboardExpanded = m.showSwitchboardViz;
+  const storageExpanded = m.showSourceCacheViz;
+  const switchboardColVisible = m.wavesColumnVisible;
+  const storageColVisible = m.wavesColumnVisible;
+  const vizRailWidthPx = 34;
   const pulseSwitchboardOnColumn =
     pulse?.anchor === "switchboard" && switchboardColVisible;
   const pulseStorageOnColumn =
@@ -50,180 +62,190 @@ export function ChatMainPanel() {
       >
             <div className="chat-header">
               <h2>
-                {m.selectedAvatarIds.length === 0
-                  ? "Switchboard"
-                  : `Conversation with ${m.chatSelectionLabel}`}
+                {m.mainSurface === "workshops"
+                  ? "Workshops"
+                  : m.selectedAvatarIds.length === 0
+                    ? "Conversation with all"
+                    : `Conversation with ${m.chatSelectionLabel}`}
               </h2>
               <div className="chat-header-actions">
-                <label className="chat-view-mode-label chat-switchboard-viz-label">
-                  <input
-                    type="checkbox"
-                    className="chat-switchboard-viz-check"
-                    checked={m.showSwitchboardViz}
-                    onChange={(e) => m.setShowSwitchboardViz(e.target.checked)}
-                    aria-label="Show Chat Visualizer column"
-                  />
-                  <span className="chat-view-mode-label-text">
-                    Chat Visualizer
-                  </span>
-                </label>
-                <label className="chat-view-mode-label chat-switchboard-viz-label">
-                  <input
-                    type="checkbox"
-                    className="chat-switchboard-viz-check"
-                    checked={m.showSourceCacheViz}
-                    onChange={(e) => m.setShowSourceCacheViz(e.target.checked)}
-                    aria-label="Show Storage visualizer column"
-                  />
-                  <span className="chat-view-mode-label-text">Storage viz</span>
-                </label>
-                <label className="chat-user-chrome-label">
-                  <span className="chat-view-mode-label-text">You</span>
-                  <input
-                    type="color"
-                    className="chat-user-chrome-swatch"
-                    value={m.userChromeColor}
-                    onChange={(e) => m.setUserChromeColor(e.target.value)}
-                    aria-label="Color for your messages in this chat window style"
-                    title="Color for your messages in this chat window style"
-                  />
-                </label>
-                <label className="chat-view-mode-label chat-tool-workshop-label">
-                  <input
-                    type="checkbox"
-                    className="chat-switchboard-viz-check"
-                    checked={m.mainSurface === "workshops"}
-                    onChange={(e) =>
-                      m.setMainSurface(e.target.checked ? "workshops" : "chat")
+                <div className="chat-header-actions-main">
+                  <label className="chat-user-chrome-label">
+                    <input
+                      type="color"
+                      className="chat-user-chrome-swatch"
+                      value={m.userChromeColor}
+                      onChange={(e) => m.setUserChromeColor(e.target.value)}
+                      aria-label="You"
+                      title="You"
+                    />
+                  </label>
+                  <label className="chat-view-mode-label">
+                    <select
+                      className="chat-view-mode-select"
+                      aria-label="Chat view mode"
+                      title="View"
+                      value={m.chatViewMode}
+                      onChange={(e) =>
+                        m.setChatViewMode(e.target.value as ChatViewMode)
+                      }
+                    >
+                      <option value="chat">Chat</option>
+                      <option value="chat_routing">Chat + routing</option>
+                      <option value="routing_log">Routing + log</option>
+                    </select>
+                  </label>
+                  <label className="chat-skin-label">
+                    <select
+                      className="chat-view-mode-select"
+                      aria-label="Chat window style"
+                      title="Window"
+                      value={m.chatSkin}
+                      onChange={(e) =>
+                        m.setChatSkin(e.target.value as ChatWindowStyleId)
+                      }
+                    >
+                      {CHAT_WINDOW_STYLE_IDS.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="clear-chat-btn"
+                    onClick={m.clearChat}
+                    disabled={m.messages.length === 0}
+                    title="Clear conversation (archive kept)"
+                  >
+                    Clear chat
+                  </button>
+                  <button
+                    type="button"
+                    className="end-topic-segment-btn"
+                    onClick={m.handleEndTopicSegment}
+                    disabled={
+                      m.situationContext.conversationThread.filter(
+                        (row) => row.role === "user"
+                      )
+                        .length === 0
                     }
-                    aria-label="Open Workshops hub (Tool, Unmet Needs, Source)"
-                  />
-                  <span className="chat-view-mode-label-text">Workshops</span>
-                </label>
-                <label className="chat-view-mode-label">
-                  <span className="chat-view-mode-label-text">View</span>
-                  <select
-                    className="chat-view-mode-select"
-                    aria-label="Chat view mode"
-                    value={m.chatViewMode}
-                    disabled={m.mainSurface === "workshops"}
-                    onChange={(e) =>
-                      m.setChatViewMode(e.target.value as ChatViewMode)
+                    title="Mark this topic as ended (distinct from Clear chat; archive kept)"
+                  >
+                    End topic
+                  </button>
+                </div>
+                <nav
+                  className="chat-header-actions-main workshops-hub-tabs workshops-hub-tabs--header"
+                  aria-label="Workshops sections"
+                >
+                  {WORKSHOP_HEADER_TABS.map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`workshops-hub-tab${
+                        m.workshopTab === id ? " is-active" : ""
+                      }`}
+                      onClick={() => m.setWorkshopTab(id)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+                <div className="chat-header-actions-toggles">
+                  <button
+                    type="button"
+                    className="chat-surface-toggle-btn"
+                    aria-pressed={m.mainSurface === "workshops"}
+                    aria-label={
+                      m.mainSurface === "workshops"
+                        ? "Hide workshops panel below chat"
+                        : "Show workshops panel below chat"
+                    }
+                    onClick={() =>
+                      m.setMainSurface(
+                        m.mainSurface === "workshops" ? "chat" : "workshops"
+                      )
+                    }
+                    title={
+                      m.mainSurface === "workshops"
+                        ? "Hide workshops"
+                        : "Show workshops"
                     }
                   >
-                    <option value="chat">Chat</option>
-                    <option value="chat_routing">Chat + routing</option>
-                    <option value="routing_log">Routing + log</option>
-                  </select>
-                </label>
-                <label className="chat-skin-label">
-                  <span className="chat-view-mode-label-text">Window</span>
-                  <select
-                    className="chat-view-mode-select"
-                    aria-label="Chat window style"
-                    value={m.chatSkin}
-                    onChange={(e) => m.setChatSkin(e.target.value as ChatWindowStyleId)}
-                  >
-                    {CHAT_WINDOW_STYLE_IDS.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="clear-chat-btn"
-                  onClick={m.clearChat}
-                  disabled={m.messages.length === 0}
-                  title="Clear conversation (archive kept)"
-                >
-                  Clear chat
-                </button>
-                <button
-                  type="button"
-                  className="end-topic-segment-btn"
-                  onClick={m.handleEndTopicSegment}
-                  disabled={
-                    m.situationContext.conversationThread.filter(
-                      (row) => row.role === "user"
-                    )
-                      .length === 0
-                  }
-                  title="Mark this topic as ended (distinct from Clear chat; archive kept)"
-                >
-                  End topic
-                </button>
+                    {m.mainSurface === "workshops" ? "W|C" : "C|W"}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {m.mainSurface === "workshops" ? (
-              <div className="chat-body-row chat-body-row--tool-workshop">
-                <WorkshopsPanel
-                  workshopTab={m.workshopTab}
-                  setWorkshopTab={m.setWorkshopTab}
-                  ollamaPresence={m.ollamaPresence}
-                  onRefreshOllama={m.refreshOllama}
-                  messages={m.messages}
-                  fullAvatarCatalog={m.fullAvatarCatalog}
-                  projectsList={m.projectsList}
-                  situationContext={m.situationContext}
-                  patchSituationContext={m.patchSituationContext}
-                  internetSearchMaxResults={
-                    m.contextEntryBudgets.internetSearchMaxResults
-                  }
-                  onWellOfSoulsAfterGenerate={m.handleWellOfSoulsAfterGenerate}
-                  onOpenAvatarBuilderFromInternet={
-                    m.handleOpenAvatarBuilderFromInternet
-                  }
-                  creationWorkshopPrefill={m.creationWorkshopPrefill}
-                />
-              </div>
-            ) : (
             <div className="chat-body-row">
-            {m.showSwitchboardViz && m.wavesColumnVisible && (
+            {m.wavesColumnVisible && (
               <>
                 <aside
                   className={`switchboard-viz-column${
+                    switchboardExpanded ? "" : " switchboard-viz-column--collapsed"
+                  }${
                     pulseSwitchboardOnColumn ? " audio-visual-cue-active" : ""
                   }`}
-                  style={{ width: m.chatVizWidthPx }}
+                  style={{
+                    width: switchboardExpanded ? m.chatVizWidthPx : vizRailWidthPx,
+                  }}
                   aria-label="Chat Visualizer routing"
                 >
-                  <SwitchboardViz
-                    entries={m.wavesQueue}
-                    getAccentColor={m.getAvatarVizColorForSwitchboard}
-                    motionTier={m.wavesMotionTier === "blink" ? "blink" : "full"}
-                    reducedMotion={m.reducedMotion}
-                    vizDebug={m.vizDebug}
-                    rosterEmpty={m.avatars.length === 0}
-                    getUserMessagePreview={(uid) =>
-                      m.messages.find((row) => row.id === uid && row.role === "user")
-                        ?.content
+                  <button
+                    type="button"
+                    className="viz-column-titlebar"
+                    aria-pressed={switchboardExpanded}
+                    aria-label={
+                      switchboardExpanded
+                        ? "Collapse WAVES visualizer"
+                        : "Expand WAVES visualizer"
                     }
-                    onActivateUserMessage={(uid) => {
-                      const row = m.chatMessagesRef.current?.querySelector(
-                        `[data-message-id="${uid}"]`
-                      );
-                      row?.scrollIntoView({
-                        block: "center",
-                        behavior: "smooth",
-                      });
-                    }}
-                  />
+                    onClick={() => m.setShowSwitchboardViz(!switchboardExpanded)}
+                  >
+                    WAVES
+                  </button>
+                  {switchboardExpanded && (
+                    <SwitchboardViz
+                      entries={m.wavesQueue}
+                      getAccentColor={m.getAvatarVizColorForSwitchboard}
+                      motionTier={m.wavesMotionTier === "blink" ? "blink" : "full"}
+                      reducedMotion={m.reducedMotion}
+                      vizDebug={m.vizDebug}
+                      rosterEmpty={m.avatars.length === 0}
+                      getUserMessagePreview={(uid) =>
+                        m.messages.find((row) => row.id === uid && row.role === "user")
+                          ?.content
+                      }
+                      onActivateUserMessage={(uid) => {
+                        const row = m.chatMessagesRef.current?.querySelector(
+                          `[data-message-id="${uid}"]`
+                        );
+                        row?.scrollIntoView({
+                          block: "center",
+                          behavior: "smooth",
+                        });
+                      }}
+                    />
+                  )}
                 </aside>
-                <button
-                  type="button"
-                  className="chat-viz-resize-handle"
-                  aria-label="Resize Chat Visualizer panel"
-                  aria-orientation="vertical"
-                  onPointerDown={m.onVizResizePointerDown}
-                  onPointerMove={m.onVizResizePointerMove}
-                  onPointerUp={m.onVizResizePointerUp}
-                  onPointerCancel={m.onVizResizePointerUp}
-                />
+                {switchboardExpanded && (
+                  <button
+                    type="button"
+                    className="chat-viz-resize-handle"
+                    aria-label="Resize Chat Visualizer panel"
+                    aria-orientation="vertical"
+                    onPointerDown={m.onVizResizePointerDown}
+                    onPointerMove={m.onVizResizePointerMove}
+                    onPointerUp={m.onVizResizePointerUp}
+                    onPointerCancel={m.onVizResizePointerUp}
+                  />
+                )}
               </>
             )}
+            <div className="chat-center-column">
             <div
               ref={m.chatMessagesRef}
               className={`chat-messages chat-skin--${m.chatSkin}`}
@@ -758,50 +780,99 @@ export function ChatMainPanel() {
                 })
               )}
             </div>
-            {m.showSourceCacheViz && m.wavesColumnVisible && (
-              <>
-                <button
-                  type="button"
-                  className="chat-viz-resize-handle chat-viz-resize-handle--source-cache"
-                  aria-label="Resize Storage visualizer panel"
-                  aria-orientation="vertical"
-                  onPointerDown={m.onSourceCacheVizResizePointerDown}
-                  onPointerMove={m.onSourceCacheVizResizePointerMove}
-                  onPointerUp={m.onSourceCacheVizResizePointerUp}
-                  onPointerCancel={m.onSourceCacheVizResizePointerUp}
+            {m.mainSurface === "workshops" && (
+              <div className="chat-workshops-embed chat-body-row--tool-workshop">
+                <WorkshopsPanel
+                  workshopTab={m.workshopTab}
+                  ollamaPresence={m.ollamaPresence}
+                  onRefreshOllama={m.refreshOllama}
+                  messages={m.messages}
+                  fullAvatarCatalog={m.fullAvatarCatalog}
+                  projectsList={m.projectsList}
+                  situationContext={m.situationContext}
+                  patchSituationContext={m.patchSituationContext}
+                  internetSearchMaxResults={
+                    m.contextEntryBudgets.internetSearchMaxResults
+                  }
+                  onWellOfSoulsAfterGenerate={m.handleWellOfSoulsAfterGenerate}
+                  onOpenAvatarBuilderFromInternet={
+                    m.handleOpenAvatarBuilderFromInternet
+                  }
+                  creationWorkshopPrefill={m.creationWorkshopPrefill}
                 />
+              </div>
+            )}
+            </div>
+            {m.wavesColumnVisible && (
+              <>
+                {storageExpanded && (
+                  <button
+                    type="button"
+                    className="chat-viz-resize-handle chat-viz-resize-handle--source-cache"
+                    aria-label="Resize Storage visualizer panel"
+                    aria-orientation="vertical"
+                    onPointerDown={m.onSourceCacheVizResizePointerDown}
+                    onPointerMove={m.onSourceCacheVizResizePointerMove}
+                    onPointerUp={m.onSourceCacheVizResizePointerUp}
+                    onPointerCancel={m.onSourceCacheVizResizePointerUp}
+                  />
+                )}
                 <aside
                   className={`source-cache-viz-column${
+                    storageExpanded ? "" : " source-cache-viz-column--collapsed"
+                  }${
                     pulseStorageOnColumn ? " audio-visual-cue-active" : ""
                   }`}
-                  style={{ width: m.sourceCacheVizWidthPx }}
+                  style={{
+                    width: storageExpanded ? m.sourceCacheVizWidthPx : vizRailWidthPx,
+                  }}
                   aria-label="Storage and cache diagnostics"
                 >
-                  <SourceCacheViz
-                    diagnostics={m.sourceCacheVizSnapshot.diagnostics}
-                    parsedFallbackLines={
-                      m.sourceCacheVizSnapshot.parsedFallbackLines
+                  <button
+                    type="button"
+                    className="viz-column-titlebar"
+                    aria-pressed={storageExpanded}
+                    aria-label={
+                      storageExpanded
+                        ? "Collapse STORE visualizer"
+                        : "Expand STORE visualizer"
                     }
-                    emailInsights={m.sourceCacheVizSnapshot.emailInsights}
-                    worldMeta={m.sourceCacheVizSnapshot.worldMeta}
-                    worldviewAuditTail={m.sourceCacheVizSnapshot.worldviewAuditTail}
-                    wavesQueueLength={m.sourceCacheVizSnapshot.wavesQueueLength}
-                    wavesStorageKey={m.sourceCacheVizSnapshot.wavesStorageKey}
-                    lastUserEmailFocus={m.sourceCacheVizSnapshot.lastUserEmailFocus}
-                    futureSources={m.sourceCacheVizSnapshot.futureSources}
-                    onOpenWorldviewTab={m.openWorldviewTab}
-                    fullAvatarCatalog={m.fullAvatarCatalog}
-                  />
+                    onClick={() => m.setShowSourceCacheViz(!storageExpanded)}
+                  >
+                    STORE
+                  </button>
+                  {storageExpanded && (
+                    <SourceCacheViz
+                      diagnostics={m.sourceCacheVizSnapshot.diagnostics}
+                      parsedFallbackLines={
+                        m.sourceCacheVizSnapshot.parsedFallbackLines
+                      }
+                      emailInsights={m.sourceCacheVizSnapshot.emailInsights}
+                      worldMeta={m.sourceCacheVizSnapshot.worldMeta}
+                      worldviewAuditTail={m.sourceCacheVizSnapshot.worldviewAuditTail}
+                      wavesQueueLength={m.sourceCacheVizSnapshot.wavesQueueLength}
+                      wavesStorageKey={m.sourceCacheVizSnapshot.wavesStorageKey}
+                      lastUserEmailFocus={m.sourceCacheVizSnapshot.lastUserEmailFocus}
+                      futureSources={m.sourceCacheVizSnapshot.futureSources}
+                      onOpenWorldviewTab={m.openWorldviewTab}
+                      fullAvatarCatalog={m.fullAvatarCatalog}
+                    />
+                  )}
                 </aside>
               </>
             )}
             </div>
-            )}
 
-            {m.mainSurface === "chat" &&
-            (m.pendingTurnCount > 0 ||
-              (m.showSwitchboardViz && m.wavesColumnVisible && m.vizDebug)) && (
-              <div className="chat-pending-bar" role="status" aria-live="polite">
+            <div
+              className="chat-talk-tray-chrome"
+              role="toolbar"
+              aria-label="Routing status, Talk to tray, and session activity"
+            >
+              <div
+                className="chat-talk-tray-chrome-left"
+                role="status"
+                aria-live="polite"
+              >
                 {m.showSwitchboardViz && m.wavesColumnVisible && m.vizDebug && (() => {
                   const counts = countWavesQueueByKind(m.wavesQueue);
                   return (
@@ -828,10 +899,30 @@ export function ChatMainPanel() {
                   </>
                 )}
               </div>
-            )}
-
-            {m.mainSurface === "chat" && (
+              <div className="chat-talk-tray-chrome-center">
+                <button
+                  type="button"
+                  className="chat-talk-tray-toggle"
+                  aria-expanded={m.talkToTrayOpen}
+                  aria-controls="chat-avatar-picker-region"
+                  onClick={() => m.setTalkToTrayOpen(!m.talkToTrayOpen)}
+                  title={m.talkToTrayOpen ? "Hide Talk to" : "Show Talk to"}
+                >
+                  {m.talkToTrayOpen ? "▼ Talk to" : "▶ Talk to"}
+                </button>
+              </div>
+              <div className="chat-talk-tray-chrome-right">
+                <span
+                  className="chat-session-change-count"
+                  title="Approximate count of durable data changes this segment (world, store, tasks, drafts, cached email summaries, etc.). Resets on Clear chat or End topic."
+                >
+                  Changes: {m.sessionChangeCount}
+                </span>
+              </div>
+            </div>
+            {m.talkToTrayOpen && (
             <div
+              id="chat-avatar-picker-region"
               className="chat-avatar-picker"
               role="group"
               aria-label="Choose avatars to address in your next message"
@@ -909,7 +1000,6 @@ export function ChatMainPanel() {
             </div>
             )}
 
-            {m.mainSurface === "chat" ? (
             <div className="chat-input-area">
               <input
                 type="text"
@@ -936,11 +1026,6 @@ export function ChatMainPanel() {
                 Send
               </button>
             </div>
-            ) : (
-              <p className="chat-workshop-footer-hint" role="note">
-                Uncheck <strong>Workshops</strong> in the header to return to chat.
-              </p>
-            )}
       </main>
   );
 }

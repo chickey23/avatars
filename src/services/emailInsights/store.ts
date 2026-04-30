@@ -5,6 +5,7 @@ import {
 } from "./constants";
 import { emailBodyContentHash } from "./hash";
 import type { EmailInsightRecord, EmailInsightsDoc } from "./types";
+import { emitSessionChangeDelta } from "../sessionChangeTelemetry";
 
 function now(): number {
   return Date.now();
@@ -111,4 +112,5 @@ export function upsertEmailInsight(record: EmailInsightRecord): void {
     lastAccessedAt: t,
   };
   saveEmailInsightsDoc(doc);
+  emitSessionChangeDelta(1);
 }

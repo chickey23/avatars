@@ -18,6 +18,7 @@ import {
   PLATFORM_STORE_SCHEMA_VERSION,
   PLATFORM_STORE_STORAGE_KEY,
 } from "./constants";
+import { subscribeSessionChangeDelta } from "../sessionChangeTelemetry";
 
 function installMemoryLocalStorage(): void {
   const map = new Map<string, string>();
@@ -56,6 +57,19 @@ describe("platform store", () => {
     const latest = rec.history[rec.history.length - 1];
     expect(latest?.kind).toBe("created");
     expect(latest?.actor).toBe("user");
+  });
+
+  it("emits session delta only when project core fields change", () => {
+    const created = upsertProject({ title: "CoreSig", actor: "user" });
+    let total = 0;
+    const unsub = subscribeSessionChangeDelta((d) => {
+      total += d;
+    });
+    upsertProject({ id: created.id, title: "CoreSig", actor: "user" });
+    expect(total).toBe(0);
+    upsertProject({ id: created.id, title: "Renamed", actor: "user" });
+    unsub();
+    expect(total).toBe(1);
   });
 
   it("records status and owner changes in history", () => {
@@ -108,6 +122,35 @@ describe("platform store", () => {
     deleteTask(t.id, "user");
     expect(getPlatformStore().projects[p.id]).toBeDefined();
     expect(getPlatformStore().tasks[t.id]).toBeUndefined();
+  });
+
+  it("auto-closes a project when all its tasks are resolved", () => {
+    const p = upsertProject({ title: "Closable", actor: "user" });
+    const t1 = upsertTask({ projectId: p.id, title: "Task A", actor: "user" });
+    const t2 = upsertTask({ projectId: p.id, title: "Task B", actor: "user" });
+
+    updateTaskWorkflow({ taskId: t1.id, actor: "user", workflowStatus: "done" });
+    let project = getPlatformStore().projects[p.id]!;
+    expect(project.status).toBe("active");
+    expect(project.workflowStatus).toBe("open");
+
+    updateTaskWorkflow({ taskId: t2.id, actor: "user", workflowStatus: "cancelled" });
+    project = getPlatformStore().projects[p.id]!;
+    expect(project.status).toBe("done");
+    expect(project.workflowStatus).toBe("done");
+  });
+
+  it("reopens a done project when a new unresolved task is added", () => {
+    const p = upsertProject({ title: "Reopenable", actor: "user" });
+    const t1 = upsertTask({ projectId: p.id, title: "Task A", actor: "user" });
+    updateTaskWorkflow({ taskId: t1.id, actor: "user", workflowStatus: "done" });
+    let project = getPlatformStore().projects[p.id]!;
+    expect(project.status).toBe("done");
+
+    upsertTask({ projectId: p.id, title: "Task B", actor: "user" });
+    project = getPlatformStore().projects[p.id]!;
+    expect(project.status).toBe("active");
+    expect(project.workflowStatus).toBe("open");
   });
 
   it("migrates v1 store docs to workflow-aware schema", () => {

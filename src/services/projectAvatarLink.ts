@@ -1,6 +1,6 @@
 /**
  * When an avatar creates/updates world-metadata projects via tools, mirror into
- * long-term tasks and surface in the assign-task UI.
+ * long-term tasks and surface in the ASSIGN PROJECT OWNER sidebar.
  */
 
 import { getPlatformStore, upsertProject } from "./platform/store";
@@ -25,8 +25,8 @@ function dispatchAssignedTask(avatarId: string, taskId: string): void {
 
 /**
  * Ensure an active long-term task exists for this avatar + project, assign if missing.
- * Mirrors stewardship into the platform store (`ownerAvatarId`), dedupes duplicate
- * tasks, and completes other avatars' tasks for the same project.
+ * Sets **project owner** on the platform store (`ownerAvatarId`), dedupes duplicate
+ * tasks, and completes other avatars' active assignments for the same project.
  * Dispatches `avatars:assigned-task` so the app can merge `assignedTasks` on the avatar.
  */
 export function ensureProjectTaskForAvatar(

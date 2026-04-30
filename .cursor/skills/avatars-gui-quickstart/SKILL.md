@@ -4,7 +4,7 @@ description: >-
   Maps the Avatars React shell (layout, overlays, content model, App.css) and
   gives a short workflow for sidebar, modals, and avatar-builder UI. Use when
   changing src/app/, shell components under src/components/, portrait or roster
-  UI, AvatarBuilderModal, App.css layout, or Vite/Tauri frontend behavior.
+  UI, center chat column, AvatarBuilderModal, App.css layout, or Vite/Tauri frontend behavior.
 ---
 
 # Avatars GUI quickstart
@@ -22,13 +22,21 @@ description: >-
 | Main composition | `src/App.tsx` |
 | Modals / overlays | `src/app/AppOverlays.tsx` → `AvatarBuilderModal`, session log |
 | Primary avatar column | `src/app/PrimaryAvatarSidebar.tsx` |
+| Center chat column (messages, WAVES/STORE rails, tray bar, composer) | `src/app/ChatMainPanel.tsx` |
 | View model (most UI state, portrait file pipeline, builder) | `src/app/useAppContentModel.ts` |
 | Portrait read path | `src/services/avatarPortrait.ts` (`getAvatarPortraitSrc`, `readPortraitFileAsDataUrl`) |
 | Builder form | `src/components/AvatarBuilderModal.tsx` |
 | Types / persisted shape | `src/types/index.ts` (`SituationContext`, `Avatar`, `AvatarAppearance`) |
-| Styles | `src/App.css` (search `avatar-`, `avatar-builder-`, etc.) |
+| Styles | `src/App.css` (search `avatar-`, `avatar-builder-`, `chat-`, etc.) |
 
 Components consume **`useAppContentView()`** from `src/app/appContentViewContext.tsx` — one large value object from `useAppContentModel`.
+
+### Center column (chat)
+
+- **`mainSurface`** (`"chat"` \| `"workshops"`) toggles whether **Workshops** appears **below** the message list; the chat thread and composer stay visible (W\|C in the header is a workshops-panel toggle, not a full surface swap).
+- **Talk to tray:** `talkToTrayOpen` / `setTalkToTrayOpen` on the view model; the strip uses `chat-avatar-picker` and can be collapsed from the unified tray row (`chat-talk-tray-chrome`).
+- **Session change counter:** `sessionChangeCount` increments via [`src/services/sessionChangeTelemetry.ts`](../../../src/services/sessionChangeTelemetry.ts); **Clear chat** and **End topic** reset the count (clear is wrapped in the view model).
+- **Layout/CSS hooks** in `src/App.css`: `chat-body-row`, `chat-center-column`, `chat-workshops-embed`, `chat-talk-tray-chrome` (single bar: left = wave/viz debug + pending text, center = Talk to toggle, right = Changes).
 
 ### Portrait data flow
 

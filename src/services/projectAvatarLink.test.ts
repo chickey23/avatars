@@ -119,7 +119,7 @@ describe("ensureProjectTaskForAvatar", () => {
     expect(dispatchEvent).toHaveBeenCalled();
   });
 
-  it("updates existing project tasks and platform stewardship on reassignment", () => {
+  it("updates existing project tasks and platform project owner on reassignment", () => {
     const dispatchEvent = vi.fn();
     vi.stubGlobal(
       "window",

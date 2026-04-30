@@ -327,9 +327,6 @@ export function SourceCacheViz({
       role="navigation"
       aria-label="Storage and cache diagnostics"
     >
-      <div className="source-cache-viz-heading" aria-hidden>
-        Store
-      </div>
       <ul className="source-cache-viz-tracks" role="list">
         <li className="source-cache-viz-track-item">
           <button

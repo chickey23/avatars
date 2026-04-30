@@ -759,66 +759,68 @@ export function PrimaryAvatarSidebar() {
             </ul>
           </div>
         )}
-        <details className="task-assign-details">
-          <summary className="task-assign-summary">
-            {m.taskAssignAvatar
-              ? `Assign project · ${m.taskAssignAvatar.givenName}`
-              : "Assign project"}
-            {m.tasks.length > 0 ? (
+        {m.assignableProjectsList.length > 0 ? (
+          <details className="task-assign-details">
+            <summary
+              className={`task-assign-summary${
+                m.assignProjectOwnerUiMuted ? " task-assign-summary--ineligible" : ""
+              }`}
+            >
+              {m.taskAssignAvatar
+                ? `ASSIGN PROJECT OWNER · ${m.taskAssignAvatar.givenName}`
+                : "ASSIGN PROJECT OWNER"}
               <span className="task-assign-count" aria-hidden>
                 {" "}
-                ({m.tasks.length})
+                ({m.assignableProjectsList.length})
               </span>
-            ) : null}
-          </summary>
-          <div className="task-assign-body">
-            {!m.firstSelectedId && (
-              <p className="task-assign-hint">Select an avatar to assign a project.</p>
-            )}
-            <div className="task-input-row">
-              <select
-                className="task-project-select"
-                value={m.taskProjectId}
-                onChange={(e) => m.setTaskProjectId(e.target.value)}
-                disabled={!m.firstSelectedId || m.projectsList.length === 0}
-                aria-label="Project to assign"
-              >
-                <option value="">
-                  {m.projectsList.length === 0
-                    ? "Add projects under Workshops → Projects"
-                    : "Choose a project…"}
-                </option>
-                {m.projectsList.map(([id, proj]) => (
-                  <option key={id} value={id}>
-                    {proj.title}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={m.handleAssignTask}
-                disabled={!m.taskProjectId || !m.firstSelectedId}
-              >
-                Add
-              </button>
+            </summary>
+            <div className="task-assign-body">
+              <div className="task-input-row">
+                <select
+                  className="task-project-select"
+                  value={m.taskProjectId}
+                  onChange={(e) => m.setTaskProjectId(e.target.value)}
+                  disabled={!m.firstSelectedId || m.assignProjectOwnerUiMuted}
+                  aria-label="Project for ownership assignment"
+                >
+                  <option value="">Choose a project…</option>
+                  {m.assignableProjectsList.map(([id, proj]) => (
+                    <option key={id} value={id}>
+                      {proj.title}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className={
+                    m.assignProjectOwnerUiMuted ? "task-assign-add--ineligible" : undefined
+                  }
+                  onClick={m.handleAssignTask}
+                  disabled={
+                    !m.taskProjectId || !m.firstSelectedId || m.assignProjectOwnerUiMuted
+                  }
+                >
+                  Add
+                </button>
+              </div>
+              {m.taskAssignStatus && (
+                <p
+                  className={`task-assign-status task-assign-status--${m.taskAssignStatus.kind}`}
+                  role={m.taskAssignStatus.kind === "warn" ? "alert" : "status"}
+                >
+                  {m.taskAssignStatus.text}
+                </p>
+              )}
+              {m.tasks.length > 0 && (
+                <ul className="task-list">
+                  {m.tasks.map((t) => (
+                    <li key={t.id}>{t.title}</li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {m.taskAssignStatus && (
-              <p
-                className={`task-assign-status task-assign-status--${m.taskAssignStatus.kind}`}
-                role={m.taskAssignStatus.kind === "warn" ? "alert" : "status"}
-              >
-                {m.taskAssignStatus.text}
-              </p>
-            )}
-            {m.tasks.length > 0 && (
-              <ul className="task-list">
-                {m.tasks.map((t) => (
-                  <li key={t.id}>{t.title}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </details>
+          </details>
+        ) : null}
         <AiRulesLibraryPanel />
       </aside>
   );

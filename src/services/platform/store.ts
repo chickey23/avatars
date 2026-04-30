@@ -21,6 +21,7 @@ import {
 import { platformLog } from "./platformLog";
 import { isSystemAvatarId } from "./routing";
 import { isPlaceholderProjectTitle } from "../worldMetadata/titleSanity";
+import { emitSessionChangeDelta } from "../sessionChangeTelemetry";
 
 export type PlatformProjectStatus =
   | "active"
@@ -428,6 +429,88 @@ function appendHistory(
   return next;
 }
 
+function reconcileProjectStatusFromTasks(projectId: string, actor: string): void {
+  const project = doc.projects[projectId];
+  if (!project) return;
+  const projectTasks = Object.values(doc.tasks).filter((t) => t.projectId === projectId);
+  if (projectTasks.length === 0) return;
+  const hasUnresolved = projectTasks.some(
+    (t) => t.status !== "done" && t.status !== "cancelled"
+  );
+  const shouldBeDone = !hasUnresolved;
+  const nextStatus: PlatformProjectStatus = shouldBeDone ? "done" : "active";
+  const nextWorkflow: PlatformWorkflowStatus = shouldBeDone ? "done" : "open";
+  if (project.status === nextStatus && (project.workflowStatus ?? "open") === nextWorkflow) {
+    return;
+  }
+  const nowTs = now();
+  let history = project.history ? [...project.history] : [];
+  if (project.status !== nextStatus) {
+    history = appendHistory(history, {
+      ts: nowTs,
+      actor,
+      kind: "status_change",
+      detail: `${project.status} -> ${nextStatus} (task reconciliation)`,
+    });
+  }
+  if ((project.workflowStatus ?? "open") !== nextWorkflow) {
+    history = appendHistory(history, {
+      ts: nowTs,
+      actor,
+      kind: "workflow_change",
+      detail: `${project.workflowStatus ?? "open"} -> ${nextWorkflow} (task reconciliation)`,
+    });
+  }
+  doc = {
+    ...doc,
+    projects: {
+      ...doc.projects,
+      [projectId]: {
+        ...project,
+        status: nextStatus,
+        workflowStatus: nextWorkflow,
+        updatedAt: nowTs,
+        history,
+      },
+    },
+  };
+  emitSessionChangeDelta(1);
+}
+
+function platformProjectCoreSig(p: PlatformProjectRecord): string {
+  return JSON.stringify({
+    title: p.title,
+    summary: p.summary ?? "",
+    status: p.status,
+    workflowStatus: p.workflowStatus ?? workflowFromProjectStatus(p.status),
+    ownerAvatarId: p.ownerAvatarId ?? "",
+    dueAt: p.dueAt ?? null,
+    snoozedUntil: p.snoozedUntil ?? null,
+    nextActor: p.nextActor ?? "",
+    requiredCapability: p.requiredCapability ?? "",
+    blockers: p.blockers ?? [],
+    completionEvidence: p.completionEvidence ?? [],
+  });
+}
+
+function platformTaskCoreSig(p: PlatformTaskRecord): string {
+  return JSON.stringify({
+    title: p.title,
+    notes: p.notes ?? "",
+    projectId: p.projectId,
+    status: p.status,
+    workflowStatus: p.workflowStatus ?? workflowFromTaskStatus(p.status),
+    ownerAvatarId: p.ownerAvatarId ?? "",
+    dueAt: p.dueAt ?? null,
+    snoozedUntil: p.snoozedUntil ?? null,
+    nextActor: p.nextActor ?? "",
+    requiredCapability: p.requiredCapability ?? "",
+    approval: p.approval ?? null,
+    blockers: p.blockers ?? [],
+    completionEvidence: p.completionEvidence ?? [],
+  });
+}
+
 export type UpsertProjectInput = {
   id?: string;
   title: string;
@@ -546,6 +629,9 @@ export function upsertProject(input: UpsertProjectInput): PlatformProjectRecord 
       detail: `${existing.workflowStatus ?? workflowFromProjectStatus(existing.status)} -> ${input.workflowStatus}`,
     });
   }
+  if (!existing || platformProjectCoreSig(existing) !== platformProjectCoreSig(record)) {
+    emitSessionChangeDelta(1);
+  }
   doc = { ...doc, projects: { ...doc.projects, [id]: record } };
   schedulePersist();
   notify();
@@ -563,6 +649,7 @@ export function deleteProject(id: string, actor: string): void {
     if (t.projectId !== id) remainingTasks[tid] = t;
   }
   doc = { ...doc, projects: rest, tasks: remainingTasks };
+  emitSessionChangeDelta(1);
   platformLog("store_write", `project ${id} deleted by ${actor}`, { level: "info" });
   schedulePersist();
   notify();
@@ -694,7 +781,14 @@ export function upsertTask(input: UpsertTaskInput): PlatformTaskRecord {
       detail: `${existing.workflowStatus ?? workflowFromTaskStatus(existing.status)} -> ${input.workflowStatus}`,
     });
   }
+  if (!existing || platformTaskCoreSig(existing) !== platformTaskCoreSig(record)) {
+    emitSessionChangeDelta(1);
+  }
   doc = { ...doc, tasks: { ...doc.tasks, [id]: record } };
+  reconcileProjectStatusFromTasks(record.projectId, input.actor);
+  if (existing && existing.projectId !== record.projectId) {
+    reconcileProjectStatusFromTasks(existing.projectId, input.actor);
+  }
   schedulePersist();
   notify();
   return record;
@@ -780,7 +874,11 @@ export function updateTaskWorkflow(
     updatedAt: nowTs,
     history,
   };
+  if (platformTaskCoreSig(existing) !== platformTaskCoreSig(record)) {
+    emitSessionChangeDelta(1);
+  }
   doc = { ...doc, tasks: { ...doc.tasks, [record.id]: record } };
+  reconcileProjectStatusFromTasks(record.projectId, input.actor);
   schedulePersist();
   notify();
   return record;
@@ -816,10 +914,13 @@ export function createTaskCompletionEvidence(
 
 export function deleteTask(id: string, actor: string): void {
   if (!loaded) ensurePlatformStoreLoadedSync();
-  if (!(id in doc.tasks)) return;
+  const existing = doc.tasks[id];
+  if (!existing) return;
   const { [id]: _removed, ...rest } = doc.tasks;
   void _removed;
+  emitSessionChangeDelta(1);
   doc = { ...doc, tasks: rest };
+  reconcileProjectStatusFromTasks(existing.projectId, actor);
   platformLog("store_write", `task ${id} deleted by ${actor}`, { level: "info" });
   schedulePersist();
   notify();

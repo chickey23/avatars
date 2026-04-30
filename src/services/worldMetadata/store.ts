@@ -19,6 +19,7 @@ import {
   type WorldMetadataBackend,
 } from "./backend";
 import { WORLD_METADATA_SCHEMA_VERSION } from "./types";
+import { emitSessionChangeDelta } from "../sessionChangeTelemetry";
 
 let doc: WorldMetadataDoc = createEmptyWorldMetadataDoc();
 let loaded = false;
@@ -111,11 +112,15 @@ export function patchWorldMetadata(
   peoplePatch: Partial<Record<string, Partial<PersonMetadataRecord> | null>>
 ): WorldMetadataDoc {
   ensureWorldMetadataLoaded();
+  const before = JSON.stringify(doc.people);
   doc = {
     ...doc,
     people: mergePeoplePatch(doc.people, peoplePatch),
   };
-  schedulePersistWorldMetadata();
+  if (JSON.stringify(doc.people) !== before) {
+    schedulePersistWorldMetadata();
+    emitSessionChangeDelta(1);
+  }
   return doc;
 }
 
@@ -144,15 +149,23 @@ export function patchUserProfile(
   ensureWorldMetadataLoaded();
   const now = Date.now();
   const prev = doc.userProfile;
-  doc = {
-    ...doc,
-    userProfile: {
-      ...prev,
-      ...patch,
-      updatedAt: now,
-    },
+  const contentSig = (u: UserProfileRecord) =>
+    JSON.stringify({
+      displayName: u.displayName ?? "",
+      pronouns: u.pronouns ?? "",
+      notes: u.notes ?? "",
+    });
+  const merged: UserProfileRecord = {
+    ...prev,
+    ...patch,
+    updatedAt: now,
   };
-  schedulePersistWorldMetadata();
+  const contentChanged = contentSig(prev) !== contentSig(merged);
+  doc = { ...doc, userProfile: merged };
+  if (contentChanged) {
+    schedulePersistWorldMetadata();
+    emitSessionChangeDelta(1);
+  }
   return doc;
 }
 

@@ -39,8 +39,9 @@ Work top to bottom. Skip a bullet if that area was not touched, except **app loa
 2. **Chat** — Send at least one user message; confirm the thread updates (core user → Switchboard → avatar path; see `SPEC.md`).
 3. **Avatars / layout** — Default primary avatars and main regions render; shell lives under `src/app/` (see `docs/CODEBASE_GUIDELINES.md`). Default avatars are listed in `README.md` (e.g. The Muse, The Accomplice, The Skeptic).
 4. **View / context** (if you changed panels or routing UI) — Spot-check the View control: Chat, Chat + routing, Routing + log per `SPEC.md`; exercise any context panel you modified.
-5. **Audio** (if you changed `src/services/audio/`, bus, or cues) — Confirm the sound path still fires for a simple action; cue assets and notes live under `public/audio/` — see `public/audio/README.md` if present.
-6. **Tauri / disk** (if you changed `src-tauri/` or `src/services/platform/`) — Spot-check **one** persistence or platform path (e.g. that platform cache or session logging still behaves) using `docs/PLATFORM_PERSISTENCE.md` and `src/services/platform/constants.ts` for filenames and commands. One command or one read/write path is enough; not a full audit.
+5. **Center chat chrome** (if you changed `ChatMainPanel.tsx`, tray, or workshops embed) — Toggle W\|C (workshops below messages), collapse/expand **Talk to**, confirm the **Changes** counter is visible and resets on Clear chat or End topic.
+6. **Audio** (if you changed `src/services/audio/`, bus, or cues) — Confirm the sound path still fires for a simple action; cue assets and notes live under `public/audio/` — see `public/audio/README.md` if present.
+7. **Tauri / disk** (if you changed `src-tauri/` or `src/services/platform/`) — Spot-check **one** persistence or platform path (e.g. that platform cache or session logging still behaves) using `docs/PLATFORM_PERSISTENCE.md` and `src/services/platform/constants.ts` for filenames and commands. One command or one read/write path is enough; not a full audit.
 
 ### On failure
 

@@ -7,6 +7,7 @@ import {
   upsertEmailInsight,
   resetEmailInsightsMemoryForTests,
 } from "./store";
+import { subscribeSessionChangeDelta } from "../sessionChangeTelemetry";
 
 function installMemoryLocalStorage(): void {
   const map = new Map<string, string>();
@@ -64,5 +65,22 @@ describe("email insights store", () => {
     resetEmailInsightsMemoryForTests();
     const row = peekEmailInsight("mid");
     expect(row?.summary).toBe("sum");
+  });
+
+  it("emits session change delta on upsertEmailInsight", () => {
+    let total = 0;
+    const unsub = subscribeSessionChangeDelta((d) => {
+      total += d;
+    });
+    upsertEmailInsight({
+      messageId: "m2",
+      contentHash: emailBodyContentHash("b2"),
+      summary: "cached",
+      relevance: "uncertain",
+      createdAt: Date.now(),
+      lastAccessedAt: Date.now(),
+    });
+    unsub();
+    expect(total).toBe(1);
   });
 });

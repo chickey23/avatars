@@ -104,6 +104,50 @@ export function ProjectWorkshopPanel() {
             ))}
           </ul>
         )}
+        {m.completedProjectsList.length > 0 && (
+          <div className="context-projects-completed">
+            <h3 className="context-projects-completed-title">Completed projects</h3>
+            <ul className="wm-project-list wm-project-list--completed">
+              {m.completedProjectsList.map(([id, proj]) => (
+                <li
+                  key={id}
+                  className={`wm-project-item wm-project-item--completed ${
+                    m.focus.project?.id === id ? "focused" : ""
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="wm-project-select"
+                    onClick={() =>
+                      m.setFocus((f) => ({
+                        ...f,
+                        project: { id, title: proj.title },
+                      }))
+                    }
+                    aria-label={`Set focus to project ${proj.title}`}
+                  >
+                    <span className="wm-project-title">{proj.title}</span>
+                    {proj.summary?.trim() && (
+                      <span className="wm-project-summary">{proj.summary.trim()}</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="wm-project-remove"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      m.handleRemoveWorldProject(id);
+                    }}
+                    aria-label={`Remove ${proj.title}`}
+                    title="Remove from list"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
       <div className="context-entry-depth">
         <div className="context-entry-depth-row">
