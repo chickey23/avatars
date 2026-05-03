@@ -5,6 +5,9 @@ import {
   ensureWorldMetadataLoaded,
   replaceUserProfile,
   patchWorldMetadataProjects,
+  __resetWorldMetadataForTests,
+  getWorldMetadata,
+  applyPendingUserProfilePatch,
 } from "../worldMetadata/store";
 import { saveTasks } from "../longTermTasks";
 import type { Avatar } from "../../types";
@@ -195,5 +198,104 @@ describe("executeWorldviewTools permissions", () => {
     );
     expect(r[0]?.ok).toBe(false);
     expect(r[0]?.error).toBe("missing seedText and wikiQuery");
+  });
+});
+
+describe("executeWorldviewTools user_profile.patch gating", () => {
+  beforeAll(() => {
+    vi.stubGlobal(
+      "localStorage",
+      {
+        get length() {
+          return lsStore.size;
+        },
+        clear() {
+          lsStore.clear();
+        },
+        getItem(k: string) {
+          return lsStore.has(k) ? lsStore.get(k)! : null;
+        },
+        setItem(k: string, v: string) {
+          lsStore.set(k, v);
+        },
+        removeItem(k: string) {
+          lsStore.delete(k);
+        },
+        key() {
+          return null;
+        },
+      } as Storage
+    );
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
+
+  beforeEach(() => {
+    __resetPlatformStoreForTests();
+    __resetWorldMetadataForTests();
+    ensureWorldMetadataLoaded();
+    replaceUserProfile({ displayName: "Pat", notes: "", pronouns: "", updatedAt: 0 });
+    saveTasks([]);
+  });
+
+  it("stores pending when notes change without save language", () => {
+    const profileAvatar = {
+      ...avatar,
+      allowedAgenticToolIds: ["user_profile.patch"],
+    } as Avatar;
+    const r = executeWorldviewTools(
+      [{ name: "user_profile.patch", args: { patch: { notes: "Cast list from TV" } } }],
+      {
+        avatarId: "muse",
+        userMessageId: "u1",
+        avatar: profileAvatar,
+        latestUserMessageContent: "Who was in Lower Decks?",
+      }
+    );
+    expect(r[0]?.ok).toBe(true);
+    expect(r[0]?.userProfilePending).toBe(true);
+    expect(getWorldMetadata().pendingUserProfilePatch?.patch.notes).toBe("Cast list from TV");
+    expect(getWorldMetadata().userProfile.notes).toBeFalsy();
+  });
+
+  it("applies immediately when user asks to save profile", () => {
+    const profileAvatar = {
+      ...avatar,
+      allowedAgenticToolIds: ["user_profile.patch"],
+    } as Avatar;
+    const r = executeWorldviewTools(
+      [{ name: "user_profile.patch", args: { patch: { notes: "I prefer tea" } } }],
+      {
+        avatarId: "muse",
+        userMessageId: "u1",
+        avatar: profileAvatar,
+        latestUserMessageContent: "Please update my profile notes: I prefer tea",
+      }
+    );
+    expect(r[0]?.ok).toBe(true);
+    expect(r[0]?.userProfilePending).toBeUndefined();
+    expect(getWorldMetadata().userProfile.notes).toBe("I prefer tea");
+    expect(getWorldMetadata().pendingUserProfilePatch).toBeNull();
+  });
+
+  it("applyPendingUserProfilePatch merges pending into profile", () => {
+    const profileAvatar = {
+      ...avatar,
+      allowedAgenticToolIds: ["user_profile.patch"],
+    } as Avatar;
+    executeWorldviewTools(
+      [{ name: "user_profile.patch", args: { patch: { notes: "pending text" } } }],
+      {
+        avatarId: "muse",
+        userMessageId: "u1",
+        avatar: profileAvatar,
+        latestUserMessageContent: "random",
+      }
+    );
+    applyPendingUserProfilePatch();
+    expect(getWorldMetadata().userProfile.notes).toBe("pending text");
+    expect(getWorldMetadata().pendingUserProfilePatch).toBeNull();
   });
 });

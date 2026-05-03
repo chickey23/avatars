@@ -15,9 +15,11 @@ import {
 } from "./unassignedProjects";
 import { dueAndSnoozedItemsMonitor } from "./dueAndSnoozedItems";
 import { complexTaskPlannerMonitor } from "./complexTaskPlanner";
+import { setSufficiencyMonitor } from "./setSufficiencyMonitor";
 import { avatarCreationTaskRunnerMonitor } from "./avatarCreationTaskRunner";
 import { sourceRunnerMonitors } from "./sourceRunners";
 import { registerStubMonitors } from "./stubs";
+import { installUserProfileApprovalActions } from "./userProfileApprovalActions";
 
 let installed = false;
 
@@ -27,9 +29,11 @@ export function installDefaultMonitors(): void {
   registerMonitor(unassignedProjectsMonitor);
   registerMonitor(dueAndSnoozedItemsMonitor);
   registerMonitor(complexTaskPlannerMonitor);
+  registerMonitor(setSufficiencyMonitor);
   registerMonitor(avatarCreationTaskRunnerMonitor);
   for (const m of sourceRunnerMonitors) registerMonitor(m);
   installUnassignedProjectsActions();
+  installUserProfileApprovalActions();
   registerStubMonitors();
 }
 

@@ -24,7 +24,7 @@ The \`<...>\` strings in the example above are **placeholders**; replace them wi
 Exact tool names (use underscores; no spaces):
 - world_metadata.patch_projects (args.patch: project id -> partial fields: title, notes, summary, etc.). For a **new** project use a fresh opaque id (e.g. proj_ plus random letters/digits); **title is required** on create. For updates, reuse ids from "World metadata — project [id]" lines in Relevant context.
 - world_metadata.patch_people (args.patch: contact id -> partial person fields; use ids from contact lines or focus)
-- user_profile.patch (not "user profile") (args.patch: displayName, pronouns, notes) — stable facts about the user
+- user_profile.patch (not "user profile") (args.patch: displayName, pronouns, notes) — **only** this human's identity and personal preferences about themselves; not encyclopedic facts, cast lists, or third-party bios (answer those in chat or use other patches)
 - gmail.fetch_message_body (args.messageId: Gmail message id exactly as in "email [id …]" lines or focus). Use when snippets or prefetched bodies are not enough to answer.
 - avatars.workshop.open_draft (args: optional seedText and/or wikiQuery strings; at least one non-empty). Opens **Workshops → Creation** for the user with those hints. **Only** the avatar that holds the avatar_creation tool contract may emit this tool.
 
@@ -41,7 +41,7 @@ const TOOL_HELP_LINE: Partial<Record<string, string>> = {
   "world_metadata.patch_people":
     "- world_metadata.patch_people (args.patch: contact id -> partial person fields; use ids from contact lines or focus)",
   "user_profile.patch":
-    "- user_profile.patch (args.patch: displayName, pronouns, notes) — stable facts about the user",
+    "- user_profile.patch (args.patch: displayName, pronouns, notes) — **only** the human operator's identity / personal preferences about themselves (not cast lists or third-party bios)",
   "gmail.fetch_message_body":
     '- gmail.fetch_message_body (args.messageId: Gmail message id exactly as in "email [id …]" lines or focus). Use when snippets or prefetched bodies are not enough to answer.',
   "avatars.workshop.open_draft":

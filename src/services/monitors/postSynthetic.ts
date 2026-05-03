@@ -104,13 +104,15 @@ export function postSyntheticMessage(input: SyntheticPostInput): boolean {
     synthetic: true,
     monitorTag: input.monitorTag,
     responseRequirement: "satisfied",
-    syntheticActions: input.actions?.map(
-      (a): SyntheticChatAction => ({
+    syntheticActions: input.actions?.map((a): SyntheticChatAction => {
+      const syn: SyntheticChatAction = {
         id: a.id,
         label: a.label,
         payload: a.payload,
-      })
-    ),
+      };
+      if (a.hint) syn.hint = a.hint;
+      return syn;
+    }),
   };
   sink({
     message,

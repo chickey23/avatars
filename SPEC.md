@@ -5,6 +5,7 @@
 **Intent:** Let a new Cursor session extract binding constraints and execution priority without scanning the full spec.
 
 - **Canonical order when docs conflict:** `SPEC.md` (this file) → `TECHSPEC.md` (implementation shape) → `docs/IMPLEMENTATION_ROADMAP.md` (phased sequence) → `PROGRESS.md` (status snapshot) → `docs/STYLEGUIDE.md` (terminology and copy alignment).
+- **Product vision and proposal alignment:** `docs/VISION_AND_USE_CASES.md` — pillars, use-case clusters, example user stories, and review prompts. **Non-normative** relative to this spec; use it to judge whether work matches project goals without overriding binding requirements here.
 - **Spec-first behavior:** If implementation diverges from this spec, propose a spec update (or explicit user approval) before locking in behavior.
 - **Normative vs status:** Treat sections labeled **Normative** as required behavior; treat **Current** and **Deferred** sections as status/sequence context.
 - **UI/layout consult gate:** Consult the user for new or materially changed layout surfaces; iterative pattern-consistent adjustments can proceed.
@@ -23,6 +24,7 @@
 - **[SPEC-IMPLEMENTATION-ORDER]** — Active sequencing and implementation priorities.
 - **[SPEC-CHANGE-PROTOCOL]** — Where to edit SPEC vs roadmap vs progress docs.
 - **[SPEC-VALIDATION-MAP]** — Verification expectations by requirement area.
+- **[VISION-USE-CASES]** — `docs/VISION_AND_USE_CASES.md`; product intent, use cases, and goal-alignment framing (non-normative).
 
 ## Document Roles
 
@@ -32,6 +34,7 @@
 - **docs/STYLEGUIDE.md**: Terminology and writing — when to say **Agent** vs **Avatar** vs tools; parallel development notes; **UI approval** (layout). Does not override this spec; aligns UI and docs with it.
 - **docs/CODEBASE_GUIDELINES.md**: Repo conventions — platform layer, Tauri allowlist, `AppProvider` vs view context, import style, front-end file layout (`src/app/` shell), tests. Non-normative; does not override this spec.
 - **docs/DEVELOPMENT_CYCLE.md**: Human and dev **iteration loop** (plan through reflection), how verification relates to the test plan, and pointers to project `.cursor` skills/rules. Non-normative; does not override this spec.
+- **docs/VISION_AND_USE_CASES.md**: Product **vision**, **use-case clusters**, **example user stories**, and **proposal-alignment** prompts. Non-normative; does not override this spec; reconcile or elevate requirements into SPEC when intent becomes binding.
 - **.cursor/plans/**: Planning artifact — AI operational planning, phases, todos. Separate from spec.
 
 ---
@@ -300,6 +303,16 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 9. **Signature phrase** — Continue following § Behavioral Instructions; script and config under `scripts/`.
 10. (Deferred items as above)
 
+### Set-discovery and avatar subject stewardship (advisory)
+
+When users request avatars for a **set** (for example, members of a group), discovery may propose names from Wikidata or supplemental search. **Stewards and creators** should prefer **fictional, mythological, symbolic, or clearly historical** subjects they are comfortable representing. Creating avatars of **living people** or the **recently deceased (about the last twenty years)** is **discouraged** as distasteful; Avatars **does not automatically block** such choices. Query templates used for set discovery are listed for review in `docs/DISCOVERY_SEARCH_PROMPTS.md`.
+
+**Implicit chat entry:** Short, roster-style user questions (for example who appeared in a named work) may surface the same **Search members** discovery card and **worldview `knowledgeSets`** persistence as explicit set-based creation, without requiring the user to say “create avatars”; the user may still skip or proceed to avatar tasks afterward.
+
+**Curated worldview assertions:** World metadata schema v4 adds optional `curatedAssertions` (object, assertion, certainty clamped to 0–1 on write, source, stable ids). Bundled seeds run at startup; default upsert uses a deterministic id from normalized object+assertion, with an explicit merge path when multiple assertions should share the same object label.
+
+**User profile patch approval:** `user_profile.patch` is constrained to the human operator’s identity and personal preferences. When the model proposes a material change without explicit save-to-profile language in the same user turn, the app stores a single-slot pending proposal and surfaces **Apply** / **Discard** synthetic actions in chat instead of writing immediately.
+
 **Phased detail (non-normative):** See `docs/IMPLEMENTATION_ROADMAP.md` for full sequencing details (including bench responders and usage-based primary ordering).
 
 ---
@@ -329,6 +342,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 - **Edit `PROGRESS.md`** for current status, blockers, shipped deltas, and immediate next-session handoff detail.
 - **Edit `TECHSPEC.md`** for concrete data flow, interfaces, component contracts, and storage/runtime implementation shape.
 - **Edit `docs/STYLEGUIDE.md`** for vocabulary, capitalization, and user-facing copy conventions.
+- **Edit `docs/VISION_AND_USE_CASES.md`** for product vision, pillar/use-case framing, example user stories, and goal-alignment language that is not yet normative in this spec.
 - **When a change spans files:** update SPEC first (if policy changes), then roadmap/tech/status docs in that order.
 
 ## [SPEC-VALIDATION-MAP] Validation Obligation Map
@@ -349,6 +363,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 **[Operational checklist] Intent:** Reduce long-lived drift between canonical and supporting docs.
 
 - `docs/STYLEGUIDE.md`
+- `docs/VISION_AND_USE_CASES.md`
 - `docs/IMPLEMENTATION_ROADMAP.md`
 - `TECHSPEC.md`
 - `PROGRESS.md`

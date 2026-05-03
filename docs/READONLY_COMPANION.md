@@ -15,7 +15,7 @@ Authoritative allowlist for platform JSON: [`crates/avatars-platform-storage/src
 | Tab | Behavior |
 |-----|----------|
 | **Library** | Always available: bundled worldview tool ids, AI rules, traits, default avatars, project seed list — no network. |
-| **My data** | **Tauri only:** read-only views of `world_metadata.json` and `platform_store.json`. In the Vite dev server without Tauri, the tab explains how to launch the desktop companion. |
+| **My data** | **Tauri only:** read-only views of `world_metadata.json` (user profile, projects, people, **knowledge sets** from set discovery) and `platform_store.json`. In the Vite dev server without Tauri, the tab explains how to launch the desktop companion. |
 | **Raw files** | **Tauri only:** allowlisted platform JSON, pretty-printed (same as the legacy single-screen viewer). |
 
 Front-end code: [`src/viewer/`](../src/viewer/) (`ViewerApp.tsx` and friends).

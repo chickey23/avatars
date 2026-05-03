@@ -42,6 +42,7 @@ import { scanAvatarCreationTaskFulfillment } from "../services/avatarCreationTas
 import {
   getWorldMetadata,
   pruneWorldMetadataPlaceholderProjects,
+  seedCuratedAssertionsIntoWorldMetadata,
   seedProjectsIntoWorldMetadata,
 } from "../services/worldMetadata/store";
 import { PROJECT_SEED_LIST } from "../data/projectSeedList";
@@ -79,6 +80,7 @@ import {
   runMonitorsAndPost,
   setSyntheticPostSink,
 } from "../services/monitors";
+import { setAvatarCatalogAccessor } from "../services/avatarCreationRouting";
 import { subscribePlatformStore } from "../services/platform";
 import { installDefaultMonitors } from "../services/monitors/bootstrap";
 import {
@@ -213,6 +215,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fullCatalogRef.current = fullAvatarCatalog;
   }, [fullAvatarCatalog]);
 
+  useEffect(() => {
+    setAvatarCatalogAccessor(() => fullCatalogRef.current);
+    return () => setAvatarCatalogAccessor(null);
+  }, []);
+
   const userAvatarsFulfillmentKey = useMemo(
     () =>
       JSON.stringify(
@@ -335,6 +342,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pruneWorldMetadataPlaceholderProjects();
       prunePlatformPlaceholderProjects();
       seedProjectsIntoWorldMetadata(PROJECT_SEED_LIST);
+      seedCuratedAssertionsIntoWorldMetadata();
       migrateProjectsFromWorldMetadata(getWorldMetadata().projects);
       syncWorldMetadataProjectsAdditive(getWorldMetadata().projects);
       /**
@@ -526,6 +534,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           content: userMsg.content,
           timestamp: userMsg.timestamp,
         },
+        primaryAvatarId: options?.primaryAvatarId,
       });
       queueRef.current.push({
         userMsgId: userMsg.id,
@@ -684,7 +693,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   avatarId,
                   intent,
                   sourceMessage,
+                  postTurnUiReason,
                 }) => {
+                  if (
+                    postTurnUiReason === "open_draft_tool" &&
+                    avatarCreationWorkshopIntentHandlerRef.current
+                  ) {
+                    avatarCreationWorkshopIntentHandlerRef.current(intent);
+                    return;
+                  }
                   postAvatarCreationWorkshopOffer({
                     avatarId,
                     intent,

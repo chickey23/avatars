@@ -21,7 +21,7 @@ import {
 export async function runMonitorsAndPost(
   reason: MonitorTrigger,
   catalog: readonly Avatar[],
-  options: Pick<MonitorRunContext, "latestUserMessage"> = {}
+  options: Pick<MonitorRunContext, "latestUserMessage" | "primaryAvatarId"> = {}
 ): Promise<void> {
   const result = await pollAll(reason, catalog, options);
 

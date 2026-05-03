@@ -37,7 +37,12 @@ import {
   diagnoseWorldviewToolReply,
   formatWorldviewParseDiagnosisForLog,
 } from "./worldviewTools/diagnose";
-import { executeWorldviewTools } from "./worldviewTools/execute";
+import {
+  executeWorldviewTools,
+  type WorldviewToolExecutionResult,
+} from "./worldviewTools/execute";
+import { postSyntheticMessage } from "./monitors/postSynthetic";
+import { USER_PROFILE_APPROVAL_MONITOR_TAG } from "./monitors/userProfileApprovalActions";
 import { appendWorldviewAuditRecord } from "./worldviewAudit";
 import { formatWorldviewToolArgsForAudit } from "./worldviewAuditArgsPreview";
 import { getWorldMetadata } from "./worldMetadata/store";
@@ -156,15 +161,78 @@ function isRevertiblePatchToolName(name: string): boolean {
 
 function zipOkRevertiblePatchTools(
   patchTools: WorldviewToolCall[],
-  results: { name: string; ok: boolean }[]
+  results: WorldviewToolExecutionResult[]
 ): WorldviewToolCall[] {
   const out: WorldviewToolCall[] = [];
   for (let i = 0; i < patchTools.length; i++) {
     const t = patchTools[i]!;
     const r = results[i];
-    if (r?.ok && isRevertiblePatchToolName(t.name)) out.push(t);
+    if (!r?.ok || !isRevertiblePatchToolName(t.name)) continue;
+    if (t.name === "user_profile.patch" && r.userProfilePending) continue;
+    out.push(t);
   }
   return out;
+}
+
+function latestUserTurnContentForTools(ctx: SituationContext): string | undefined {
+  const id = ctx.replyToUserMessageId;
+  if (id) {
+    const found = ctx.conversationThread.find((m) => m.id === id && m.role === "user");
+    if (found?.content?.trim()) return found.content;
+  }
+  for (let i = ctx.conversationThread.length - 1; i >= 0; i--) {
+    const m = ctx.conversationThread[i]!;
+    if (m.role === "user" && m.content?.trim()) return m.content;
+  }
+  return undefined;
+}
+
+function postUserProfilePendingSyntheticFromResults(
+  avatarId: string,
+  patchTools: WorldviewToolCall[],
+  results: WorldviewToolExecutionResult[]
+): void {
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i]!;
+    const t = patchTools[i]!;
+    if (!r.ok || !r.userProfilePending || t.name !== "user_profile.patch") continue;
+    const pend = getWorldMetadata().pendingUserProfilePatch;
+    if (!pend) continue;
+    const bits: string[] = [];
+    if (pend.patch.displayName != null) {
+      bits.push(`**Display name:** ${pend.patch.displayName}`);
+    }
+    if (pend.patch.pronouns != null) {
+      bits.push(`**Pronouns:** ${pend.patch.pronouns}`);
+    }
+    if (pend.patch.notes != null) {
+      const n = pend.patch.notes;
+      bits.push(`**Notes:** ${n.length > 400 ? `${n.slice(0, 397)}…` : n}`);
+    }
+    if (bits.length === 0) bits.push("(empty proposal)");
+    postSyntheticMessage({
+      avatarId,
+      monitorTag: USER_PROFILE_APPROVAL_MONITOR_TAG,
+      content:
+        "**Profile update requested**\n\n" +
+        "An avatar proposed saving the following to **your user profile** (your identity and personal preferences only). " +
+        "Use **Apply** to save, or **Discard** to cancel.\n\n" +
+        bits.join("\n"),
+      actions: [
+        {
+          id: "user_profile_apply_pending",
+          label: "Apply",
+          payload: { id: pend.id },
+        },
+        {
+          id: "user_profile_discard_pending",
+          label: "Discard",
+          payload: { id: pend.id },
+        },
+      ],
+      dedupKey: `user_profile_pending|${pend.id}`,
+    });
+  }
 }
 
 function mergeJsonAndLexicalTools(
@@ -638,8 +706,7 @@ export async function runAvatarAgent(
 
       if (mergedTools.length > 0) {
         const { fetchTools, patchTools } = partitionWorldviewTools(mergedTools);
-        const combinedPatchResults: { name: string; ok: boolean; error?: string }[] =
-          [];
+        const combinedPatchResults: WorldviewToolExecutionResult[] = [];
         const revertiblePatchCalls: WorldviewToolCall[] = [];
         let userProfileBeforeAudit: UserProfileRecord | undefined;
 
@@ -658,7 +725,9 @@ export async function runAvatarAgent(
             skipAudit: true,
             avatar,
             executorAvatarId: ctx.executorAvatarIdForTurn,
+            latestUserMessageContent: latestUserTurnContentForTools(ctx),
           });
+          postUserProfilePendingSyntheticFromResults(avatar.id, patchTools, r1);
           for (let i = 0; i < r1.length; i++) {
             const r = r1[i]!;
             const t = patchTools[i]!;
@@ -771,7 +840,9 @@ export async function runAvatarAgent(
                     skipAudit: true,
                     avatar,
                     executorAvatarId: ctx.executorAvatarIdForTurn,
+                    latestUserMessageContent: latestUserTurnContentForTools(ctx),
                   });
+                  postUserProfilePendingSyntheticFromResults(avatar.id, p2, r2);
                   for (let i = 0; i < r2.length; i++) {
                     const r = r2[i]!;
                     const t = p2[i]!;

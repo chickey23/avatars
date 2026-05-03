@@ -460,6 +460,7 @@ export function ChatMainPanel() {
                                 key={a.id}
                                 type="button"
                                 className="message-synthetic-action-btn"
+                                title={a.hint ?? undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   void runSyntheticAction(msg, a);

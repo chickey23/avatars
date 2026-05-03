@@ -1,0 +1,24 @@
+{
+  "providersTried": ["wikipedia"],
+  "notices": [],
+  "hits": [
+    {
+      "title": "Star Trek: Lower Decks - Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Star_Trek:_Lower_Decks",
+      "snippet": "American adult animated television series.",
+      "source": "wikipedia"
+    },
+    {
+      "title": "List of Star Trek: Lower Decks characters - Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/List_of_Star_Trek:_Lower_Decks_characters",
+      "snippet": "This is a list of characters from the series.",
+      "source": "wikipedia"
+    },
+    {
+      "title": "Star Trek: Lower Decks season 5 - Wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Star_Trek:_Lower_Decks_season_5",
+      "snippet": "Season five of the series.",
+      "source": "wikipedia"
+    }
+  ]
+}

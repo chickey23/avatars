@@ -2174,13 +2174,82 @@ button.env-tag.session-log-open-btn {
 
 .wm-project-item {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
   padding: 0.45rem 0.5rem;
   background: #16213e;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wm-project-item .context-task-actions {
+  flex-wrap: wrap;
+  margin-top: 0.1rem;
+}
+
+.wm-project-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wm-project-task-list {
+  list-style: disc;
+  margin: 0.1rem 0 0 0.2rem;
+  padding-left: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  opacity: 0.92;
+  border-left: 2px solid rgba(233, 69, 96, 0.35);
+}
+
+.wm-project-task-list--actions {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding-left: 0;
+  gap: 0.45rem;
+}
+
+.wm-project-task-item--terminal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  padding: 0.2rem 0.15rem;
+  opacity: 0.85;
+}
+
+.wm-project-nested-task {
+  font-size: 0.75rem;
+}
+
+.wm-project-nested-task .context-task-actions button {
+  font-size: 0.68rem;
+}
+
+.wm-project-project-actions {
+  margin-top: 0.15rem;
+}
+
+.wm-project-task-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+
+.wm-project-task-title {
+  word-break: break-word;
+}
+
+.wm-project-task-meta {
+  font-size: 0.62rem;
+  opacity: 0.78;
+  font-variant-numeric: tabular-nums;
 }
 
 .wm-project-item.focused {

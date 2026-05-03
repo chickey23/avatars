@@ -1,5 +1,6 @@
 mod platform_cache;
 mod targeted_search;
+mod wikidata;
 mod gmail;
 mod ollama;
 mod session_log;
@@ -36,6 +37,8 @@ pub fn run() {
             platform_cache::platform_cache_dir_display,
             targeted_search::targeted_search_query,
             targeted_search::wiki_extract_batch,
+            wikidata::wikidata_search_entities,
+            wikidata::wikidata_sparql,
         ])
         .run(tauri::generate_context!())
         .expect("error while running avatars application");

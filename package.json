@@ -11,6 +11,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1",
+    "discovery:probe": "tsx scripts/discovery-probe.ts",
+    "discovery:wiki": "tsx scripts/discovery-live-wikipedia.ts",
+    "discovery:wikidata": "tsx scripts/wikidata-resolve.ts",
     "gen:audio": "node scripts/gen-audio-cues.mjs",
     "tauri": "tauri",
     "tauri:dev:viewer": "cd viewer-tauri && tauri dev",
@@ -27,6 +30,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.0.1",
+    "tsx": "^4.19.3",
     "typescript": "~5.6.2",
     "vite": "^8.0.8",
     "vitest": "^4.1.4"

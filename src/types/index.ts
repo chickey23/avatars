@@ -232,6 +232,8 @@ export type EmailFocusArtifacts = {
 export interface SyntheticChatAction {
   id: string;
   label: string;
+  /** Shown as native `title` (tooltip) on the action button when set. */
+  hint?: string;
   /** Opaque payload consumed by the monitor's registered action handler. */
   payload?: unknown;
 }

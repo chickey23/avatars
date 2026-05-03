@@ -1,4 +1,8 @@
-import type { WorldMetadataDoc } from "./types";
+import type {
+  CuratedAssertionRecord,
+  UserProfilePatchPendingRecord,
+  WorldMetadataDoc,
+} from "./types";
 import {
   WORLD_METADATA_SCHEMA_VERSION,
   createEmptyWorldMetadataDoc,
@@ -11,12 +15,17 @@ export type WorldMetadataBackend = {
 
 export const WORLD_METADATA_STORAGE_KEY = "avatars_world_metadata_v1";
 
-/** Normalize persisted JSON; migrates v1 to v2 (adds `userProfile`). */
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return !!x && typeof x === "object" && !Array.isArray(x);
+}
+
+/** Normalize persisted JSON; migrates v1–v4 into current shape. */
 export function migrateWorldMetadataDoc(raw: unknown): WorldMetadataDoc {
   if (!raw || typeof raw !== "object") return createEmptyWorldMetadataDoc();
   const o = raw as Record<string, unknown>;
   const sv = o.schemaVersion;
-  if (sv !== 1 && sv !== WORLD_METADATA_SCHEMA_VERSION) {
+  const svNum = typeof sv === "number" ? sv : NaN;
+  if (![1, 2, 3, 4].includes(svNum)) {
     return createEmptyWorldMetadataDoc();
   }
   const people = o.people;
@@ -43,11 +52,51 @@ export function migrateWorldMetadataDoc(raw: unknown): WorldMetadataDoc {
   } else {
     userProfile = { updatedAt: Date.now() };
   }
+  const ksRaw = o.knowledgeSets;
+  const knowledgeSets: WorldMetadataDoc["knowledgeSets"] = isRecord(ksRaw)
+    ? (ksRaw as WorldMetadataDoc["knowledgeSets"])
+    : {};
+
+  const caRaw = o.curatedAssertions;
+  const curatedAssertions: WorldMetadataDoc["curatedAssertions"] = isRecord(caRaw)
+    ? (caRaw as Record<string, CuratedAssertionRecord>)
+    : {};
+
+  let pendingUserProfilePatch: UserProfilePatchPendingRecord | null | undefined;
+  const pendRaw = o.pendingUserProfilePatch;
+  if (pendRaw === null) {
+    pendingUserProfilePatch = null;
+  } else if (isRecord(pendRaw)) {
+    const id = typeof pendRaw.id === "string" ? pendRaw.id : "";
+    const p = pendRaw.patch;
+    const rid = typeof pendRaw.requestedByAvatarId === "string" ? pendRaw.requestedByAvatarId : "";
+    const uid = typeof pendRaw.userMessageId === "string" ? pendRaw.userMessageId : "";
+    const ca = typeof pendRaw.createdAt === "number" ? pendRaw.createdAt : 0;
+    if (id && isRecord(p) && rid && uid && ca) {
+      pendingUserProfilePatch = {
+        id,
+        patch: {
+          displayName:
+            typeof p.displayName === "string" ? p.displayName : undefined,
+          pronouns: typeof p.pronouns === "string" ? p.pronouns : undefined,
+          notes: typeof p.notes === "string" ? p.notes : undefined,
+        },
+        requestedByAvatarId: rid,
+        userMessageId: uid,
+        createdAt: ca,
+      };
+    }
+  }
+
   return {
     schemaVersion: WORLD_METADATA_SCHEMA_VERSION,
     people: people as WorldMetadataDoc["people"],
     projects,
     userProfile,
+    knowledgeSets,
+    curatedAssertions,
+    pendingUserProfilePatch:
+      pendingUserProfilePatch === undefined ? null : pendingUserProfilePatch,
   };
 }
 
@@ -82,10 +131,16 @@ export function worldMetadataDocHasContent(d: WorldMetadataDoc): boolean {
     Boolean(d.userProfile.displayName?.trim()) ||
     Boolean(d.userProfile.pronouns?.trim()) ||
     Boolean(d.userProfile.notes?.trim());
+  const hasCurated =
+    !!d.curatedAssertions && Object.keys(d.curatedAssertions).length > 0;
+  const hasKnowledgeSets =
+    !!d.knowledgeSets && Object.keys(d.knowledgeSets).length > 0;
   return (
     Object.keys(d.people).length > 0 ||
     Object.keys(d.projects).length > 0 ||
-    hasUser
+    hasUser ||
+    hasCurated ||
+    hasKnowledgeSets
   );
 }
 

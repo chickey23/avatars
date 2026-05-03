@@ -30,6 +30,21 @@ export function findAvatarsWithTag<A extends { systemTags?: string[] }>(
   return catalog.filter((a) => a.systemTags?.includes(tag));
 }
 
+/**
+ * Avatar ids that hold `tool_owner:<toolGroup>`, sorted for deterministic
+ * "first owner" resolution when multiple stewards claim the same group.
+ */
+export function findToolOwnerAvatarIds(
+  catalog: readonly { id: string; systemTags?: string[] }[],
+  toolGroup: string
+): string[] {
+  const tag = toolOwnerTag(toolGroup);
+  return catalog
+    .filter((a) => a.systemTags?.includes(tag))
+    .map((a) => a.id)
+    .sort();
+}
+
 export function toolOwnerTag(group: string): string {
   return `${TOOL_OWNER_PREFIX}${group}`;
 }

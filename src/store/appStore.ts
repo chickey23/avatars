@@ -329,6 +329,8 @@ export type ProcessUserTurnUiHooks = {
     avatarId: string;
     intent: AvatarCreationWorkshopIntent;
     sourceMessage?: ConversationMessage;
+    /** From {@link AvatarAgentResult.postTurnUiReason}; e.g. `open_draft_tool` when JSON tool ran. */
+    postTurnUiReason?: string;
   }) => void;
 };
 
@@ -665,6 +667,7 @@ export async function processUserTurn(
             avatarId,
             intent: wIntent,
             sourceMessage: avatarMsg,
+            postTurnUiReason: result.postTurnUiReason,
           });
         }
         onProgress?.(stripEphemeralFields(updatedContext));

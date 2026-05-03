@@ -62,7 +62,7 @@ describe("ensureProjectTaskForAvatar", () => {
       { dispatchEvent } as unknown as Window & typeof globalThis
     );
     vi.spyOn(store, "getWorldMetadata").mockReturnValue({
-      schemaVersion: 2,
+      schemaVersion: 4,
       people: {},
       projects: {
         p1: { title: "Hello", updatedAt: 1 },
@@ -93,7 +93,7 @@ describe("ensureProjectTaskForAvatar", () => {
       { dispatchEvent } as unknown as Window & typeof globalThis
     );
     vi.spyOn(store, "getWorldMetadata").mockReturnValue({
-      schemaVersion: 2,
+      schemaVersion: 4,
       people: {},
       projects: {
         p1: { title: "Hello", updatedAt: 1 },
@@ -157,7 +157,7 @@ describe("ensureProjectTaskForAvatar", () => {
       { dispatchEvent } as unknown as Window & typeof globalThis
     );
     vi.spyOn(store, "getWorldMetadata").mockReturnValue({
-      schemaVersion: 2,
+      schemaVersion: 4,
       people: {},
       projects: {},
       userProfile: { updatedAt: 1 },

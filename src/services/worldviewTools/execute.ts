@@ -3,6 +3,7 @@ import {
   patchWorldMetadata,
   patchUserProfile,
   getWorldMetadata,
+  setPendingUserProfilePatch,
 } from "../worldMetadata/store";
 import type { PersonMetadataRecord, ProjectMetadataRecord } from "../worldMetadata/types";
 import { ensureProjectTaskForAvatar } from "../projectAvatarLink";
@@ -18,6 +19,7 @@ import {
   type PlatformTaskDraftPayload,
 } from "../platform";
 import type { WorldviewToolCall } from "./parse";
+import type { UserProfileRecord } from "../worldMetadata/types";
 
 const MAX_PATCH_KEYS = 12;
 const MAX_STRING_FIELD = 8000;
@@ -27,6 +29,50 @@ function clampStr(s: unknown, max: number): string | undefined {
   const t = s.trim();
   if (!t) return undefined;
   return t.length > max ? t.slice(0, max - 1) + "…" : t;
+}
+
+export type WorldviewToolExecutionResult = {
+  name: string;
+  ok: boolean;
+  error?: string;
+  /** When set, `user_profile.patch` was stored as a pending chat proposal instead of applied. */
+  userProfilePending?: boolean;
+};
+
+function normProfileField(s: string | undefined): string {
+  return (s ?? "").trim();
+}
+
+function userProfilePatchIsMaterial(
+  prev: UserProfileRecord,
+  patch: { displayName?: string; pronouns?: string; notes?: string }
+): boolean {
+  const nextDisplay =
+    patch.displayName !== undefined ? patch.displayName : prev.displayName;
+  const nextPronouns =
+    patch.pronouns !== undefined ? patch.pronouns : prev.pronouns;
+  const nextNotes = patch.notes !== undefined ? patch.notes : prev.notes;
+  return (
+    normProfileField(nextDisplay) !== normProfileField(prev.displayName) ||
+    normProfileField(nextPronouns) !== normProfileField(prev.pronouns) ||
+    normProfileField(nextNotes) !== normProfileField(prev.notes)
+  );
+}
+
+/** User explicitly asked to persist identity/preferences to their profile this turn. */
+export function userExplicitProfileSaveIntent(latestUserMessageContent: string | undefined): boolean {
+  if (!latestUserMessageContent) return false;
+  const t = latestUserMessageContent.trim().toLowerCase();
+  if (t.length < 8) return false;
+  const saveCue = /\b(remember|update|save|store|add|write)\b/.test(t);
+  const profileCue =
+    /\b(my\s+)?profile\b|\bdisplay\s*name\b|\bpronouns\b|\bmy\s+notes\b/.test(t);
+  return saveCue && profileCue;
+}
+
+function newPendingPatchId(): string {
+  const g = globalThis as { crypto?: { randomUUID?: () => string } };
+  return g.crypto?.randomUUID?.() ?? `pp_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**
@@ -44,9 +90,11 @@ export function executeWorldviewTools(
     avatar?: Avatar;
     /** When set with user turns, restricts new project ids to this avatar only. */
     executorAvatarId?: string;
+    /** Latest user line for this turn (used to gate `user_profile.patch`). */
+    latestUserMessageContent?: string;
   }
-): { name: string; ok: boolean; error?: string }[] {
-  const results: { name: string; ok: boolean; error?: string }[] = [];
+): WorldviewToolExecutionResult[] {
+  const results: WorldviewToolExecutionResult[] = [];
   for (const tool of tools) {
     if (meta.avatar && !avatarMayUseAgenticTool(meta.avatar, tool.name)) {
       results.push({ name: tool.name, ok: false, error: "permission_denied" });
@@ -130,11 +178,26 @@ export function executeWorldviewTools(
             results.push({ name: tool.name, ok: false, error: "bad patch" });
             break;
           }
-          patchUserProfile({
+          const patch = {
             displayName: clampStr(p.displayName, MAX_STRING_FIELD),
             pronouns: clampStr(p.pronouns, 200),
             notes: clampStr(p.notes, MAX_STRING_FIELD),
-          });
+          };
+          const prev = getWorldMetadata().userProfile;
+          const material = userProfilePatchIsMaterial(prev, patch);
+          const explicitSave = userExplicitProfileSaveIntent(meta.latestUserMessageContent);
+          if (material && !explicitSave) {
+            setPendingUserProfilePatch({
+              id: newPendingPatchId(),
+              patch,
+              requestedByAvatarId: meta.avatarId,
+              userMessageId: meta.userMessageId,
+              createdAt: Date.now(),
+            });
+            results.push({ name: tool.name, ok: true, userProfilePending: true });
+            break;
+          }
+          patchUserProfile(patch);
           results.push({ name: tool.name, ok: true });
           break;
         }

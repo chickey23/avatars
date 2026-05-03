@@ -1,7 +1,9 @@
 import type { AvatarCreationWorkshopIntent } from "../types";
 import {
-  COMPLEX_TASK_PLANNER_FALLBACK_AVATAR_ID,
-} from "./monitors/complexTaskPlanner";
+  getAvatarCatalogSnapshot,
+  resolveAvatarCreationToolOwnerId,
+} from "./avatarCreationRouting";
+import { isSystemAvatarId } from "./platform/routing";
 import {
   getPlatformStore,
   updateTaskWorkflow,
@@ -9,6 +11,18 @@ import {
   type PlatformTaskRecord,
 } from "./platform/store";
 import { postAvatarCreationWorkshopOffer } from "./avatarCreationOffer";
+
+/** Avatar id used for workshop offers and workflow `actor` for avatar_creation tasks. */
+function resolveAvatarCreationExecutionAvatarId(task: PlatformTaskRecord): string {
+  const catalog = getAvatarCatalogSnapshot();
+  if (
+    task.ownerAvatarId &&
+    !isSystemAvatarId(task.ownerAvatarId, catalog)
+  ) {
+    return task.ownerAvatarId;
+  }
+  return resolveAvatarCreationToolOwnerId(catalog);
+}
 
 export type AvatarCreationTaskHints = AvatarCreationWorkshopIntent;
 
@@ -70,7 +84,37 @@ export function selectNextQueuedAvatarCreationTask(
     if (w !== "open" && w !== "ready") continue;
     if (!extractAvatarCreationTaskHints(t.notes)) continue;
     const project = store.projects[t.projectId];
-    if (!project || project.status === "archived") continue;
+    if (!project || project.status === "archived" || project.status === "done")
+      continue;
+    if (projectHasActiveAvatarCreationStep(store, t.projectId)) continue;
+    candidates.push(t);
+  }
+  candidates.sort((a, b) => a.createdAt - b.createdAt);
+  return candidates[0];
+}
+
+/**
+ * Like {@link selectNextQueuedAvatarCreationTask} but only tasks under
+ * `projectId` (Workshops → Projects scoped Execute).
+ */
+export function selectNextQueuedAvatarCreationTaskForProject(
+  store: PlatformStoreDoc,
+  projectId: string
+): PlatformTaskRecord | undefined {
+  const pid = projectId.trim();
+  if (!pid) return undefined;
+  const candidates: PlatformTaskRecord[] = [];
+  for (const t of Object.values(store.tasks)) {
+    if (t.projectId !== pid) continue;
+    if (t.requiredCapability?.id !== "avatar_creation") continue;
+    if (t.status === "done" || t.status === "cancelled") continue;
+    const w = t.workflowStatus ?? "open";
+    if (w === "done" || w === "cancelled") continue;
+    if (w !== "open" && w !== "ready") continue;
+    if (!extractAvatarCreationTaskHints(t.notes)) continue;
+    const project = store.projects[t.projectId];
+    if (!project || project.status === "archived" || project.status === "done")
+      continue;
     if (projectHasActiveAvatarCreationStep(store, t.projectId)) continue;
     candidates.push(t);
   }
@@ -85,8 +129,9 @@ export function executeAvatarCreationTask(
   if (task.requiredCapability?.id !== "avatar_creation") return false;
   const intent = extractAvatarCreationTaskHints(task.notes);
   if (!intent) return false;
+  const executionAvatarId = resolveAvatarCreationExecutionAvatarId(task);
   const posted = postAvatarCreationWorkshopOffer({
-    avatarId: COMPLEX_TASK_PLANNER_FALLBACK_AVATAR_ID,
+    avatarId: executionAvatarId,
     intent,
     linkedPlatformTaskId: task.id,
     contentIntro: options?.contentIntro,
@@ -94,7 +139,7 @@ export function executeAvatarCreationTask(
   if (!posted) return false;
   updateTaskWorkflow({
     taskId: task.id,
-    actor: COMPLEX_TASK_PLANNER_FALLBACK_AVATAR_ID,
+    actor: executionAvatarId,
     workflowStatus: "waiting_for_user",
     nextActor: "user",
     detail: "avatar creation offer posted",
@@ -118,4 +163,14 @@ export function executeAvatarCreationTaskById(taskId: string): boolean {
   const task = getPlatformStore().tasks[taskId];
   if (!task) return false;
   return executeAvatarCreationTask(task);
+}
+
+/** Posts the next queued avatar-creation offer for this project only. */
+export function executeNextAvatarCreationTaskForProject(projectId: string): boolean {
+  const next = selectNextQueuedAvatarCreationTaskForProject(
+    getPlatformStore(),
+    projectId
+  );
+  if (!next) return false;
+  return executeAvatarCreationTask(next);
 }

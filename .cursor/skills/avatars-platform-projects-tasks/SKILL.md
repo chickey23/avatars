@@ -17,6 +17,7 @@ description: >-
 - Multi-step **“create several named avatars”** flows, **synthetic review cards**, or **Creation workshop** offers tied to platform tasks.
 - **Context column → Tasks** tab, **Focus** on a task, or **SituationFocus.task**.
 - Anything involving **`requiredCapability.id === "avatar_creation"`**, **`workflowStatus`**, or **`completionEvidence`**.
+- **See also:** For **single-turn chat** `avatars.workshop.open_draft`, **parse vs UI**, and **Creation workshop navigation** from a normal user message (not the platform task queue), use [**avatars-avatar-creation-chat-trace**](../avatars-avatar-creation-chat-trace/SKILL.md).
 
 ---
 

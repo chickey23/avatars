@@ -437,9 +437,21 @@ function reconcileProjectStatusFromTasks(projectId: string, actor: string): void
   const hasUnresolved = projectTasks.some(
     (t) => t.status !== "done" && t.status !== "cancelled"
   );
-  const shouldBeDone = !hasUnresolved;
-  const nextStatus: PlatformProjectStatus = shouldBeDone ? "done" : "active";
-  const nextWorkflow: PlatformWorkflowStatus = shouldBeDone ? "done" : "open";
+  let nextStatus: PlatformProjectStatus;
+  let nextWorkflow: PlatformWorkflowStatus;
+  if (hasUnresolved) {
+    nextStatus = "active";
+    nextWorkflow = "open";
+  } else {
+    const allSucceeded = projectTasks.every((t) => t.status === "done");
+    if (allSucceeded) {
+      nextStatus = "done";
+      nextWorkflow = "done";
+    } else {
+      nextStatus = "archived";
+      nextWorkflow = "cancelled";
+    }
+  }
   if (project.status === nextStatus && (project.workflowStatus ?? "open") === nextWorkflow) {
     return;
   }

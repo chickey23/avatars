@@ -4,7 +4,7 @@
 
 **Stable SPEC IDs for cross-reference:** `SPEC-IMPLEMENTATION-ORDER`, `SPEC-CONTEXT-SCORING`, `SPEC-PROACTIVE-NOTIFY`, `SPEC-CONVO-ARCHIVE`, `SPEC-VALIDATION-MAP`, `SPEC-AI-INSTRUCTIONS`.
 
-**Related:** [SWITCHBOARD_VISUALIZATION.md](SWITCHBOARD_VISUALIZATION.md), [PROGRESS.md](../PROGRESS.md), [HANDOFF_TOMORROW.md](../HANDOFF_TOMORROW.md).
+**Related:** [VISION_AND_USE_CASES.md](VISION_AND_USE_CASES.md) (product intent and proposal alignment), [SWITCHBOARD_VISUALIZATION.md](SWITCHBOARD_VISUALIZATION.md), [PROGRESS.md](../PROGRESS.md), [HANDOFF_TOMORROW.md](../HANDOFF_TOMORROW.md).
 
 ---
 
@@ -57,6 +57,10 @@
 Use the operating grammar in [STYLEGUIDE.md](STYLEGUIDE.md): descriptors, instructions, capabilities, stewardships, plan steps, and tool calls are separate. Instructions should describe success conditions; capabilities and approvals should gate execution. Avoid making negative commands the main control surface when eligibility checks can define the valid path.
 
 **Complex Task Monitor pattern:** The preferred first layer is deterministic orchestration, not a mandatory Ollama prepass. Complex requests should produce a user-reviewable monitor card, modeled on `monitor:unassigned_projects`, that can show the discovered plan, candidate items, missing requirements, and next actions before tasks or model/tool calls are created.
+
+**Chat-driven set discovery (implicit):** Cast- or roster-style user lines (e.g. “Who was in …?”, “main cast of …”, “states of …”, “parts of …”, “list of …” with tooling negatives) that do not match `parseAvatarCreationPlan` still surface the same `complex_task_planner` **Search members** flow and persist to `knowledgeSets` via the existing discovery stack (`parseImplicitSetDiscoveryPlan`). After Wikidata misses a confident roster, the desktop path tries **Ollama** once before legacy web search when Ollama is ready. Stewardship copy on synthetic discovery cards is scoped to explicit set / avatar-creation flows (not implicit-only roster trivia). Synthetic cards may attribute to `primaryAvatarId` when the send path supplies it. Per-avatar internet gating for Wikidata vs legacy web remains a follow-up.
+
+**World metadata v4:** Optional `curatedAssertions` (seeded idempotently at startup) and optional `setCompositionTags` on `knowledgeSets` for forward-compatible tagging. `user_profile.patch` without explicit user save language materializes as a pending on-disk proposal plus **Apply** / **Discard** synthetic chat actions before mutating `userProfile`.
 
 1. Treat the **Project** as the narrative container: user goal, rationale, constraints, source links, and progress history.
 2. Treat **Tasks** as the execution grain: one clear action, owner avatar or required capability, status/workflow state, blocker/approval fields, and completion evidence.

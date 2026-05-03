@@ -75,15 +75,18 @@ import {
   getPlatformStore,
   subscribePlatformStore,
   updateTaskWorkflow,
+  upsertProject,
 } from "../services/platform/store";
 import {
   emitSessionChangeDelta,
   subscribeSessionChangeDelta,
 } from "../services/sessionChangeTelemetry";
+import { groupPlatformTasksByProjectId } from "./platformTasksGrouping";
 import { isSystemAvatarId } from "../services/platform/routing";
 import { patchWorldMetadataProjectsForExecution } from "../services/projectSync";
 import { loadWorldviewAudit } from "../services/worldviewAudit";
 import { executeAvatarCreationTaskById } from "../services/avatarCreationTaskExecution";
+import { completeTasksForProject } from "../services/longTermTasks";
 import {
   applyScoreDeltaWithCap,
   listPopInAvatarIdsForProjectFocus,
@@ -937,21 +940,37 @@ export function useAppContentModel() {
 
   const projectsList = useMemo(() => {
     void projectsRefresh;
-    const merged = new Map<string, { title: string; summary?: string }>();
-    for (const [id, p] of Object.entries(getPlatformStore().projects)) {
-      if (!p.title?.trim() || p.status === "archived") continue;
+    const merged = new Map<
+      string,
+      { title: string; summary?: string; notes?: string }
+    >();
+    const store = getPlatformStore();
+    for (const [id, p] of Object.entries(store.projects)) {
+      if (!p.title?.trim()) continue;
+      if (p.status === "archived" || p.status === "done") continue;
       merged.set(id, { title: p.title, summary: p.summary });
     }
     for (const [id, p] of Object.entries(getWorldMetadata().projects)) {
       if (!p.title?.trim()) continue;
+      const plat = store.projects[id];
+      /** Done projects live under Completed; archived (cancelled) stay visible via world row so the user can Remove. */
+      if (plat?.status === "done") continue;
+      const prev = merged.get(id);
       merged.set(id, {
         title: p.title,
-        summary: p.summary ?? merged.get(id)?.summary,
+        summary: p.summary ?? prev?.summary,
+        notes: p.notes ?? prev?.notes,
       });
     }
     return [...merged.entries()].sort((a, b) =>
       a[1].title.localeCompare(b[1].title, undefined, { sensitivity: "base" })
     );
+  }, [projectsRefresh]);
+
+  /** Platform tasks keyed by `projectId` for Workshops → Projects nested lists. */
+  const platformTasksByProjectId = useMemo(() => {
+    void projectsRefresh;
+    return groupPlatformTasksByProjectId(getPlatformStore().tasks);
   }, [projectsRefresh]);
 
   /**
@@ -982,7 +1001,7 @@ export function useAppContentModel() {
   const completedProjectsList = useMemo(() => {
     void projectsRefresh;
     return Object.entries(getPlatformStore().projects)
-      .filter(([, p]) => p.title?.trim() && (p.status === "done" || p.status === "archived"))
+      .filter(([, p]) => p.title?.trim() && p.status === "done")
       .map(([id, p]) => [id, { title: p.title, summary: p.summary }] as const)
       .sort((a, b) =>
         a[1].title.localeCompare(b[1].title, undefined, { sensitivity: "base" })
@@ -1109,6 +1128,95 @@ export function useAppContentModel() {
     );
     setProjectsRefresh((n) => n + 1);
   }, []);
+
+  const focusWorldOrPlatformProject = useCallback(
+    (projectId: string, title: string) => {
+      setFocus((f) => {
+        const next: typeof f = {
+          ...f,
+          project: { id: projectId, title },
+        };
+        const taskId = f.task?.id;
+        if (taskId) {
+          const t = getPlatformStore().tasks[taskId];
+          if (t?.projectId === projectId) {
+            next.task = undefined;
+          }
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  const cancelProjectEliminate = useCallback(
+    (
+      id: string,
+      title: string,
+      options?: { variant?: "cancel" | "remove" }
+    ) => {
+      const variant = options?.variant ?? "cancel";
+      const msg =
+        variant === "remove"
+          ? `Remove "${title}" from your catalogue? This deletes the platform project and any remaining tasks.`
+          : `Cancel project "${title}"? This removes the project from your catalogue and deletes its platform tasks.`;
+      if (!window.confirm(msg)) {
+        return;
+      }
+      patchWorldMetadataProjectsForExecution({ [id]: null });
+      setFocus((f) => {
+        let next = f;
+        if (f.project?.id === id) {
+          next = { ...next, project: undefined };
+        }
+        const taskId = f.task?.id;
+        if (taskId && getPlatformStore().tasks[taskId]?.projectId === id) {
+          next = { ...next, task: undefined };
+        }
+        return next;
+      });
+      setProjectsRefresh((n) => n + 1);
+    },
+    []
+  );
+
+  const completeProjectSuccess = useCallback((projectId: string) => {
+    const store = getPlatformStore();
+    const project = store.projects[projectId];
+    if (!project?.title?.trim()) return;
+    const projectTasks = Object.values(store.tasks).filter(
+      (t) => t.projectId === projectId
+    );
+    const allDone =
+      projectTasks.length === 0 ||
+      projectTasks.every((t) => t.status === "done");
+    if (!allDone) return;
+    upsertProject({
+      id: projectId,
+      title: project.title,
+      summary: project.summary ?? null,
+      status: "done",
+      workflowStatus: "done",
+      actor: "user",
+    });
+    completeTasksForProject(projectId);
+    setProjectsRefresh((n) => n + 1);
+  }, []);
+
+  const canCompletePlatformProject = useCallback(
+    (projectId: string) => {
+      const store = getPlatformStore();
+      const proj = store.projects[projectId];
+      if (!proj?.title?.trim() || proj.status === "done") return false;
+      const tasks = Object.values(store.tasks).filter(
+        (t) => t.projectId === projectId
+      );
+      return (
+        tasks.length === 0 || tasks.every((t) => t.status === "done")
+      );
+    },
+    [projectsRefresh]
+  );
 
   const messageIdsKey = messages.map((m) => m.id).join(",");
   const turnByUserId = useMemo(() => {
@@ -1671,6 +1779,10 @@ export function useAppContentModel() {
     handlePopInAvatarClick,
     handlePortraitFileChange,
     handleRemoveWorldProject,
+    focusWorldOrPlatformProject,
+    cancelProjectEliminate,
+    completeProjectSuccess,
+    canCompletePlatformProject,
     handleSaveUserProfile,
     handleSend,
     handleWellOfSoulsAfterGenerate,
@@ -1715,6 +1827,7 @@ export function useAppContentModel() {
     assignProjectOwnerUiMuted,
     assignableProjectsList,
     projectsList,
+    platformTasksByProjectId,
     projectsRefresh,
     recentEmails,
     reducedMotion,

@@ -31,6 +31,8 @@ export type MonitorTrigger =
 export interface MonitorAction {
   id: string;
   label: string;
+  /** Tooltip / native `title` on the chat action button (optional). */
+  hint?: string;
   /** Opaque, serialized payload for the handler registered by the monitor. */
   payload?: unknown;
 }
@@ -63,6 +65,11 @@ export interface MonitorRunContext {
     content: string;
     timestamp: number;
   };
+  /**
+   * Optional: primary / addressed avatar when the user sent a turn (see SendMessageOptions).
+   * Monitors may use this for synthetic attribution; omit when unknown.
+   */
+  primaryAvatarId?: string;
 }
 
 export interface MonitorDef {
@@ -131,7 +138,7 @@ export interface PollResult {
 export async function pollAll(
   reason: MonitorTrigger,
   catalog: readonly Avatar[],
-  options: Pick<MonitorRunContext, "latestUserMessage"> = {}
+  options: Pick<MonitorRunContext, "latestUserMessage" | "primaryAvatarId"> = {}
 ): Promise<PollResult> {
   const now = Date.now();
   const postsByMonitor: PollResult["postsByMonitor"] = [];
@@ -162,6 +169,7 @@ export async function pollAll(
         trigger: reason,
         now,
         latestUserMessage: options.latestUserMessage,
+        primaryAvatarId: options.primaryAvatarId,
       });
       if (result.length) {
         postsByMonitor.push({ name: def.name, posts: result });

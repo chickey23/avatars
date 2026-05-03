@@ -1,5 +1,90 @@
 import { useAppContentView } from "../app/appContentViewContext";
 
+function ProjectTaskNest({ projectId }: { projectId: string }) {
+  const m = useAppContentView();
+  const list = m.platformTasksByProjectId[projectId];
+  if (!list?.length) return null;
+  const projectTitle =
+    m.contextProjectTitleById[projectId] ?? projectId;
+  return (
+    <ul
+      className="wm-project-task-list wm-project-task-list--actions"
+      aria-label="Platform tasks for this project"
+    >
+      {list.map((t) => {
+        const terminal = t.status === "done" || t.status === "cancelled";
+        const focused = m.focus.task?.id === t.id;
+        const canExecute = t.requiredCapability?.id === "avatar_creation";
+        if (terminal) {
+          return (
+            <li key={t.id} className="wm-project-task-item wm-project-task-item--terminal">
+              <span className="wm-project-task-title">{t.title}</span>
+              <span className="wm-project-task-meta">
+                {projectTitle} · {t.workflowStatus} · {t.status}
+              </span>
+            </li>
+          );
+        }
+        return (
+          <li
+            key={t.id}
+            className={`context-task-item wm-project-nested-task ${focused ? "focused" : ""}`}
+          >
+            <div className="context-task-main">
+              <button
+                type="button"
+                className="context-task-title"
+                onClick={() => m.focusPlatformTask(t.id)}
+              >
+                {t.title}
+              </button>
+              <span className="context-task-meta">
+                {projectTitle} · {t.workflowStatus ?? t.status}
+                {t.requiredCapability
+                  ? ` · needs ${t.requiredCapability.id}`
+                  : ""}
+              </span>
+              {t.notes && (
+                <span className="context-task-notes">
+                  {t.notes.replace(/\s+/g, " ").slice(0, 160)}
+                  {t.notes.length > 160 ? "…" : ""}
+                </span>
+              )}
+            </div>
+            <div className="context-task-actions">
+              <button type="button" onClick={() => m.focusPlatformTask(t.id)}>
+                Focus
+              </button>
+              <button
+                type="button"
+                disabled={!canExecute}
+                title={
+                  canExecute
+                    ? "Post the avatar creation offer for this task"
+                    : "No executor yet for this task type"
+                }
+                onClick={() => m.executePlatformTask(t.id)}
+              >
+                Execute
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Cancel task "${t.title}"?`)) {
+                    m.cancelPlatformTask(t.id);
+                  }
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /**
  * World metadata projects — same capabilities as the former Context → Projects tab.
  */
@@ -13,13 +98,15 @@ export function ProjectWorkshopPanel() {
       <header className="tool-workshop-header">
         <h2 className="tool-workshop-title">Projects</h2>
         <p className="tool-workshop-sub">
-          Local shared metadata (this browser). Used for chat context, tasks, and
-          linking <strong>Unmet Needs</strong>. Previously under Context → Projects.
+          Merges world-metadata titles with <strong>platform</strong> projects (e.g.
+          Build set). Platform tasks are listed under each project when present.
+          Previously under Context → Projects.
         </p>
       </header>
       <div className="context-projects">
         <p className="context-projects-hint">
-          For future project execution and context scoring.
+          For context scoring and execution; nested rows are durable platform tasks
+          (Focus / Execute / Cancel match the Context → Tasks tab).
         </p>
         <div className="context-projects-add">
           <input
@@ -69,37 +156,49 @@ export function ProjectWorkshopPanel() {
                   m.focus.project?.id === id ? "focused" : ""
                 }`}
               >
-                <button
-                  type="button"
-                  className="wm-project-select"
-                  onClick={() =>
-                    m.setFocus((f) => ({
-                      ...f,
-                      project: { id, title: proj.title },
-                    }))
-                  }
-                  aria-label={`Set focus to project ${proj.title}`}
-                >
-                  <span className="wm-project-title">{proj.title}</span>
-                  {proj.summary?.trim() && (
-                    <span className="wm-project-summary">{proj.summary.trim()}</span>
-                  )}
-                  {proj.notes?.trim() && (
-                    <span className="wm-project-notes">{proj.notes.trim()}</span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="wm-project-remove"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    m.handleRemoveWorldProject(id);
-                  }}
-                  aria-label={`Remove ${proj.title}`}
-                  title="Remove from list"
-                >
-                  ×
-                </button>
+                <div className="wm-project-item-main">
+                  <button
+                    type="button"
+                    className="wm-project-select"
+                    onClick={() => m.focusWorldOrPlatformProject(id, proj.title)}
+                    aria-label={`Set focus to project ${proj.title}`}
+                  >
+                    <span className="wm-project-title">{proj.title}</span>
+                    {proj.summary?.trim() && (
+                      <span className="wm-project-summary">{proj.summary.trim()}</span>
+                    )}
+                    {proj.notes?.trim() && (
+                      <span className="wm-project-notes">{proj.notes.trim()}</span>
+                    )}
+                  </button>
+                  <ProjectTaskNest projectId={id} />
+                  <div className="context-task-actions wm-project-project-actions">
+                    <button
+                      type="button"
+                      onClick={() => m.focusWorldOrPlatformProject(id, proj.title)}
+                    >
+                      Focus
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => m.cancelProjectEliminate(id, proj.title)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!m.canCompletePlatformProject(id)}
+                      title={
+                        m.canCompletePlatformProject(id)
+                          ? "Mark project successful (completed)"
+                          : "Complete when every platform task is done, or when there are no tasks"
+                      }
+                      onClick={() => m.completeProjectSuccess(id)}
+                    >
+                      Complete
+                    </button>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
@@ -115,34 +214,38 @@ export function ProjectWorkshopPanel() {
                     m.focus.project?.id === id ? "focused" : ""
                   }`}
                 >
-                  <button
-                    type="button"
-                    className="wm-project-select"
-                    onClick={() =>
-                      m.setFocus((f) => ({
-                        ...f,
-                        project: { id, title: proj.title },
-                      }))
-                    }
-                    aria-label={`Set focus to project ${proj.title}`}
-                  >
-                    <span className="wm-project-title">{proj.title}</span>
-                    {proj.summary?.trim() && (
-                      <span className="wm-project-summary">{proj.summary.trim()}</span>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="wm-project-remove"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      m.handleRemoveWorldProject(id);
-                    }}
-                    aria-label={`Remove ${proj.title}`}
-                    title="Remove from list"
-                  >
-                    ×
-                  </button>
+                  <div className="wm-project-item-main">
+                    <button
+                      type="button"
+                      className="wm-project-select"
+                      onClick={() => m.focusWorldOrPlatformProject(id, proj.title)}
+                      aria-label={`Set focus to project ${proj.title}`}
+                    >
+                      <span className="wm-project-title">{proj.title}</span>
+                      {proj.summary?.trim() && (
+                        <span className="wm-project-summary">{proj.summary.trim()}</span>
+                      )}
+                    </button>
+                    <ProjectTaskNest projectId={id} />
+                    <div className="context-task-actions wm-project-project-actions">
+                      <button
+                        type="button"
+                        onClick={() => m.focusWorldOrPlatformProject(id, proj.title)}
+                      >
+                        Focus
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          m.cancelProjectEliminate(id, proj.title, {
+                            variant: "remove",
+                          })
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>

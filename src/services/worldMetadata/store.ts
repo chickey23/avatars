@@ -1,6 +1,9 @@
 import type {
+  CuratedAssertionRecord,
+  KnowledgeSetRecord,
   PersonMetadataRecord,
   ProjectMetadataRecord,
+  UserProfilePatchPendingRecord,
   UserProfileRecord,
   WorldMetadataDoc,
 } from "./types";
@@ -20,6 +23,8 @@ import {
 } from "./backend";
 import { WORLD_METADATA_SCHEMA_VERSION } from "./types";
 import { emitSessionChangeDelta } from "../sessionChangeTelemetry";
+import { hashPlan } from "../complexTasks/avatarCreationPlanner";
+import { CURATED_ASSERTION_SEEDS } from "../../data/curatedAssertionSeeds";
 
 let doc: WorldMetadataDoc = createEmptyWorldMetadataDoc();
 let loaded = false;
@@ -97,6 +102,171 @@ export function __resetWorldMetadataForTests(): void {
     clearTimeout(persistTimer);
     persistTimer = null;
   }
+}
+
+function mergeKnowledgeSetsPatch(
+  prev: WorldMetadataDoc["knowledgeSets"],
+  patch: Partial<Record<string, KnowledgeSetRecord | null>>
+): WorldMetadataDoc["knowledgeSets"] {
+  const base = prev ?? {};
+  const next = { ...base };
+  for (const [id, rec] of Object.entries(patch)) {
+    if (rec === null) {
+      delete next[id];
+      continue;
+    }
+    if (!rec) continue;
+    next[id] = rec;
+  }
+  return next;
+}
+
+/**
+ * Upsert structured knowledge sets (Wikidata-backed cast lists, etc.).
+ * Shared-shape public data; colocated in world metadata until a second consumer exists.
+ */
+export function patchKnowledgeSets(
+  patch: Partial<Record<string, KnowledgeSetRecord | null>>
+): WorldMetadataDoc {
+  ensureWorldMetadataLoaded();
+  doc = {
+    ...doc,
+    knowledgeSets: mergeKnowledgeSetsPatch(doc.knowledgeSets, patch),
+  };
+  schedulePersistWorldMetadata();
+  emitSessionChangeDelta(1);
+  return doc;
+}
+
+function mergeCuratedAssertionsPatch(
+  prev: WorldMetadataDoc["curatedAssertions"],
+  patch: Partial<Record<string, CuratedAssertionRecord | null>>
+): WorldMetadataDoc["curatedAssertions"] {
+  const base = prev ?? {};
+  const next = { ...base };
+  for (const [id, rec] of Object.entries(patch)) {
+    if (rec === null) {
+      delete next[id];
+      continue;
+    }
+    if (!rec) continue;
+    next[id] = rec;
+  }
+  return next;
+}
+
+export function patchCuratedAssertions(
+  patch: Partial<Record<string, CuratedAssertionRecord | null>>
+): WorldMetadataDoc {
+  ensureWorldMetadataLoaded();
+  doc = {
+    ...doc,
+    curatedAssertions: mergeCuratedAssertionsPatch(doc.curatedAssertions, patch),
+  };
+  schedulePersistWorldMetadata();
+  emitSessionChangeDelta(1);
+  return doc;
+}
+
+function normalizeCuratedAssertionText(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function curatedAssertionDeterministicId(object: string, assertion: string): string {
+  const o = normalizeCuratedAssertionText(object).toLowerCase();
+  const a = normalizeCuratedAssertionText(assertion).toLowerCase();
+  return `ca_${hashPlan(`${o}|${a}`)}`;
+}
+
+function newMergeAssertionId(): string {
+  const g = globalThis as { crypto?: { randomUUID?: () => string } };
+  const u = g.crypto?.randomUUID?.() ?? `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  return `ca_m_${u}`;
+}
+
+/**
+ * Insert or replace one curated assertion. Default id is deterministic from
+ * object+assertion; pass `merge: true` to add a second assertion for the same object.
+ */
+export function upsertCuratedAssertion(input: {
+  object: string;
+  assertion: string;
+  certainty: number;
+  source: string;
+  merge?: boolean;
+}): CuratedAssertionRecord {
+  ensureWorldMetadataLoaded();
+  const object = normalizeCuratedAssertionText(input.object);
+  const assertion = normalizeCuratedAssertionText(input.assertion);
+  const certainty = Math.min(1, Math.max(0, Number(input.certainty) || 0));
+  const source = normalizeCuratedAssertionText(input.source);
+  const nowTs = Date.now();
+  const id = input.merge ? newMergeAssertionId() : curatedAssertionDeterministicId(object, assertion);
+  const rec: CuratedAssertionRecord = {
+    id,
+    object,
+    assertion,
+    certainty,
+    source,
+    updatedAt: nowTs,
+  };
+  patchCuratedAssertions({ [id]: rec });
+  return rec;
+}
+
+/**
+ * Idempotent seed of bundled curated assertions. Skips rows whose (object, assertion)
+ * already exists (case-insensitive).
+ */
+export function seedCuratedAssertionsIntoWorldMetadata(): string[] {
+  ensureWorldMetadataLoaded();
+  const existing = Object.values(doc.curatedAssertions ?? {});
+  const pairKey = (o: string, a: string) =>
+    `${normalizeCuratedAssertionText(o).toLowerCase()}\x00${normalizeCuratedAssertionText(a).toLowerCase()}`;
+  const seen = new Set(existing.map((e) => pairKey(e.object, e.assertion)));
+  const inserted: string[] = [];
+  for (const row of CURATED_ASSERTION_SEEDS) {
+    if (seen.has(pairKey(row.object, row.assertion))) continue;
+    const r = upsertCuratedAssertion({
+      object: row.object,
+      assertion: row.assertion,
+      certainty: row.certainty,
+      source: row.source,
+      merge: false,
+    });
+    inserted.push(r.id);
+    seen.add(pairKey(row.object, row.assertion));
+  }
+  return inserted;
+}
+
+export function setPendingUserProfilePatch(p: UserProfilePatchPendingRecord): WorldMetadataDoc {
+  ensureWorldMetadataLoaded();
+  doc = { ...doc, pendingUserProfilePatch: p };
+  schedulePersistWorldMetadata();
+  emitSessionChangeDelta(1);
+  return doc;
+}
+
+export function clearPendingUserProfilePatch(): WorldMetadataDoc {
+  ensureWorldMetadataLoaded();
+  if (doc.pendingUserProfilePatch == null) return doc;
+  doc = { ...doc, pendingUserProfilePatch: null };
+  schedulePersistWorldMetadata();
+  emitSessionChangeDelta(1);
+  return doc;
+}
+
+/** Apply pending profile patch and clear pending. Returns null if none pending. */
+export function applyPendingUserProfilePatch(): WorldMetadataDoc | null {
+  ensureWorldMetadataLoaded();
+  const p = doc.pendingUserProfilePatch;
+  if (!p) return null;
+  patchUserProfile(p.patch);
+  doc = { ...doc, pendingUserProfilePatch: null };
+  schedulePersistWorldMetadata();
+  emitSessionChangeDelta(1);
+  return doc;
 }
 
 export function getWorldMetadata(): WorldMetadataDoc {

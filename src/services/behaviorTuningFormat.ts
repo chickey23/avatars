@@ -125,7 +125,7 @@ function toolMandateSuffix(
     (profile === "patch_facts" || profile === "general") &&
     intent === "fact_save"
   ) {
-    return " **Tools:** The user asked to save or track durable facts. When appropriate, use one trailing ```json avatars_tools_v1 block (patch_projects, patch_people, or user_profile.patch as allowed). Do not invent external APIs in prose.";
+    return " **Tools:** The user asked to save or track durable facts. When appropriate, use one trailing ```json avatars_tools_v1 block (patch_projects, patch_people, or user_profile.patch as allowed). Do not invent external APIs in prose. **user_profile.patch** is only for this human's identity and personal preferences (display name, pronouns, notes about themselves)—not encyclopedic answers, cast lists, or third-party biographies.";
   }
   return "";
 }

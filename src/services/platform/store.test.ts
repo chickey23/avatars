@@ -124,7 +124,7 @@ describe("platform store", () => {
     expect(getPlatformStore().tasks[t.id]).toBeUndefined();
   });
 
-  it("auto-closes a project when all its tasks are resolved", () => {
+  it("marks project done only when every task is done (not mixed terminal)", () => {
     const p = upsertProject({ title: "Closable", actor: "user" });
     const t1 = upsertTask({ projectId: p.id, title: "Task A", actor: "user" });
     const t2 = upsertTask({ projectId: p.id, title: "Task B", actor: "user" });
@@ -136,6 +136,28 @@ describe("platform store", () => {
 
     updateTaskWorkflow({ taskId: t2.id, actor: "user", workflowStatus: "cancelled" });
     project = getPlatformStore().projects[p.id]!;
+    expect(project.status).toBe("archived");
+    expect(project.workflowStatus).toBe("cancelled");
+  });
+
+  it("archives project when all tasks are cancelled", () => {
+    const p = upsertProject({ title: "AllOff", actor: "user" });
+    const t1 = upsertTask({ projectId: p.id, title: "Task A", actor: "user" });
+    const t2 = upsertTask({ projectId: p.id, title: "Task B", actor: "user" });
+    updateTaskWorkflow({ taskId: t1.id, actor: "user", workflowStatus: "cancelled" });
+    updateTaskWorkflow({ taskId: t2.id, actor: "user", workflowStatus: "cancelled" });
+    const project = getPlatformStore().projects[p.id]!;
+    expect(project.status).toBe("archived");
+    expect(project.workflowStatus).toBe("cancelled");
+  });
+
+  it("marks project done when every task is done", () => {
+    const p = upsertProject({ title: "AllWin", actor: "user" });
+    const t1 = upsertTask({ projectId: p.id, title: "Task A", actor: "user" });
+    const t2 = upsertTask({ projectId: p.id, title: "Task B", actor: "user" });
+    updateTaskWorkflow({ taskId: t1.id, actor: "user", workflowStatus: "done" });
+    updateTaskWorkflow({ taskId: t2.id, actor: "user", workflowStatus: "done" });
+    const project = getPlatformStore().projects[p.id]!;
     expect(project.status).toBe("done");
     expect(project.workflowStatus).toBe("done");
   });

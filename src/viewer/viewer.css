@@ -97,6 +97,50 @@ body {
   margin: 0.75rem 0 0.35rem;
   color: #c8c8d4;
 }
+.companion-h4 {
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin: 0.65rem 0 0.25rem;
+  color: #b0b0bc;
+}
+.companion-knowledge-sets {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+.companion-knowledge-sets > li {
+  margin-bottom: 0.5rem;
+}
+.companion-set-details {
+  border: 1px solid #3a3a44;
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  background: #222228;
+}
+.companion-set-summary {
+  cursor: pointer;
+}
+.companion-set-body {
+  margin-top: 0.5rem;
+  padding: 0.35rem 0 0.25rem 0.5rem;
+  border-top: 1px solid #333;
+}
+.companion-set-body .companion-p {
+  margin: 0.25rem 0;
+}
+.companion-run-list > li {
+  margin-bottom: 0.65rem;
+}
+.companion-run-source {
+  margin: 0.35rem 0 0;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.78rem;
+  background: #0d0d10;
+  border: 1px solid #2a2a32;
+  border-radius: 4px;
+  max-height: 12rem;
+  overflow: auto;
+}
 .companion-section {
   margin-bottom: 1.75rem;
 }
