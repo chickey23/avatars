@@ -20,11 +20,9 @@ function orderedRuleBlockIds(selected: Set<string>): string[] {
 type Props = {
   variant?: WellOfSoulsVariant;
   onClose?: () => void;
-  /** Last generated text; shown in chip / merged when “Use in chat context” is on. */
+  /** Last generated text; persisted and merged into chat relevance when non-empty. */
   storedRules?: string;
   onStoredRulesChange?: (text: string) => void;
-  useInChat?: boolean;
-  onUseInChatChange?: (v: boolean) => void;
   /** Called after a successful Generate (opens avatar builder, etc.). */
   onAfterGenerate?: (payload: {
     seed: string;
@@ -39,8 +37,6 @@ export function WellOfSouls({
   onClose,
   storedRules = "",
   onStoredRulesChange,
-  useInChat = false,
-  onUseInChatChange,
   onAfterGenerate,
 }: Props) {
   const [seed, setSeed] = useState("");
@@ -168,17 +164,6 @@ export function WellOfSouls({
           ))}
         </div>
       </div>
-      {onUseInChatChange && (
-        <label className="well-of-souls-use-context">
-          <input
-            type="checkbox"
-            checked={useInChat}
-            onChange={(e) => onUseInChatChange(e.target.checked)}
-            disabled={!storedRules.trim()}
-          />
-          <span>Use in chat context</span>
-        </label>
-      )}
       {err && <p className="well-of-souls-error">{err}</p>}
       <div className="well-of-souls-actions">
         <button type="button" className="well-of-souls-run" onClick={run} disabled={busy}>

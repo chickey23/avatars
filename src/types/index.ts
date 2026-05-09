@@ -372,10 +372,8 @@ export interface SituationContext {
    * `relevantData` each turn; not connector-scored. Persisted.
    */
   userInternetContextLines?: string[];
-  /** Last Well of Souls generator output; optional merge into `relevantData` when `useWellOfSoulsInChat` is true. */
+  /** Last Well of Souls generator output; merged into `relevantData` when non-empty. */
   wellOfSoulsRules?: string;
-  /** When true, `sendMessage` prepends `wellOfSoulsRules` into relevance for the avatar pipeline. */
-  useWellOfSoulsInChat?: boolean;
   /**
    * Proactive offers (SPEC § Proactive notifications). Revisable; persisted unless stripped by implementation.
    */

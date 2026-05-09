@@ -92,7 +92,7 @@ Order: email → calendar → contacts → others.
 
 | Field | Status |
 |-------|--------|
-| Thread, recent events, relevant data, WoS opt-in | ✅ |
+| Thread, recent events, relevant data, WoS draft when non-empty | ✅ |
 | `pendingNotifications`, `userFocus`, release ids (ephemeral) | ⚠️ MVP | Spec `SPEC-PROACTIVE-NOTIFY` |
 | Active task / cues in types | ⚠️ UI partial; agents not wired per SPEC |
 | Ephemeral `replyToUserMessageId` | ✅ |

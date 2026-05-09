@@ -97,9 +97,9 @@
 - **Recent events**
 - **Active task**
 - **Cues and triggers**
-- **`relevantData`** (optional) — connector- and focus-derived strings merged for avatar prompts; may include Well of Souls draft when enabled.
+- **`relevantData`** (optional) — connector- and focus-derived strings merged for avatar prompts; may include a Well of Souls draft when `wellOfSoulsRules` is non-empty (see § Implemented UI).
 - **`pendingNotifications` (optional)** — structured, revisable list of proactive offers (see § Proactive notifications). May be persisted; entries age out or update as the thread and connector snapshots change.
-- **Well of Souls (optional)** — `wellOfSoulsRules` and `useWellOfSoulsInChat` when the user generates rules in Context and opts into chat context (see § Implemented UI).
+- **Well of Souls (optional)** — `wellOfSoulsRules` from **Workshops → Creation**; merged into prompts via `relevantData` while non-empty (clear the draft in Creation to stop).
 - **Ephemeral (not persisted): `replyToUserMessageId`** — during processing of a queued user turn, identifies which user message that turn answers so prompts and routing stay correct when newer user messages already appear in the thread.
 - **Ephemeral (optional): `pendingReleaseClusterIds`** — topic cluster ids treated as **released** for the current user turn because the user’s message addresses those topics (see § Proactive notifications).
 
@@ -285,7 +285,7 @@ The Focus Watcher Agent interprets changes to Focus. He will be personified with
 **Completed relative to earlier drafts** (summary only; see § Implemented UI and `PROGRESS.md` for full detail):
 
 1. **Focus in Situation Context** — Selected focus items are passed into `relevantData` for avatars.
-2. **Local LLM (Ollama) UX and diagnostics** — Tri-state presence in the UI (`no_server` / `no_models` / `ready`); reply provenance (`ReplySource`: Ollama, Rules, Fallback) with short errors and prompt panels; Rules-path sub-reasons when the template engine runs without generation; session log (in-app **Log** control; optional on-disk rotation under the app data path in Tauri). Well of Souls (**WoS**) in Context with optional merge into chat context.
+2. **Local LLM (Ollama) UX and diagnostics** — Tri-state presence in the UI (`no_server` / `no_models` / `ready`); reply provenance (`ReplySource`: Ollama, Rules, Fallback) with short errors and prompt panels; Rules-path sub-reasons when the template engine runs without generation; session log (in-app **Log** control; optional on-disk rotation under the app data path in Tauri). Well of Souls (**WoS**) under **Workshops → Creation**; draft text merges into `relevantData` while non-empty.
 3. **Switchboard Chat Visualizer (Waves)** — Optional column beside chat: persistent routing queue (`SwitchboardTraceStep`–driven rows), user-turn bars, avatar-accent dots per responder, tunable rise motion, per-wave pending blink until that wave’s replies are visible; `prefers-reduced-motion` respected. Conceptual and code map: `docs/SWITCHBOARD_VISUALIZATION.md`. Major layout changes still warrant user consultation per § Behavioral Instructions.
 
 **Next (spec-track priority):**
@@ -321,10 +321,10 @@ When users request avatars for a **set** (for example, members of a group), disc
 
 **[Current] Intent:** Snapshot shipped UI behavior; this section is status, not architecture authority.
 
-- **Context panel**: Email, Calendar, Contacts, **WoS** (Well of Souls) tabs; Connect/Reconnect Gmail.
+- **Context panel**: Email, Calendar, Contacts; Connect/Reconnect Gmail.
 - **Focus**: User can select email, calendar event, or contact as focus; display shows titles; Clear button.
 - **Environment**: Tauri indicator; **Ollama** tri-state badge (refresh on click); **Log** opens session diagnostics (connectivity / Ollama / chat pipeline notes).
-- **Chat**: **Clear chat** (no confirm; clears visible thread, recent events, and queued pending turns)—**layout/readability reset**, not topic dismissal; see § Conversation archive. **View** selector (Chat / Chat + routing / Routing + log); inline trace and optional expanded log under user messages; compact turn archive in `localStorage` (see § Conversation archive and Switchboard trace). **User messages** appear immediately; **avatar replies** append incrementally as each response completes. **Pending reply** indicator when one or more turns are still processing; **input and Send stay enabled** so the user can send additional messages while replies are in flight (turns are queued). Optional **Well of Souls** output merged into `relevantData` when “Use in chat context” is on.
+- **Chat**: **Clear chat** (no confirm; clears visible thread, recent events, and queued pending turns)—**layout/readability reset**, not topic dismissal; see § Conversation archive. **View** selector (Chat / Chat + routing / Routing + log); inline trace and optional expanded log under user messages; compact turn archive in `localStorage` (see § Conversation archive and Switchboard trace). **User messages** appear immediately; **avatar replies** append incrementally as each response completes. **Pending reply** indicator when one or more turns are still processing; **input and Send stay enabled** so the user can send additional messages while replies are in flight (turns are queued). **Well of Souls** draft from **Workshops → Creation** is merged into `relevantData` while `wellOfSoulsRules` is non-empty.
 - **Chat Visualizer (Waves):** Optional toolbar toggle shows a **persistent waves column** next to chat: user-turn entries and one row per `SwitchboardTraceStep` with avatar-colored responder dots (accent from catalog), optional user-chrome styling, resizable width, rise-into-slot motion (tunable `SWITCHBOARD_WAVE_TRAVEL_MS`), and per-wave **pending blink** until that wave’s avatar replies are visible—see `docs/SWITCHBOARD_VISUALIZATION.md`. **`prefers-reduced-motion`** short-circuits long motion and blink. **Sounds** for waves are not implemented; remain optional and secondary if added later.
 - **Workshops:** Header **Workshops** control opens Tool, Unmet Needs, Source, Projects, Creation, and Stewardship tabs. Creation supports Well of Souls and internet-assisted avatar creation; Stewardship manages monitor duties and tool capabilities without raw tag editing.
 - **Progress & spec review**: See `PROGRESS.md` for status, conflicts, and next steps.

@@ -25,7 +25,7 @@ Connectors (email, calendar, contacts, …) can supply more information than bel
 
 | Term | Meaning |
 |------|--------|
-| **Situation Context** | The structured state passed through the app: thread, recent events, `relevantData`, focus, optional WoS rules, proactive fields, etc. See types in `src/types`. |
+| **Situation Context** | The structured state passed through the app: thread, recent events, `relevantData`, focus, optional WoS rules (`wellOfSoulsRules` merged when non-empty), proactive fields, etc. See types in `src/types`. |
 | **User turn** | One user message that triggers `processUserTurn`: gather data, merge proactive hints, build `relevantData`, run the switchboard / avatars. |
 | **Corpus** | Lowercase text from the last **N** conversation messages, optional `activeTask`, optional **focus-derived appendix** (focused email subject/snippet/body excerpt, focused calendar title/location/time), and optional **world-metadata scoring corpus** (user profile, focused project text, capped people overlays)—used for **keyword overlap** with connector items. |
 | **Focus** | User-selected context (`SituationFocus`): pointers to an email, calendar event, or contact. Drives **id-match bonuses**, the focus appendix above, and **soft bonuses** (shared tokens / venue-ish overlap, same-day mail vs focused email date, calendar time-window proximity). |

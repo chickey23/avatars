@@ -425,9 +425,9 @@ export async function processUserTurn(
     },
     budgets.projectExtraTopK
   );
-  const wos = ctx.useWellOfSoulsInChat && ctx.wellOfSoulsRules?.trim();
-  const wosLines = wos
-    ? [`Well of Souls (personality rules draft):\n${ctx.wellOfSoulsRules!.trim()}`]
+  const wosTrim = ctx.wellOfSoulsRules?.trim();
+  const wosLines = wosTrim
+    ? [`Well of Souls (personality rules draft):\n${wosTrim}`]
     : [];
   const userProfileLines = userProfileToRelevanceLines(
     getWorldMetadata().userProfile

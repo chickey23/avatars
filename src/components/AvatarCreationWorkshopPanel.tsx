@@ -47,10 +47,10 @@ export function AvatarCreationWorkshopPanel({
       <header className="tool-workshop-header">
         <h2 className="tool-workshop-title">Creation</h2>
         <p className="tool-workshop-sub">
-          Well of Souls rule generator and wiki/web search for new avatars. Draft
-          lines can merge into chat context from here; pin internet hits for every
-          turn under <strong>Context → Internet</strong> if you use{" "}
-          <strong>Add selected to context</strong>.
+          Well of Souls rule generator and wiki/web search for new avatars. While a
+          Well of Souls draft exists here, it is included in chat relevance; pin
+          internet hits for every turn under <strong>Context → Internet</strong> if
+          you use <strong>Add selected to context</strong>.
         </p>
       </header>
 
@@ -63,18 +63,10 @@ export function AvatarCreationWorkshopPanel({
       {situationContext.wellOfSoulsRules?.trim() && (
         <div className="well-of-souls-context-chip" aria-live="polite">
           <span className="well-of-souls-chip-label">Well of Souls draft</span>
-          {situationContext.useWellOfSoulsInChat && (
-            <span className="well-of-souls-chip-on">In chat context</span>
-          )}
           <button
             type="button"
             className="well-of-souls-chip-clear"
-            onClick={() =>
-              patchSituationContext({
-                wellOfSoulsRules: "",
-                useWellOfSoulsInChat: false,
-              })
-            }
+            onClick={() => patchSituationContext({ wellOfSoulsRules: "" })}
           >
             Clear
           </button>
@@ -89,10 +81,6 @@ export function AvatarCreationWorkshopPanel({
             storedRules={situationContext.wellOfSoulsRules ?? ""}
             onStoredRulesChange={(text) =>
               patchSituationContext({ wellOfSoulsRules: text })
-            }
-            useInChat={situationContext.useWellOfSoulsInChat ?? false}
-            onUseInChatChange={(v) =>
-              patchSituationContext({ useWellOfSoulsInChat: v })
             }
             onAfterGenerate={onWellOfSoulsAfterGenerate}
           />
