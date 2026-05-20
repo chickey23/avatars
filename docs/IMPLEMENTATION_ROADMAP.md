@@ -107,6 +107,7 @@ Use the operating grammar in [STYLEGUIDE.md](STYLEGUIDE.md): descriptors, instru
   - **[`routingDirectAddress`](../src/services/routingDirectAddress.ts)** hits a **bench** id (direct address to someone outside the strip).
 - **Limits:** At most **one bench avatar per turn**, or require score above a **high** threshold; **skip heavy context fetch** for bench (e.g. lean `relevantData` or reuse primary turn’s snapshot).
 - **Ollama cost:** Avoid doubling calls—options include a **single** prompt with “if no primary match, only consider…”, or a **fast keyword / rules gate** before any bench model invocation.
+- **Local LLM baseline:** Periodically revisit **small vs larger** local models for avatar reply quality and tool reliability; documented baseline and trade-offs live in [TECHSPEC.md](../TECHSPEC.md) §8 (Ollama Integration).
 
 ---
 

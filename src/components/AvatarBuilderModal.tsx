@@ -18,6 +18,8 @@ import { PERSONALITY_TRAITS, type PersonalityTraitId } from "../theme/designToke
 import { AI_RULE_BLOCKS, AI_RULE_SETS } from "../data/aiRulesLibrary";
 import type { AvatarBuilderInternetSectionRefs } from "../services/avatarCreationWorkshopSectionSearch";
 import type { AvatarBuilderSeedFieldPrefill } from "../services/avatarBuilderSeedPrefill";
+import type { AvatarBuilderFieldEvidence } from "../services/avatarCreationFieldEvidence";
+import { AVATAR_BUILDER_INTERNET_SECTIONS } from "../services/avatarCreationWorkshopSectionSearch";
 import { getAvatarOperationalRoles } from "../services/avatarOperations";
 
 export type AvatarBuilderInitial =
@@ -35,6 +37,8 @@ export type AvatarBuilderInitial =
       wikiSearchNotices?: string[];
       /** Wiki extract + Ollama JSON when opening from Creation workshop. */
       seedFieldPrefill?: AvatarBuilderSeedFieldPrefill;
+      /** Per-field evidence / confidence from workshop internet apply. */
+      fieldEvidence?: AvatarBuilderFieldEvidence;
     }
   | { kind: "edit"; avatar: Avatar };
 
@@ -491,6 +495,27 @@ export function AvatarBuilderModal({
         {initial?.kind === "seed" && seedShowInternetBlock(initial) && (
             <div className="avatar-builder-internet-refs" role="region" aria-label="Internet references">
               <h3 className="avatar-builder-signature-hint">Internet references</h3>
+              {initial.fieldEvidence &&
+              Object.keys(initial.fieldEvidence).length > 0 ? (
+                <ul className="avatar-builder-field-evidence" aria-label="Field confidence">
+                  {AVATAR_BUILDER_INTERNET_SECTIONS.map((def) => {
+                    const e = initial.fieldEvidence?.[def.id];
+                    if (!e) return null;
+                    const label =
+                      e.confidence === "evidence"
+                        ? "from evidence"
+                        : e.confidence === "weak"
+                          ? "weak evidence"
+                          : "missing — try another source or edit manually";
+                    return (
+                      <li key={def.id}>
+                        <strong>{def.label}:</strong> {label}
+                        {e.sourceHint ? ` (${e.sourceHint})` : ""}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
               {initial.wikiSearchNotices && initial.wikiSearchNotices.length > 0 ? (
                 <ul className="context-internet-notices">
                   {initial.wikiSearchNotices.map((n, idx) => (

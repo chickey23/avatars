@@ -124,6 +124,7 @@ export function AvatarCreationWorkshopPanel({
               const {
                 seedFieldPrefill,
                 internetReferencesBySection,
+                fieldEvidence,
                 wikiSearchNotices,
               } = await runAvatarCreationWorkshopInternetApply({
                 pickedHits,
@@ -141,6 +142,7 @@ export function AvatarCreationWorkshopPanel({
                   internetReferencesBySection,
                   wikiSearchNotices,
                   seedFieldPrefill,
+                  fieldEvidence,
                 },
               });
             },

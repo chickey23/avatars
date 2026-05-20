@@ -163,6 +163,11 @@ export const complexTaskPlannerMonitor: MonitorDef = {
               payload: { plan } satisfies CreateTasksPayload,
             },
             {
+              id: `edit_named_list:${plan.planId}`,
+              label: "Edit list",
+              payload: { plan } satisfies CreateTasksPayload,
+            },
+            {
               id: `not_now:${plan.planId}`,
               label: "Not now",
               payload: { planId: plan.planId },
@@ -420,6 +425,51 @@ function handleCreateAllPendingMembers(
   void postDiscoveryProgressCard(message, plan, actor, payload.discoveryAttemptIndex);
 }
 
+function handleEditNamedList(
+  message: ConversationMessage,
+  payload: unknown
+): void {
+  if (!isCreateTasksPayload(payload)) return;
+  const { plan } = payload;
+  const listed = plan.subjects.map((s) => `- ${s}`).join("\n");
+  postSyntheticMessage({
+    avatarId: message.avatarId ?? COMPLEX_TASK_PLANNER_FALLBACK_AVATAR_ID,
+    monitorTag: COMPLEX_TASK_PLANNER_TAG,
+    content:
+      `**Edit list** — current names:\n${listed}\n\n` +
+      "Reply in chat with corrections (for example: remove Carol, add Dave), then use **Create tasks** on the review card when the list looks right.",
+    dedupKey: `edit_named|${plan.planId}|${discoveryResultPostSeq++}`,
+  });
+}
+
+function handleEditDiscoveryList(
+  message: ConversationMessage,
+  payload: unknown
+): void {
+  if (!isCreateTasksPayload(payload)) return;
+  const { plan } = payload;
+  const setKey = discoverySetKeyForPlan(plan);
+  const ks = getKnowledgeSet(setKey);
+  const members = ks?.members ?? [];
+  const lines =
+    members.length > 0
+      ? members
+          .map(
+            (m) =>
+              `- ${m.name}${m.status && m.status !== "pending" ? ` (${m.status})` : ""}`
+          )
+          .join("\n")
+      : "(no members saved yet — run **Search members** first)";
+  postSyntheticMessage({
+    avatarId: message.avatarId ?? COMPLEX_TASK_PLANNER_FALLBACK_AVATAR_ID,
+    monitorTag: COMPLEX_TASK_PLANNER_TAG,
+    content:
+      `**Edit list** for "${stripDiscoveryBoilerplate(plan.discoveryQuery ?? plan.originalRequest)}":\n${lines}\n\n` +
+      "Reply in chat to add or remove names, or use **Skip** / **Create avatar** on the progress card.",
+    dedupKey: `edit_discovery|${plan.planId}|${discoveryResultPostSeq++}`,
+  });
+}
+
 function handleDoneBuildingSet(message: ConversationMessage, payload: unknown): void {
   if (!isCreateTasksPayload(payload)) return;
   const catalog = getAvatarCatalogSnapshot();
@@ -501,6 +551,11 @@ function registerAndBuildSetDiscoveryActions(
   pending: ReturnType<typeof listOrderedPendingCandidates>
 ): MonitorAction[] {
   registerSetDiscoveryCardActions(plan);
+  registerSyntheticAction(
+    COMPLEX_TASK_PLANNER_TAG,
+    `edit_discovery_list:${plan.planId}`,
+    ({ message: m, action }) => handleEditDiscoveryList(m, action.payload)
+  );
   const next = pending[0];
   if (next) {
     const seg = actionKeySegment(next.normalizedKey);
@@ -559,6 +614,11 @@ function registerAndBuildSetDiscoveryActions(
       } satisfies CreateTasksPayload,
     });
   }
+  actions.push({
+    id: `edit_discovery_list:${plan.planId}`,
+    label: "Edit list",
+    payload: { plan, subjects: [] } satisfies CreateTasksPayload,
+  });
   actions.push({
     id: `search_discovery_again:${plan.planId}`,
     label: "Search again",
@@ -1306,6 +1366,11 @@ export function installComplexTaskPlannerDynamicActions(planId: string): void {
     COMPLEX_TASK_PLANNER_TAG,
     `create_avatar_tasks:${planId}`,
     ({ message, action }) => handleCreateAvatarTasks(message, action.payload)
+  );
+  registerSyntheticAction(
+    COMPLEX_TASK_PLANNER_TAG,
+    `edit_named_list:${planId}`,
+    ({ message, action }) => handleEditNamedList(message, action.payload)
   );
   registerSyntheticAction(
     COMPLEX_TASK_PLANNER_TAG,

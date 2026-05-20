@@ -267,12 +267,20 @@ Add `http://127.0.0.1:5174/oauth/callback` to authorized redirect URIs in Google
 ## 8. Ollama Integration
 
 - **Base URL:** `http://localhost:11434`
-- **Default model:** `llama2`
-- **Endpoints:** `/api/tags`, `/api/generate`
+- **Endpoints:** `GET /api/tags`, `POST /api/generate`, `POST /api/embed` (Rust may fall back to legacy `POST /api/embeddings` when `/api/embed` returns 404).
+- **Generation model:** When the app does not pass an explicit model name, it uses the **first model** returned by `GET /api/tags` (same effective rule as `ollama run` with no tag). Implemented in `src/services/ollama.ts` and `src-tauri/src/ollama.rs`.
+- **Embeddings default:** `nomic-embed-text` (`OLLAMA_EMBED_MODEL` in `ollama.ts`; run `ollama pull nomic-embed-text`).
 - **Behavior:** Optional; falls back to personality-based rules if Ollama unavailable
 - **Desktop (Tauri):** Frontend uses `ollama_reachable` / `ollama_generate` so the webview does not rely on `fetch` to localhost (avoids blocked/incorrect reachability).
 - **Browser dev:** `src/services/ollama.ts` uses `fetch` to the same host.
 - **UI:** Main header `.env-indicator` shows **Ollama:** next to the Tauri tag (✓/✗/checking), same `env-tag` styling, fixed `min-width` to avoid layout jump on refresh; click to refresh; periodic re-check every 15s.
+
+### Project baseline and local-LLM strategy
+
+- **Maintainer baseline (generation):** **`llama3.2:latest`** (~2 GB when pulled) — a small, fast local model that has been working well for current Avatars use cases; treat small size and acceptable latency as **performance attributes**.
+- **Expect churn on the tag:** Ollama and upstream publishers ship updates; the same tag may change behavior over time. When the documented baseline changes, note wins or regressions for the team.
+- **Ongoing evaluation:** Periodically compare other **competitive small** models (latency, RAM/VRAM, tool JSON reliability, subjective reply quality) against this baseline.
+- **Scaling for quality:** Prefer **larger local models** when the priority is **better avatar responses**, accepting slower generation and heavier hardware use.
 
 ---
 

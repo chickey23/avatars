@@ -162,7 +162,7 @@ These are **user-visible regressions or broken combinations** someone observed i
 
 | ID | Area | Summary | Evidence to capture |
 |----|------|---------|---------------------|
-| R1 | Avatar creation from chat | Ask an avatar with **avatar creation** capability to create a new avatar (vague or partial fields). **Expected:** the model may refine partial tool args over turns **and** the user gets an **in-chat control** to open the avatar creation workflow (Creation / builder), not only prose. **Observed (reported):** several clarification turns, then a chat reply with **garbled or prose-like tool text** instead of opening creation UI. May be an untested combination of partial-fill + CTA. | **Model reply / tools parse** (parsed vs none), **WV log**, **Waves** row if any; whether output matched `avatars_tools_v1`. Manual: [docs/TEST_PLAN.md](docs/TEST_PLAN.md) **A14**. |
+| R1 | Avatar creation from chat | Ask an avatar with **avatar creation** capability to create a new avatar (vague or partial fields). **Expected:** the model may refine partial tool args over turns **and** the user gets an **in-chat control** to open the avatar creation workflow (Creation / builder), not only prose. **Fix (2026-05):** `fallbackPostTurnUiForCreationOffer` now covers garbled tool prose, missing `open_draft` args, and generic/opening replies; **Open draft** synthetic card via `postAvatarCreationWorkshopOffer`. Manual: [docs/TEST_PLAN.md](docs/TEST_PLAN.md) **A14**. | **Model reply / tools parse**, **WV log**, **Waves**; integration test in [`avatarAgents.toolUse.integration.test.ts`](src/services/avatarAgents.toolUse.integration.test.ts). |
 
 ---
 

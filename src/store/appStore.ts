@@ -22,6 +22,8 @@ import {
   patchUserMessageEmailFocusArtifacts,
 } from "../services/situationContext";
 import { suggestActiveTaskFromUserMessage } from "../services/activeTaskAgent";
+import { deriveActiveTaskFromPlatform } from "../services/platform/activeTaskBridge";
+import { getPlatformStore } from "../services/platform/store";
 import { runUserTurnPreprocessor } from "../services/preprocessor/userTurnPreprocessor";
 import { projectMetadataContextLines } from "../services/worldMetadata/relevance";
 import { resolveContextEntryBudgets } from "../utils/contextEntryBudget";
@@ -747,8 +749,14 @@ export async function processUserTurn(
     job.content.trim(),
     updatedContext.activeTask
   );
-  if (suggestedActive) {
-    updatedContext = { ...updatedContext, activeTask: suggestedActive };
+  const platformActive = deriveActiveTaskFromPlatform(
+    getPlatformStore(),
+    updatedContext.userFocus,
+    suggestedActive ?? updatedContext.activeTask
+  );
+  const nextActive = suggestedActive ?? platformActive;
+  if (nextActive) {
+    updatedContext = { ...updatedContext, activeTask: nextActive };
   }
 
   persistContext(stripEphemeralFields(updatedContext));

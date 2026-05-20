@@ -62,6 +62,12 @@ import {
 } from "./agenticTools";
 import { renderWorkshopGuidanceForPrompt } from "./toolWorkshop";
 import { recordToolTelemetryForOllamaTurn } from "./toolTelemetry";
+import { extractAvatarCreationQuery } from "./avatarCreationQueryExtract";
+import {
+  attemptMissingArgRepairForResults,
+  type MissingArgRepairLineage,
+} from "./toolErrorSelfRepair";
+import { applyToolFailuresToAvatarCreationTasks } from "./platform/toolFailureTaskBridge";
 import { avatarMayUseAgenticTool } from "./agenticTools/registry";
 import {
   renderToolProtocol,
@@ -329,24 +335,14 @@ function postTurnUiFromOpenDraftTools(
   return last;
 }
 
-function extractAvatarCreationQuery(userContent: string): string {
-  const normalized = userContent.replace(/\s+/g, " ").trim();
-  const patterns = [
-    /\b(?:for|about)\s+(.+?)(?:[.?!]|$)/i,
-    /\b(?:named|called)\s+(.+?)(?:[.?!]|$)/i,
-    /\b(?:avatar|persona|character)\s+(?:of|for)?\s*(.+?)(?:[.?!]|$)/i,
-  ];
-  for (const re of patterns) {
-    const match = normalized.match(re);
-    const raw = match?.[1]?.trim();
-    if (!raw) continue;
-    const cleaned = raw
-      .replace(/\b(?:please|thanks|thank you|using the workshop)\b.*$/i, "")
-      .replace(/^["'`]+|["'`]+$/g, "")
-      .trim();
-    if (cleaned.length >= 2) return cleaned.slice(0, 500);
-  }
-  return normalized.slice(0, 500);
+export function looksLikeGarbledToolProse(visible: string): boolean {
+  const t = visible.trim();
+  if (!t) return false;
+  if (/\bavatars?_tools_v1\b/i.test(t)) return true;
+  if (/```\s*json/i.test(t) && /"tools"\s*:/i.test(t)) return true;
+  if (/\bAVATARS_TOOL\b/i.test(t)) return true;
+  if (/"name"\s*:\s*"avatars\.workshop\.open_draft"/i.test(t)) return true;
+  return false;
 }
 
 function isWorkshopOpeningQuestion(visible: string): boolean {
@@ -375,6 +371,7 @@ function fallbackPostTurnUiForCreationOffer(args: {
   visible: string;
   turnIntent: TurnToolIntent;
   postTurnUi: PostTurnAvatarUi | undefined;
+  openDraftFailedMissingArgs?: boolean;
 }): {
   finalVisible: string;
   postTurnUi: PostTurnAvatarUi | undefined;
@@ -396,16 +393,22 @@ function fallbackPostTurnUiForCreationOffer(args: {
   const wikiQuery = extractAvatarCreationQuery(args.userContent);
   const generic = isGenericAvatarCreationReply(args.visible);
   const asksToOpen = isWorkshopOpeningQuestion(args.visible);
-  const reason = generic
-    ? "creation_generic_reply_fallback"
-    : asksToOpen
-      ? "creation_open_question_fallback"
-      : "creation_auto_offer";
+  const garbled = looksLikeGarbledToolProse(args.visible);
+  const replaceVisible =
+    generic || asksToOpen || garbled || args.openDraftFailedMissingArgs === true;
+  const reason = garbled
+    ? "creation_garbled_tool_fallback"
+    : args.openDraftFailedMissingArgs
+      ? "creation_open_draft_missing_args"
+      : generic
+        ? "creation_generic_reply_fallback"
+        : asksToOpen
+          ? "creation_open_question_fallback"
+          : "creation_auto_offer";
   return {
-    finalVisible:
-      generic || asksToOpen
-        ? "I prepared an avatar creation draft offer below."
-        : args.visible,
+    finalVisible: replaceVisible
+      ? "I prepared an avatar creation draft offer below."
+      : args.visible,
     postTurnUi: {
       navigateAvatarCreationWorkshop: {
         wikiQuery,
@@ -716,9 +719,10 @@ export async function runAvatarAgent(
           }
         };
 
+        let executedPatchTools = patchTools;
         if (patchTools.length) {
           captureProfileIfNeeded();
-          const r1 = executeWorldviewTools(patchTools, {
+          let r1 = executeWorldviewTools(patchTools, {
             avatarId: avatar.id,
             userMessageId: ctx.replyToUserMessageId ?? "",
             sourceEmailId: ctx.userFocus?.email?.id,
@@ -727,10 +731,38 @@ export async function runAvatarAgent(
             executorAvatarId: ctx.executorAvatarIdForTurn,
             latestUserMessageContent: latestUserTurnContentForTools(ctx),
           });
-          postUserProfilePendingSyntheticFromResults(avatar.id, patchTools, r1);
+          let repairLineage: MissingArgRepairLineage | undefined;
+          const repair = attemptMissingArgRepairForResults(patchTools, r1, {
+            userContent,
+            focusProjectId: ctx.userFocus?.project?.id,
+          });
+          if (repair) {
+            repairLineage = repair.lineage;
+            const repairedCall = repair.repairedTool;
+            const rRepair = executeWorldviewTools([repairedCall], {
+              avatarId: avatar.id,
+              userMessageId: ctx.replyToUserMessageId ?? "",
+              sourceEmailId: ctx.userFocus?.email?.id,
+              skipAudit: true,
+              avatar,
+              executorAvatarId: ctx.executorAvatarIdForTurn,
+              latestUserMessageContent: latestUserTurnContentForTools(ctx),
+            });
+            appendSessionLog("chat", "tool_missing_arg_repair", {
+              level: rRepair[0]?.ok ? "info" : "warn",
+              detail: `${avatar.id} ${repairedCall.name} lineage=${repairLineage} ok=${rRepair[0]?.ok ?? false}`,
+            });
+            executedPatchTools = [repairedCall];
+            r1 = rRepair;
+          }
+          postUserProfilePendingSyntheticFromResults(
+            avatar.id,
+            executedPatchTools,
+            r1
+          );
           for (let i = 0; i < r1.length; i++) {
             const r = r1[i]!;
-            const t = patchTools[i]!;
+            const t = executedPatchTools[i]!;
             if (r.ok) {
               activityNames.add(t.name);
               activityActions.push({
@@ -747,11 +779,11 @@ export async function runAvatarAgent(
           }
           combinedPatchResults.push(...r1);
           revertiblePatchCalls.push(
-            ...zipOkRevertiblePatchTools(patchTools, r1)
+            ...zipOkRevertiblePatchTools(executedPatchTools, r1)
           );
           postTurnUi = mergePostTurnUi(
             postTurnUi,
-            postTurnUiFromOpenDraftTools(patchTools, r1)
+            postTurnUiFromOpenDraftTools(executedPatchTools, r1)
           );
         }
 
@@ -948,12 +980,18 @@ export async function runAvatarAgent(
           )
         : undefined;
 
+      const openDraftFailedMissingArgs = resolutionFailures.some(
+        (f) =>
+          f.tool === "avatars.workshop.open_draft" &&
+          /missing seedText and wikiQuery/i.test(f.error ?? "")
+      );
       const offerFallback = fallbackPostTurnUiForCreationOffer({
         avatar,
         userContent,
         visible: finalVisible,
         turnIntent,
         postTurnUi,
+        openDraftFailedMissingArgs,
       });
       finalVisible = offerFallback.finalVisible;
       postTurnUi = offerFallback.postTurnUi;
@@ -982,6 +1020,10 @@ export async function runAvatarAgent(
         isExecutor: toolsPromptExecutor,
         switchboardRoutingMode: ctx.switchboardRoutingMode,
         turnIntent,
+      });
+      applyToolFailuresToAvatarCreationTasks({
+        avatarId: avatar.id,
+        failures: toolResolutionFailures,
       });
 
       return {

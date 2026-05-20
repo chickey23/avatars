@@ -10,6 +10,12 @@ import {
   hostnamesFromSearchHits,
   type AvatarBuilderInternetSectionRefs,
 } from "./avatarCreationWorkshopSectionSearch";
+import {
+  emptyBuilderSectionIds,
+  runFollowUpSearchesForEmptyFields,
+  scoreFieldEvidenceFromSections,
+  type AvatarBuilderFieldEvidence,
+} from "./avatarCreationFieldEvidence";
 import { formatInternetContextLine } from "./internetContextLines";
 import type { TargetedSearchHit } from "./targetedSearch/invoke";
 import { invokeWikiExtractBatch } from "./targetedSearch/wikiExtractInvoke";
@@ -167,10 +173,12 @@ Ground answers in the corpus; do not invent facts not supported by the text.`;
 export type WorkshopInternetApplyResult = {
   seedFieldPrefill?: AvatarBuilderSeedFieldPrefill;
   internetReferencesBySection: AvatarBuilderInternetSectionRefs[];
+  fieldEvidence?: AvatarBuilderFieldEvidence;
   wikiSearchNotices?: string[];
   usedWikiExtract: boolean;
   usedOllamaExtraction: boolean;
   usedSectionSearchFallback: boolean;
+  usedFollowUpSectionSearch?: boolean;
 };
 
 /**
@@ -250,25 +258,59 @@ export async function runAvatarCreationWorkshopInternetApply(opts: {
     selectedSection,
   ];
 
+  let usedFollowUpSectionSearch = false;
   if (!usedOllamaExtraction) {
     usedSectionSearchFallback = true;
     const hostnames = hostnamesFromSearchHits(pickedHits);
-    const { bySection, mergedNotices } = await runSectionSearchesForAvatarBuilder({
+    let { bySection, mergedNotices } = await runSectionSearchesForAvatarBuilder({
       baseText,
       hostnames,
       internetSearchMaxResults,
     });
     wikiSearchNotices.push(...mergedNotices);
+    let evidence = scoreFieldEvidenceFromSections(bySection, seedFieldPrefill);
+    const emptyIds = emptyBuilderSectionIds(evidence);
+    if (emptyIds.length > 0) {
+      const follow = await runFollowUpSearchesForEmptyFields({
+        baseText,
+        hostnames,
+        internetSearchMaxResults,
+        emptySectionIds: emptyIds,
+        existingBySection: bySection,
+      });
+      bySection = follow.mergedBySection;
+      wikiSearchNotices.push(...follow.mergedNotices);
+      usedFollowUpSectionSearch = true;
+      evidence = scoreFieldEvidenceFromSections(bySection, seedFieldPrefill);
+    }
     internetReferencesBySection = [selectedSection, ...bySection];
+    return {
+      seedFieldPrefill,
+      internetReferencesBySection,
+      fieldEvidence: evidence,
+      wikiSearchNotices:
+        wikiSearchNotices.length > 0 ? wikiSearchNotices : undefined,
+      usedWikiExtract,
+      usedOllamaExtraction,
+      usedSectionSearchFallback,
+      usedFollowUpSectionSearch,
+    };
   }
+
+  const fieldEvidence = scoreFieldEvidenceFromSections(
+    internetReferencesBySection,
+    seedFieldPrefill
+  );
 
   return {
     seedFieldPrefill,
     internetReferencesBySection,
+    fieldEvidence,
     wikiSearchNotices:
       wikiSearchNotices.length > 0 ? wikiSearchNotices : undefined,
     usedWikiExtract,
     usedOllamaExtraction,
     usedSectionSearchFallback,
+    usedFollowUpSectionSearch,
   };
 }

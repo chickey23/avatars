@@ -98,6 +98,23 @@ describe("runAvatarAgent structured tools", () => {
     );
   });
 
+  it("converts garbled tool prose into a draft offer (R1)", async () => {
+    const exc = defaultAvatars.find((a) => a.id === "blessed_exchequer")!;
+    vi.mocked(ollama.generateWithOllama).mockResolvedValue({
+      ok: true,
+      text: 'Here is the tool:\n```json\n{"schema":"avatars_tools_v1","tools":[{"name":"avatars.workshop.open_draft","args":{',
+    });
+
+    const r = await runAvatarAgent(
+      exc,
+      ctxWithUser("please create an avatar for Neo")
+    );
+
+    expect(r.content).toBe("I prepared an avatar creation draft offer below.");
+    expect(r.postTurnUi?.navigateAvatarCreationWorkshop?.wikiQuery).toBe("Neo");
+    expect(r.postTurnUiReason).toBe("creation_garbled_tool_fallback");
+  });
+
   it("preserves substantive creation notes while still offering the draft", async () => {
     const exc = defaultAvatars.find((a) => a.id === "blessed_exchequer")!;
     vi.mocked(ollama.generateWithOllama).mockResolvedValue({
